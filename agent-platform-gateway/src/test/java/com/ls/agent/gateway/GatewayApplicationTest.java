@@ -1,0 +1,43 @@
+package com.ls.agent.gateway;
+
+import com.ls.agent.core.identity.api.ApplicationService;
+import com.ls.agent.core.identity.api.AuthService;
+import com.ls.agent.core.model.api.ModelConfigService;
+import com.ls.agent.core.model.api.ModelInvokeService;
+import com.ls.agent.core.mcp.api.McpToolQueryService;
+import com.ls.agent.core.profile.api.ProfileService;
+import com.ls.agent.core.skill.api.SkillQueryService;
+import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+
+@SpringBootTest(properties = {
+        "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration,org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration"
+})
+class GatewayApplicationTest {
+
+    @MockBean
+    private AuthService authService;
+
+    @MockBean
+    private ApplicationService applicationService;
+
+    @MockBean
+    private ModelConfigService modelConfigService;
+
+    @MockBean
+    private ModelInvokeService modelInvokeService;
+
+    @MockBean
+    private ProfileService profileService;
+
+    @MockBean
+    private SkillQueryService skillQueryService;
+
+    @MockBean
+    private McpToolQueryService mcpToolQueryService;
+
+    @Test
+    void contextLoads() {
+    }
+}

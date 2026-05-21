@@ -1,0 +1,270 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="drawio" version="26.0.0">
+  <diagram id="database-relation-diagram" name="数据库关系图">
+    <mxGraphModel dx="2200" dy="1200" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2200" pageHeight="1250" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="title" value="AI Agent 平台数据库关系图（按正式数据库模型设计）" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=24;fontStyle=1;fontColor=#1F2937;" vertex="1" parent="1">
+          <mxGeometry x="40" y="20" width="820" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="legend" value="图例：实线 = 平台核心库内关系 / 外键候选；红色虚线 = 跨服务引用，不做数据库外键；tenant_id、created_at 等通用字段未全部画出。" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F9FAFB;strokeColor=#9CA3AF;fontColor=#374151;fontSize=13;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="910" y="18" width="960" height="44" as="geometry" />
+        </mxCell>
+
+        <mxCell id="grp_identity" value="core.identity：租户 / 用户 / 角色 / 应用 / API Key" style="swimlane;html=1;startSize=34;rounded=1;whiteSpace=wrap;fillColor=#EAF2FF;strokeColor=#3B82F6;fontStyle=1;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="40" y="90" width="470" height="440" as="geometry" />
+        </mxCell>
+        <mxCell id="grp_profile" value="core.model + core.profile：模型配置与 Agent Profile" style="swimlane;html=1;startSize=34;rounded=1;whiteSpace=wrap;fillColor=#ECFDF5;strokeColor=#10B981;fontStyle=1;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="540" y="90" width="500" height="440" as="geometry" />
+        </mxCell>
+        <mxCell id="grp_skill" value="core.skill + core.mcp：Skill 市场与 MCP 工具" style="swimlane;html=1;startSize=34;rounded=1;whiteSpace=wrap;fillColor=#F0FDFA;strokeColor=#14B8A6;fontStyle=1;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="1070" y="90" width="540" height="440" as="geometry" />
+        </mxCell>
+        <mxCell id="grp_agent" value="core.agent + core.memory：会话、消息、长期记忆" style="swimlane;html=1;startSize=34;rounded=1;whiteSpace=wrap;fillColor=#F5F3FF;strokeColor=#8B5CF6;fontStyle=1;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="40" y="580" width="630" height="360" as="geometry" />
+        </mxCell>
+        <mxCell id="grp_gov" value="core.governance：配额、Token、Trace、安全、告警" style="swimlane;html=1;startSize=34;rounded=1;whiteSpace=wrap;fillColor=#FFF7ED;strokeColor=#F97316;fontStyle=1;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="700" y="580" width="910" height="530" as="geometry" />
+        </mxCell>
+        <mxCell id="grp_feishu" value="feishu-bot 独立配置库：不直接访问平台核心业务表" style="swimlane;html=1;startSize=34;rounded=1;whiteSpace=wrap;fillColor=#F3F4F6;strokeColor=#6B7280;fontStyle=1;fontSize=14;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="1640" y="580" width="420" height="360" as="geometry" />
+        </mxCell>
+
+        <mxCell id="tenants" value="tenants&#xa;租户" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DBEAFE;strokeColor=#2563EB;fontStyle=1;" vertex="1" parent="grp_identity">
+          <mxGeometry x="30" y="60" width="160" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="users" value="users&#xa;平台用户" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DBEAFE;strokeColor=#2563EB;fontStyle=1;" vertex="1" parent="grp_identity">
+          <mxGeometry x="30" y="160" width="160" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="roles" value="roles&#xa;角色定义" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DBEAFE;strokeColor=#2563EB;fontStyle=1;" vertex="1" parent="grp_identity">
+          <mxGeometry x="270" y="160" width="160" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="user_roles" value="user_roles&#xa;用户角色关系" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DBEAFE;strokeColor=#2563EB;fontStyle=1;" vertex="1" parent="grp_identity">
+          <mxGeometry x="150" y="260" width="170" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="applications" value="applications&#xa;应用隔离单元" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DBEAFE;strokeColor=#2563EB;fontStyle=1;" vertex="1" parent="grp_identity">
+          <mxGeometry x="30" y="350" width="170" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="api_keys" value="api_keys&#xa;API Key 哈希" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DBEAFE;strokeColor=#2563EB;fontStyle=1;" vertex="1" parent="grp_identity">
+          <mxGeometry x="270" y="350" width="160" height="62" as="geometry" />
+        </mxCell>
+
+        <mxCell id="model_providers" value="model_providers&#xa;模型供应商" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D1FAE5;strokeColor=#059669;fontStyle=1;" vertex="1" parent="grp_profile">
+          <mxGeometry x="30" y="70" width="180" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="model_configs" value="model_configs&#xa;具体模型配置" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D1FAE5;strokeColor=#059669;fontStyle=1;" vertex="1" parent="grp_profile">
+          <mxGeometry x="280" y="70" width="180" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="agent_profiles" value="agent_profiles&#xa;Agent Profile 配置" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D1FAE5;strokeColor=#059669;fontStyle=1;" vertex="1" parent="grp_profile">
+          <mxGeometry x="155" y="190" width="190" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="profile_skills" value="profile_skills&#xa;Profile 绑定 Skill" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D1FAE5;strokeColor=#059669;fontStyle=1;" vertex="1" parent="grp_profile">
+          <mxGeometry x="40" y="330" width="185" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="profile_mcp_tools" value="profile_mcp_tools&#xa;Profile 绑定 MCP Tool" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D1FAE5;strokeColor=#059669;fontStyle=1;" vertex="1" parent="grp_profile">
+          <mxGeometry x="275" y="330" width="190" height="62" as="geometry" />
+        </mxCell>
+
+        <mxCell id="skills" value="skills&#xa;Skill 元数据" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#CCFBF1;strokeColor=#0D9488;fontStyle=1;" vertex="1" parent="grp_skill">
+          <mxGeometry x="40" y="80" width="170" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="skill_versions" value="skill_versions&#xa;Skill 版本 / schema" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#CCFBF1;strokeColor=#0D9488;fontStyle=1;" vertex="1" parent="grp_skill">
+          <mxGeometry x="40" y="205" width="190" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="skill_artifacts" value="skill_artifacts&#xa;Jar / 配置文件元数据" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#CCFBF1;strokeColor=#0D9488;fontStyle=1;" vertex="1" parent="grp_skill">
+          <mxGeometry x="40" y="330" width="205" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="mcp_servers" value="mcp_servers&#xa;MCP 服务端配置" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#CCFBF1;strokeColor=#0D9488;fontStyle=1;" vertex="1" parent="grp_skill">
+          <mxGeometry x="320" y="80" width="180" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="mcp_tools" value="mcp_tools&#xa;发现到的 MCP Tool" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#CCFBF1;strokeColor=#0D9488;fontStyle=1;" vertex="1" parent="grp_skill">
+          <mxGeometry x="320" y="205" width="180" height="62" as="geometry" />
+        </mxCell>
+
+        <mxCell id="conversations" value="conversations&#xa;会话主表" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;fontStyle=1;" vertex="1" parent="grp_agent">
+          <mxGeometry x="60" y="80" width="190" height="68" as="geometry" />
+        </mxCell>
+        <mxCell id="conversation_messages" value="conversation_messages&#xa;对话消息 / tool 消息" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;fontStyle=1;" vertex="1" parent="grp_agent">
+          <mxGeometry x="360" y="80" width="210" height="68" as="geometry" />
+        </mxCell>
+        <mxCell id="memories" value="memories&#xa;长期记忆 / 关键词检索" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;fontStyle=1;" vertex="1" parent="grp_agent">
+          <mxGeometry x="210" y="235" width="220" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="quota_configs" value="quota_configs&#xa;用户 / 应用配额" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFEDD5;strokeColor=#EA580C;fontStyle=1;" vertex="1" parent="grp_gov">
+          <mxGeometry x="40" y="70" width="185" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="quota_reservations" value="quota_reservations&#xa;Token 预扣 / 释放 / 修正" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFEDD5;strokeColor=#EA580C;fontStyle=1;" vertex="1" parent="grp_gov">
+          <mxGeometry x="40" y="185" width="220" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="token_usage_logs" value="token_usage_logs&#xa;Token 用量明细" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFEDD5;strokeColor=#EA580C;fontStyle=1;" vertex="1" parent="grp_gov">
+          <mxGeometry x="40" y="310" width="200" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="trace_roots" value="trace_roots&#xa;Trace 根记录" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FED7AA;strokeColor=#C2410C;fontStyle=1;" vertex="1" parent="grp_gov">
+          <mxGeometry x="350" y="70" width="190" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="trace_spans" value="trace_spans&#xa;Span 明细" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FED7AA;strokeColor=#C2410C;fontStyle=1;" vertex="1" parent="grp_gov">
+          <mxGeometry x="360" y="185" width="180" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="security_policies" value="security_policies&#xa;脱敏 / 阻断策略" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEE2E2;strokeColor=#DC2626;fontStyle=1;" vertex="1" parent="grp_gov">
+          <mxGeometry x="655" y="70" width="200" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="security_events" value="security_events&#xa;敏感数据事件" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEE2E2;strokeColor=#DC2626;fontStyle=1;" vertex="1" parent="grp_gov">
+          <mxGeometry x="655" y="185" width="200" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="alert_rules" value="alert_rules&#xa;告警规则 / 静默期" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#D97706;fontStyle=1;" vertex="1" parent="grp_gov">
+          <mxGeometry x="355" y="330" width="190" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="alert_events" value="alert_events&#xa;告警事件 / 待通知" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#D97706;fontStyle=1;" vertex="1" parent="grp_gov">
+          <mxGeometry x="645" y="330" width="205" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="gov_note" value="治理主链路：Identity → Trace Root → Security Scan → Quota Reserve → Agent Runtime → Token Commit → Alert Event。Span 明细和飞书通知允许异步落库。" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF7ED;strokeColor=#FDBA74;fontColor=#7C2D12;fontSize=13;spacing=10;" vertex="1" parent="grp_gov">
+          <mxGeometry x="50" y="430" width="800" height="56" as="geometry" />
+        </mxCell>
+
+        <mxCell id="feishu_configs" value="feishu_configs&#xa;飞书应用配置" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E5E7EB;strokeColor=#4B5563;fontStyle=1;" vertex="1" parent="grp_feishu">
+          <mxGeometry x="85" y="75" width="220" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="feishu_alert_logs" value="feishu_alert_logs&#xa;平台告警发送结果" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E5E7EB;strokeColor=#4B5563;fontStyle=1;" vertex="1" parent="grp_feishu">
+          <mxGeometry x="45" y="200" width="205" height="68" as="geometry" />
+        </mxCell>
+        <mxCell id="feishu_command_logs" value="feishu_command_logs&#xa;飞书指令调用日志" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E5E7EB;strokeColor=#4B5563;fontStyle=1;" vertex="1" parent="grp_feishu">
+          <mxGeometry x="270" y="200" width="110" height="68" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e_tenants_users" value="1:N" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#2563EB;fontColor=#1D4ED8;" edge="1" parent="1" source="tenants" target="users">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_users_userroles" value="1:N" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#2563EB;fontColor=#1D4ED8;" edge="1" parent="1" source="users" target="user_roles">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_roles_userroles" value="1:N" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#2563EB;fontColor=#1D4ED8;" edge="1" parent="1" source="roles" target="user_roles">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_tenants_apps" value="1:N" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#2563EB;fontColor=#1D4ED8;" edge="1" parent="1" source="tenants" target="applications">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_users_apps" value="owner" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#2563EB;fontColor=#1D4ED8;" edge="1" parent="1" source="users" target="applications">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_apps_keys" value="1:N" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#2563EB;fontColor=#1D4ED8;" edge="1" parent="1" source="applications" target="api_keys">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e_provider_models" value="1:N" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#059669;fontColor=#047857;" edge="1" parent="1" source="model_providers" target="model_configs">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_model_profile" value="default model" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#059669;fontColor=#047857;" edge="1" parent="1" source="model_configs" target="agent_profiles">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_profile_pskill" value="1:N" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#059669;fontColor=#047857;" edge="1" parent="1" source="agent_profiles" target="profile_skills">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_profile_pmcp" value="1:N" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#059669;fontColor=#047857;" edge="1" parent="1" source="agent_profiles" target="profile_mcp_tools">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e_skills_versions" value="1:N" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#0D9488;fontColor=#0F766E;" edge="1" parent="1" source="skills" target="skill_versions">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_versions_artifacts" value="1:N" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#0D9488;fontColor=#0F766E;" edge="1" parent="1" source="skill_versions" target="skill_artifacts">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_servers_tools" value="discover" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#0D9488;fontColor=#0F766E;" edge="1" parent="1" source="mcp_servers" target="mcp_tools">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_skill_profile_bind" value="selected by" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#0D9488;fontColor=#0F766E;" edge="1" parent="1" source="skills" target="profile_skills">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_mcp_profile_bind" value="selected by" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#0D9488;fontColor=#0F766E;" edge="1" parent="1" source="mcp_tools" target="profile_mcp_tools">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e_app_conversations" value="starts" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#7C3AED;fontColor=#6D28D9;" edge="1" parent="1" source="applications" target="conversations">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="120" y="550" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_user_conversations" value="talks" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#7C3AED;fontColor=#6D28D9;" edge="1" parent="1" source="users" target="conversations">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="80" y="560" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_profile_conversations" value="uses" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#7C3AED;fontColor=#6D28D9;" edge="1" parent="1" source="agent_profiles" target="conversations">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_conv_messages" value="1:N" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#7C3AED;fontColor=#6D28D9;" edge="1" parent="1" source="conversations" target="conversation_messages">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_conv_memories" value="source" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#7C3AED;fontColor=#6D28D9;" edge="1" parent="1" source="conversations" target="memories">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_user_memories" value="owns" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#7C3AED;fontColor=#6D28D9;" edge="1" parent="1" source="users" target="memories">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_profile_memories" value="scope" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#7C3AED;fontColor=#6D28D9;" edge="1" parent="1" source="agent_profiles" target="memories">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e_app_quota_config" value="subject" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#EA580C;fontColor=#C2410C;" edge="1" parent="1" source="applications" target="quota_configs">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_user_quota_config" value="subject" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#EA580C;fontColor=#C2410C;" edge="1" parent="1" source="users" target="quota_configs">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_quota_reserve" value="check then reserve" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#EA580C;fontColor=#C2410C;" edge="1" parent="1" source="quota_configs" target="quota_reservations">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_reserve_usage" value="commit" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#EA580C;fontColor=#C2410C;" edge="1" parent="1" source="quota_reservations" target="token_usage_logs">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_app_trace" value="trace context" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#EA580C;fontColor=#C2410C;" edge="1" parent="1" source="applications" target="trace_roots">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_profile_trace" value="snapshot" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#EA580C;fontColor=#C2410C;" edge="1" parent="1" source="agent_profiles" target="trace_roots">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_model_usage" value="model cost" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#EA580C;fontColor=#C2410C;" edge="1" parent="1" source="model_configs" target="token_usage_logs">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_trace_spans" value="1:N" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#C2410C;fontColor=#9A3412;" edge="1" parent="1" source="trace_roots" target="trace_spans">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_trace_security" value="records" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#DC2626;fontColor=#B91C1C;" edge="1" parent="1" source="trace_roots" target="security_events">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_policy_profile" value="applies to" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#DC2626;fontColor=#B91C1C;" edge="1" parent="1" source="security_policies" target="agent_profiles">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_policy_events" value="matched by" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#DC2626;fontColor=#B91C1C;" edge="1" parent="1" source="security_policies" target="security_events">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_trace_alert" value="may trigger" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#D97706;fontColor=#B45309;" edge="1" parent="1" source="trace_roots" target="alert_events">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_rules_alert" value="matches" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#D97706;fontColor=#B45309;" edge="1" parent="1" source="alert_rules" target="alert_events">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_security_alert" value="blocked / escaped" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#D97706;fontColor=#B45309;" edge="1" parent="1" source="security_events" target="alert_events">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e_feishu_config_alert" value="send by config" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#6B7280;fontColor=#4B5563;" edge="1" parent="1" source="feishu_configs" target="feishu_alert_logs">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_feishu_config_command" value="uses config" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#6B7280;fontColor=#4B5563;" edge="1" parent="1" source="feishu_configs" target="feishu_command_logs">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_alert_feishu" value="async HTTP / event ref only" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;dashed=1;strokeWidth=2;strokeColor=#DC2626;fontColor=#B91C1C;" edge="1" parent="1" source="alert_events" target="feishu_alert_logs">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

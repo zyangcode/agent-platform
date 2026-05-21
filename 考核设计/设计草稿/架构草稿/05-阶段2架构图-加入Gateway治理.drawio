@@ -1,0 +1,276 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="drawio" version="26.0.0">
+  <diagram name="阶段2-Gateway治理">
+    <mxGraphModel>
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- 标题 -->
+        <mxCell id="title" value="阶段 2：加入 Gateway 治理层" style="text;html=1;fontSize=20;fontStyle=1;align=center;fillColor=none;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="140" y="10" width="420" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="subtitle" value="AI 执行请求 → 同一 Gateway 拦截器链 → 同一 core Agent Runtime；管理配置查询仍走 Web → Core" style="text;html=1;fontSize=12;align=center;fillColor=none;strokeColor=none;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="100" y="45" width="500" height="25" as="geometry" />
+        </mxCell>
+
+        <!-- ==================== 入口 ==================== -->
+        <mxCell id="user-browser" value="浏览器用户&#xa;JWT 入口" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="60" y="90" width="140" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="user-code" value="代码 / 工具&#xa;API Key 入口" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="500" y="90" width="140" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- ==================== Web 模块 ==================== -->
+        <mxCell id="web-swim" value="agent-platform-web  (:8080)&#xa;浏览器/管理入口" style="swimlane;startSize=26;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="180" width="200" height="110" as="geometry" />
+        </mxCell>
+
+        <mxCell id="web-auth" value="JWT 鉴权" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;" vertex="1" parent="web-swim">
+          <mxGeometry x="15" y="35" width="80" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="web-sse" value="SSE 推送" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="web-swim">
+          <mxGeometry x="105" y="35" width="80" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="web-label" value="AI 请求转 Gateway&#xa;管理配置查 Core" style="text;html=1;fontSize=9;align=center;fillColor=none;strokeColor=none;fontColor=#9673a6;" vertex="1" parent="web-swim">
+          <mxGeometry x="15" y="80" width="170" height="14" as="geometry" />
+        </mxCell>
+
+        <!-- ==================== Gateway 模块 ==================== -->
+        <mxCell id="gateway-swim" value="agent-platform-gateway  (:8081)&#xa;统一 AI 调用治理入口" style="swimlane;startSize=26;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="440" y="180" width="580" height="110" as="geometry" />
+        </mxCell>
+
+        <mxCell id="gw-apikey" value="API Key&#xa;鉴权" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;" vertex="1" parent="gateway-swim">
+          <mxGeometry x="10" y="40" width="55" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="gw-compat" value="/v1/chat/&#xa;completions" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=9;" vertex="1" parent="gateway-swim">
+          <mxGeometry x="72" y="40" width="55" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="gw-label-gateway" value="外部 API Key + Web 转发 AI 请求  |  agent_mode = agent / none" style="text;html=1;fontSize=9;align=center;fillColor=none;strokeColor=none;fontColor=#d79b00;" vertex="1" parent="gateway-swim">
+          <mxGeometry x="135" y="85" width="200" height="14" as="geometry" />
+        </mxCell>
+
+        <!-- ==================== 拦截器链 ==================== -->
+        <mxCell id="filter-chain" value="7 层拦截器链（GatewayContext ThreadLocal 贯穿）" style="swimlane;startSize=26;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="330" width="980" height="130" as="geometry" />
+        </mxCell>
+
+        <mxCell id="f-tenant" value="① Tenant&#xa;Filter&#xa;租户识别" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=10;" vertex="1" parent="filter-chain">
+          <mxGeometry x="15" y="45" width="80" height="65" as="geometry" />
+        </mxCell>
+        <mxCell id="f-trace" value="② Trace&#xa;Filter&#xa;TraceID&#xa;rootSpan" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=10;" vertex="1" parent="filter-chain">
+          <mxGeometry x="115" y="45" width="80" height="65" as="geometry" />
+        </mxCell>
+        <mxCell id="f-sensitive-in" value="③ Sensitive&#xa;DataFilter&#xa;入站扫描" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;" vertex="1" parent="filter-chain">
+          <mxGeometry x="215" y="45" width="85" height="65" as="geometry" />
+        </mxCell>
+        <mxCell id="f-quota" value="④ Quota&#xa;Filter&#xa;配额预扣" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" vertex="1" parent="filter-chain">
+          <mxGeometry x="320" y="45" width="80" height="65" as="geometry" />
+        </mxCell>
+        <mxCell id="f-runtime" value="⑤ Agent&#xa;Runtime&#xa;调用引擎" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;fontStyle=1;" vertex="1" parent="filter-chain">
+          <mxGeometry x="420" y="45" width="80" height="65" as="geometry" />
+        </mxCell>
+        <mxCell id="f-sensitive-out" value="⑥ Sensitive&#xa;RespFilter&#xa;出站扫描" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;" vertex="1" parent="filter-chain">
+          <mxGeometry x="520" y="45" width="85" height="65" as="geometry" />
+        </mxCell>
+        <mxCell id="f-token" value="⑦ Token&#xa;RecordFilter&#xa;结算修正" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" vertex="1" parent="filter-chain">
+          <mxGeometry x="625" y="45" width="85" height="65" as="geometry" />
+        </mxCell>
+        <mxCell id="f-alert" value="⑧ Alert&#xa;Filter&#xa;告警判断" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;" vertex="1" parent="filter-chain">
+          <mxGeometry x="730" y="45" width="80" height="65" as="geometry" />
+        </mxCell>
+
+        <!-- 拦截器链内部箭头 -->
+        <mxCell id="ef1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="filter-chain" source="f-tenant" target="f-trace"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ef2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="filter-chain" source="f-trace" target="f-sensitive-in"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ef3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="filter-chain" source="f-sensitive-in" target="f-quota"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ef4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="filter-chain" source="f-quota" target="f-runtime"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ef5" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="filter-chain" source="f-runtime" target="f-sensitive-out"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ef6" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="filter-chain" source="f-sensitive-out" target="f-token"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ef7" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="filter-chain" source="f-token" target="f-alert"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <!-- ==================== Core 模块 ==================== -->
+        <mxCell id="core-swim" value="agent-platform-core（引擎层 — 同阶段 1，不变）" style="swimlane;startSize=26;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="500" width="980" height="150" as="geometry" />
+        </mxCell>
+
+        <mxCell id="c-agent" value="agent&#xa;ReAct 循环" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="core-swim">
+          <mxGeometry x="15" y="40" width="130" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="c-skill" value="skill&#xa;合成+执行" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="core-swim">
+          <mxGeometry x="160" y="40" width="130" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="c-memory" value="memory&#xa;短期+长期" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="core-swim">
+          <mxGeometry x="305" y="40" width="130" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="c-profile" value="profile&#xa;加载+Prompt" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="core-swim">
+          <mxGeometry x="450" y="40" width="130" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="c-model" value="model&#xa;ChatClient" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="core-swim">
+          <mxGeometry x="595" y="40" width="130" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="c-security" value="security&#xa;脱敏引擎" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;" vertex="1" parent="core-swim">
+          <mxGeometry x="740" y="40" width="130" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="c-label" value="阶段 2 新增 security（脱敏引擎）。team / mcp 阶段 4 补。" style="text;html=1;fontSize=9;align=left;fillColor=none;strokeColor=none;fontColor=#666666;" vertex="1" parent="core-swim">
+          <mxGeometry x="15" y="110" width="400" height="14" as="geometry" />
+        </mxCell>
+
+        <!-- ==================== feishu-bot ==================== -->
+        <mxCell id="feishu-swim" value="feishu-bot  (:8082)" style="swimlane;startSize=26;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="840" y="690" width="180" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="feishu-alert" value="内部告警接口&#xa;POST /internal/&#xa;alerts/feishu" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;" vertex="1" parent="feishu-swim">
+          <mxGeometry x="15" y="30" width="150" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- ==================== 基础设施 ==================== -->
+        <mxCell id="infra-layer" value="基础设施" style="swimlane;startSize=26;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;fontStyle=1;swimlaneLine=0;" vertex="1" parent="1">
+          <mxGeometry x="40" y="690" width="480" height="110" as="geometry" />
+        </mxCell>
+
+        <mxCell id="db-pg" value="PostgreSQL&#xa;全部业务表" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;fontStyle=1;" vertex="1" parent="infra-layer">
+          <mxGeometry x="25" y="25" width="130" height="65" as="geometry" />
+        </mxCell>
+
+        <mxCell id="db-redis" value="Redis&#xa;配额缓存" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;fontStyle=1;" vertex="1" parent="infra-layer">
+          <mxGeometry x="185" y="25" width="130" height="65" as="geometry" />
+        </mxCell>
+
+        <mxCell id="jaeger" value="Jaeger / OTel&#xa;Trace 收集" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;dashed=1;" vertex="1" parent="infra-layer">
+          <mxGeometry x="340" y="25" width="120" height="65" as="geometry" />
+        </mxCell>
+
+        <mxCell id="infra-new-label" value="🆕 阶段 2 新增" style="text;html=1;fontSize=10;align=left;fillColor=none;strokeColor=none;fontColor=#d79b00;fontStyle=1;" vertex="1" parent="infra-layer">
+          <mxGeometry x="185" y="95" width="80" height="14" as="geometry" />
+        </mxCell>
+
+        <!-- ==================== 外部 ==================== -->
+        <mxCell id="ext-model" value="模型 API" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="580" y="710" width="100" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ext-feishu-api" value="飞书 API" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="710" y="710" width="100" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- ==================== 连接线 ==================== -->
+        <mxCell id="e-browser-web" value="JWT" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;fontSize=9;fontColor=#6c8ebf;" edge="1" parent="1" source="user-browser" target="web-swim">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e-code-gw" value="Bearer sk-xxx" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;fontSize=9;fontColor=#d79b00;" edge="1" parent="1" source="user-code" target="gateway-swim">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e-web-chain" value="AI 对话/测试" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0;entryY=0.5;fontSize=9;fontColor=#d79b00;" edge="1" parent="1" source="web-swim" target="f-tenant">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="140" y="310" />
+              <mxPoint x="70" y="310" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="e-gw-chain" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0;entryY=0.5;" edge="1" parent="1" source="gateway-swim" target="f-tenant">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="730" y="310" />
+              <mxPoint x="70" y="310" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="e-chain-core" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;fontSize=9;" edge="1" parent="1" source="f-runtime" target="core-swim">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="470" y="480" />
+              <mxPoint x="530" y="480" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="e-core-db" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.2;exitY=1;entryX=0.2;entryY=0.5;" edge="1" parent="1" source="core-swim" target="db-pg">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e-core-redis" value="配额扣减" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.35;exitY=1;entryX=0.5;entryY=0;fontSize=9;fontColor=#d6b656;" edge="1" parent="1" source="core-swim" target="db-redis">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e-core-model" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="core-swim" target="ext-model">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="530" y="680" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="e-alert-feishu" value="HTTP 告警" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;fontSize=9;fontColor=#b85450;dashed=1;" edge="1" parent="1" source="f-alert" target="feishu-swim">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="780" y="480" />
+              <mxPoint x="930" y="480" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="e-feishu-api" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="feishu-swim" target="ext-feishu-api">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="840" y="800" />
+              <mxPoint x="760" y="800" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="e-core-jaeger" value="导出 Span" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.6;exitY=1;entryX=0.5;entryY=0;fontSize=9;fontColor=#666666;dashed=1;" edge="1" parent="1" source="core-swim" target="jaeger">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ==================== 图例 ==================== -->
+        <mxCell id="legend-container" value="图例" style="swimlane;startSize=26;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="830" width="980" height="55" as="geometry" />
+        </mxCell>
+
+        <mxCell id="lg-core" value="引擎层" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;" vertex="1" parent="legend-container">
+          <mxGeometry x="10" y="15" width="60" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="lg-web" value="Web层" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=9;" vertex="1" parent="legend-container">
+          <mxGeometry x="80" y="15" width="60" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="lg-gw" value="Gateway" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=9;" vertex="1" parent="legend-container">
+          <mxGeometry x="150" y="15" width="60" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="lg-security" value="安全/告警" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=9;" vertex="1" parent="legend-container">
+          <mxGeometry x="220" y="15" width="60" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="lg-quota" value="Token配额" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=9;" vertex="1" parent="legend-container">
+          <mxGeometry x="290" y="15" width="60" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="lg-db" value="数据库" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;" vertex="1" parent="legend-container">
+          <mxGeometry x="360" y="5" width="60" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="lg-ext" value="外部" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=9;dashed=1;" vertex="1" parent="legend-container">
+          <mxGeometry x="430" y="15" width="50" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="lg-new" value="🆕 阶段2新增" style="text;html=1;fontSize=9;align=center;fillColor=none;strokeColor=none;fontColor=#d79b00;fontStyle=1;" vertex="1" parent="legend-container">
+          <mxGeometry x="510" y="10" width="90" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="lg-sync" value="同步（不可丢）" style="text;html=1;fontSize=9;fillColor=none;strokeColor=none;" vertex="1" parent="legend-container">
+          <mxGeometry x="620" y="10" width="100" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="lg-async" value="异步（可延迟）" style="text;html=1;fontSize=9;fillColor=none;strokeColor=none;fontColor=#666666;" vertex="1" parent="legend-container">
+          <mxGeometry x="730" y="10" width="100" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="lg-warning" value="⚠ 请求结束 finally 清理 GatewayContext" style="text;html=1;fontSize=9;fillColor=#fff2cc;strokeColor=#d6b656;align=center;fontColor=#d79b00;" vertex="1" parent="legend-container">
+          <mxGeometry x="840" y="10" width="135" height="30" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

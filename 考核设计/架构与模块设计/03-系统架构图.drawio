@@ -1,0 +1,369 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="drawio" version="26.0.0">
+  <diagram name="系统全景架构图">
+    <mxGraphModel>
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- 标题 -->
+        <mxCell id="title" value="Agent Platform 系统全景架构图" style="text;html=1;fontSize=22;fontStyle=1;align=center;fillColor=none;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="400" y="10" width="500" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- ==================== 入口层容器 ==================== -->
+        <mxCell id="layer-entry" value="入口层" style="swimlane;startSize=28;fillColor=#f5f5f5;strokeColor=#666666;fontSize=13;fontStyle=1;swimlaneLine=0;" vertex="1" parent="1">
+          <mxGeometry x="40" y="60" width="1220" height="100" as="geometry" />
+        </mxCell>
+
+        <mxCell id="user-browser" value="浏览器用户&#xa;JWT 入口" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=13;fontStyle=1;" vertex="1" parent="layer-entry">
+          <mxGeometry x="40" y="35" width="160" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="user-code" value="开发者代码/工具&#xa;API Key 入口" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=13;fontStyle=1;" vertex="1" parent="layer-entry">
+          <mxGeometry x="280" y="35" width="160" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="infra-fe" value="agent-platform-frontend&#xa;React + Vite + shadcn/ui" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;" vertex="1" parent="layer-entry">
+          <mxGeometry x="520" y="35" width="200" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="user-feishu" value="飞书群用户" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=13;fontStyle=1;" vertex="1" parent="layer-entry">
+          <mxGeometry x="1000" y="35" width="160" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- ==================== 通道层容器 ==================== -->
+        <mxCell id="layer-channel" value="通道层" style="swimlane;startSize=28;fillColor=#f5f5f5;strokeColor=#666666;fontSize=13;fontStyle=1;swimlaneLine=0;" vertex="1" parent="1">
+          <mxGeometry x="40" y="180" width="1220" height="200" as="geometry" />
+        </mxCell>
+
+        <!-- Web 模块 swimlane -->
+        <mxCell id="web-swim" value="agent-platform-web (:8080)&#xa;浏览器/管理入口" style="swimlane;startSize=26;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;fontStyle=1;" vertex="1" parent="layer-channel">
+          <mxGeometry x="30" y="40" width="340" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="web-auth" value="JWT 鉴权&#xa;Spring Security" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;" vertex="1" parent="web-swim">
+          <mxGeometry x="15" y="35" width="145" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="web-sse" value="SSE 推送" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="web-swim">
+          <mxGeometry x="175" y="35" width="145" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="web-label" value="管理配置查询 → Core&#xa;AI 对话/测试 → Gateway" style="text;html=1;fontSize=10;align=center;fillColor=none;strokeColor=none;" vertex="1" parent="web-swim">
+          <mxGeometry x="15" y="90" width="305" height="35" as="geometry" />
+        </mxCell>
+
+        <!-- Gateway 模块 swimlane -->
+        <mxCell id="gateway-swim" value="agent-platform-gateway (:8081)&#xa;统一 AI 调用治理入口" style="swimlane;startSize=26;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=12;fontStyle=1;" vertex="1" parent="layer-channel">
+          <mxGeometry x="430" y="40" width="750" height="140" as="geometry" />
+        </mxCell>
+
+        <!-- Gateway 内部拦截器链 -->
+        <mxCell id="gw-tenant" value="Tenant&#xa;Filter" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=10;" vertex="1" parent="gateway-swim">
+          <mxGeometry x="10" y="40" width="68" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="gw-trace" value="Trace&#xa;Filter" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=10;" vertex="1" parent="gateway-swim">
+          <mxGeometry x="90" y="40" width="68" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="gw-sensitive-in" value="Sensitive&#xa;DataFilter" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=9;" vertex="1" parent="gateway-swim">
+          <mxGeometry x="170" y="40" width="68" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="gw-quota" value="Quota&#xa;Filter" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" vertex="1" parent="gateway-swim">
+          <mxGeometry x="250" y="40" width="68" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="gw-runtime" value="Runtime&#xa;InvokeFilter" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;fontStyle=1;" vertex="1" parent="gateway-swim">
+          <mxGeometry x="330" y="40" width="68" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="gw-sensitive-out" value="Sensitive&#xa;RespFilter" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=9;" vertex="1" parent="gateway-swim">
+          <mxGeometry x="410" y="40" width="68" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="gw-token" value="Token&#xa;RecordFilter" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=9;" vertex="1" parent="gateway-swim">
+          <mxGeometry x="490" y="40" width="68" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="gw-alert" value="Alert&#xa;EventFilter" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=9;" vertex="1" parent="gateway-swim">
+          <mxGeometry x="570" y="40" width="68" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="gw-label" value="外部 API Key + Web 转发的 AI 请求&#xa;agent_mode：浏览器固定 agent；API Key 可选 agent / none" style="text;html=1;fontSize=10;align=center;fillColor=none;strokeColor=none;" vertex="1" parent="gateway-swim">
+          <mxGeometry x="10" y="95" width="630" height="35" as="geometry" />
+        </mxCell>
+
+        <!-- ==================== 引擎层容器 ==================== -->
+        <mxCell id="layer-engine" value="核心引擎层" style="swimlane;startSize=28;fillColor=#f5f5f5;strokeColor=#666666;fontSize=13;fontStyle=1;swimlaneLine=0;" vertex="1" parent="1">
+          <mxGeometry x="40" y="400" width="960" height="310" as="geometry" />
+        </mxCell>
+
+        <!-- ==================== 独立服务层容器 ==================== -->
+        <mxCell id="layer-service" value="独立服务层" style="swimlane;startSize=28;fillColor=#f5f5f5;strokeColor=#666666;fontSize=13;fontStyle=1;swimlaneLine=0;" vertex="1" parent="1">
+          <mxGeometry x="1020" y="400" width="240" height="310" as="geometry" />
+        </mxCell>
+
+        <!-- Core 模块 swimlane -->
+        <mxCell id="core-swim" value="agent-platform-core（引擎层 — 平台大脑，14 个逻辑包）" style="swimlane;startSize=26;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;fontStyle=1;" vertex="1" parent="layer-engine">
+          <mxGeometry x="20" y="35" width="930" height="260" as="geometry" />
+        </mxCell>
+
+        <!-- Core 内部 14 个逻辑包 -->
+        <mxCell id="core-identity" value="identity&#xa;用户/应用/API Key" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" vertex="1" parent="core-swim">
+          <mxGeometry x="15" y="35" width="115" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="core-agent" value="agent&#xa;ReAct 循环编排" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;fontStyle=1;" vertex="1" parent="core-swim">
+          <mxGeometry x="140" y="35" width="115" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="core-team" value="team&#xa;Planner/Executor/&#xa;Reviewer（阶段4）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;dashed=1;" vertex="1" parent="core-swim">
+          <mxGeometry x="265" y="35" width="115" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="core-skill" value="skill&#xa;合成+热加载" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" vertex="1" parent="core-swim">
+          <mxGeometry x="390" y="35" width="115" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="core-mcp" value="mcp&#xa;MCP Client" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" vertex="1" parent="core-swim">
+          <mxGeometry x="515" y="35" width="115" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="core-memory" value="memory&#xa;短期+长期" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" vertex="1" parent="core-swim">
+          <mxGeometry x="640" y="35" width="115" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="core-profile" value="profile&#xa;加载+Prompt组装" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" vertex="1" parent="core-swim">
+          <mxGeometry x="15" y="105" width="115" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="core-model" value="model&#xa;ChatClient管理" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" vertex="1" parent="core-swim">
+          <mxGeometry x="140" y="105" width="115" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="core-quota" value="quota&#xa;Token配额/预扣" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" vertex="1" parent="core-swim">
+          <mxGeometry x="265" y="105" width="115" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="core-trace" value="trace&#xa;Span/Trace查询" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" vertex="1" parent="core-swim">
+          <mxGeometry x="390" y="105" width="115" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="core-security" value="security&#xa;脱敏引擎" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;" vertex="1" parent="core-swim">
+          <mxGeometry x="515" y="105" width="115" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="core-alert" value="alert&#xa;告警事件" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;" vertex="1" parent="core-swim">
+          <mxGeometry x="640" y="105" width="115" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="core-context" value="context&#xa;上下文构建" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" vertex="1" parent="core-swim">
+          <mxGeometry x="140" y="175" width="115" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="core-config" value="config&#xa;Core Spring 配置" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=10;" vertex="1" parent="core-swim">
+          <mxGeometry x="265" y="175" width="115" height="55" as="geometry" />
+        </mxCell>
+
+        <!-- feishu-bot 模块 -->
+        <mxCell id="feishu-swim" value="feishu-bot (:8082)&#xa;独立服务" style="swimlane;startSize=26;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;fontStyle=1;" vertex="1" parent="layer-service">
+          <mxGeometry x="10" y="35" width="220" height="260" as="geometry" />
+        </mxCell>
+        <mxCell id="feishu-cmd" value="/weather /schedule&#xa;/search /translate&#xa;/gitlog /review" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" vertex="1" parent="feishu-swim">
+          <mxGeometry x="15" y="35" width="195" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="feishu-alert-api" value="内部告警接口&#xa;POST /internal/alerts/feishu" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;" vertex="1" parent="feishu-swim">
+          <mxGeometry x="15" y="105" width="195" height="55" as="geometry" />
+        </mxCell>
+
+        <!-- ==================== 基础设施层容器 ==================== -->
+        <mxCell id="layer-infra" value="基础设施层" style="swimlane;startSize=28;fillColor=#f5f5f5;strokeColor=#666666;fontSize=13;fontStyle=1;swimlaneLine=0;" vertex="1" parent="1">
+          <mxGeometry x="40" y="730" width="1220" height="100" as="geometry" />
+        </mxCell>
+
+        <mxCell id="db-pg" value="PostgreSQL&#xa;平台核心业务表" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;fontStyle=1;" vertex="1" parent="layer-infra">
+          <mxGeometry x="120" y="20" width="160" height="65" as="geometry" />
+        </mxCell>
+
+        <mxCell id="db-redis" value="Redis&#xa;配额缓存/会话" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;fontStyle=1;" vertex="1" parent="layer-infra">
+          <mxGeometry x="400" y="20" width="160" height="65" as="geometry" />
+        </mxCell>
+
+        <mxCell id="infra-common" value="agent-platform-common&#xa;异常/错误码/枚举/工具" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;fontStyle=2;" vertex="1" parent="layer-infra">
+          <mxGeometry x="680" y="20" width="200" height="65" as="geometry" />
+        </mxCell>
+
+        <mxCell id="db-feishu" value="feishu-bot 独立配置库&#xa;配置 / 告警日志" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;fontStyle=1;" vertex="1" parent="layer-infra">
+          <mxGeometry x="940" y="20" width="200" height="65" as="geometry" />
+        </mxCell>
+
+        <!-- ==================== 外部依赖层 ==================== -->
+        <mxCell id="layer-external" value="外部依赖" style="swimlane;startSize=28;fillColor=#f5f5f5;strokeColor=#666666;fontSize=13;fontStyle=1;swimlaneLine=0;" vertex="1" parent="1">
+          <mxGeometry x="40" y="850" width="1220" height="100" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ext-model" value="模型 API&#xa;OpenAI / 通义千问 / 本地" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;dashed=1;" vertex="1" parent="layer-external">
+          <mxGeometry x="60" y="25" width="190" height="55" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ext-feishu" value="飞书 API&#xa;消息 / 日历 / 群组" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;dashed=1;" vertex="1" parent="layer-external">
+          <mxGeometry x="320" y="25" width="190" height="55" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ext-jaeger" value="Jaeger / OTel&#xa;Trace 收集与查询" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;dashed=1;" vertex="1" parent="layer-external">
+          <mxGeometry x="580" y="25" width="190" height="55" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ext-git" value="GitLab / GitHub&#xa;（飞书 CR 集成）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;dashed=1;" vertex="1" parent="layer-external">
+          <mxGeometry x="840" y="25" width="190" height="55" as="geometry" />
+        </mxCell>
+
+        <!-- ==================== 连接线 ==================== -->
+
+        <!-- 入口 → 通道 -->
+        <mxCell id="edge-browser-web" value="打开页面" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;fontSize=10;fontColor=#6c8ebf;" edge="1" parent="1" source="user-browser" target="infra-fe">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="edge-frontend-web" value="JWT Cookie / REST / SSE" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.25;entryY=0;fontSize=10;fontColor=#6c8ebf;" edge="1" parent="1" source="infra-fe" target="web-swim">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="edge-code-gateway" value="Bearer sk-xxx" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.3;entryY=0;fontSize=10;fontColor=#d79b00;" edge="1" parent="1" source="user-code" target="gateway-swim">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- 通道 → 引擎 -->
+        <mxCell id="edge-web-core" value="管理配置/统计查询" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.35;exitY=1;entryX=0.15;entryY=0;fontSize=10;fontColor=#9673a6;" edge="1" parent="1" source="web-swim" target="core-swim">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="edge-web-gateway" value="AI 对话/测试转发&#xa;+ 内部签名" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;fontSize=10;fontColor=#d79b00;strokeColor=#d79b00;" edge="1" parent="1" source="web-swim" target="gw-tenant">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="edge-gateway-core" value="调用 Core AgentRuntime&#xa;agent_mode=agent|none" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;fontSize=10;fontColor=#d79b00;" edge="1" parent="1" source="gw-runtime" target="core-swim">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Gateway 拦截器链内部箭头 -->
+        <mxCell id="edge-f1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="gateway-swim" source="gw-tenant" target="gw-trace">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge-f2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="gateway-swim" source="gw-trace" target="gw-sensitive-in">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge-f3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="gateway-swim" source="gw-sensitive-in" target="gw-quota">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge-f4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="gateway-swim" source="gw-quota" target="gw-runtime">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge-f5" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="gateway-swim" source="gw-runtime" target="gw-sensitive-out">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge-f6" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="gateway-swim" source="gw-sensitive-out" target="gw-token">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge-f7" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="gateway-swim" source="gw-token" target="gw-alert">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- 引擎 → 基础设施 -->
+        <mxCell id="edge-core-db" value="核心业务表存取" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.25;exitY=1;entryX=0.25;entryY=0.5;fontSize=10;fontColor=#82b366;" edge="1" parent="1" source="core-swim" target="db-pg">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="edge-core-redis" value="配额/会话" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.4;exitY=1;entryX=0.5;entryY=0;fontSize=10;fontColor=#d6b656;" edge="1" parent="1" source="core-swim" target="db-redis">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Common 依赖 -->
+        <mxCell id="edge-core-common" value="依赖" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.7;exitY=1;entryX=0.5;entryY=0;fontSize=10;fontColor=#666666;dashed=1;" edge="1" parent="1" source="core-swim" target="infra-common">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="edge-feishu-db" value="独立存储" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;fontSize=10;fontColor=#82b366;" edge="1" parent="1" source="feishu-swim" target="db-feishu">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1130" y="720" />
+              <mxPoint x="1040" y="720" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- 引擎 → 外部 -->
+        <mxCell id="edge-core-model" value="调模型" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.1;exitY=1;entryX=0.5;entryY=0;fontSize=10;fontColor=#666666;" edge="1" parent="1" source="core-swim" target="ext-model">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="130" y="650" />
+              <mxPoint x="130" y="750" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Gateway 告警 → feishu-bot -->
+        <mxCell id="edge-gw-feishu" value="写告警事件&#xa;异步 HTTP 通知" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;fontSize=10;fontColor=#b85450;dashed=1;" edge="1" parent="1" source="gw-alert" target="feishu-swim">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1150" y="300" />
+              <mxPoint x="1150" y="510" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- feishu-bot → 飞书 API -->
+        <mxCell id="edge-feishu-api" value="HTTP/SDK 调飞书" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;fontSize=10;fontColor=#666666;" edge="1" parent="1" source="feishu-swim" target="ext-feishu">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1100" y="650" />
+              <mxPoint x="420" y="650" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- feishu-bot → GitLab/GitHub -->
+        <mxCell id="edge-feishu-git" value="Git/CR 集成（阶段5）" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.75;exitY=1;entryX=0.5;entryY=0;fontSize=10;fontColor=#666666;dashed=1;" edge="1" parent="1" source="feishu-swim" target="ext-git">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1160" y="650" />
+              <mxPoint x="935" y="650" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- feishu user → feishu-bot -->
+        <mxCell id="edge-feishu-user" value="飞书指令/回调" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;fontSize=10;fontColor=#9673a6;dashed=1;" edge="1" parent="1" source="user-feishu" target="feishu-swim">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1100" y="140" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Core → Jaeger -->
+        <mxCell id="edge-core-jaeger" value="导出 Span" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;fontSize=10;fontColor=#666666;dashed=1;" edge="1" parent="1" source="core-swim" target="ext-jaeger">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="500" y="650" />
+              <mxPoint x="680" y="650" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ==================== 图例 ==================== -->
+        <mxCell id="legend-container" value="图例" style="swimlane;startSize=26;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="970" width="1220" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend-core" value="引擎层" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" vertex="1" parent="legend-container">
+          <mxGeometry x="20" y="15" width="80" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-gateway" value="网关层" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;" vertex="1" parent="legend-container">
+          <mxGeometry x="120" y="15" width="80" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-web" value="Web层" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;" vertex="1" parent="legend-container">
+          <mxGeometry x="220" y="15" width="80" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-security" value="安全/告警" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;" vertex="1" parent="legend-container">
+          <mxGeometry x="320" y="15" width="80" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-quota" value="配额/计费" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" vertex="1" parent="legend-container">
+          <mxGeometry x="420" y="15" width="80" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-external" value="外部依赖" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=10;dashed=1;" vertex="1" parent="legend-container">
+          <mxGeometry x="520" y="15" width="80" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-db" value="数据库" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" vertex="1" parent="legend-container">
+          <mxGeometry x="620" y="10" width="80" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-eventual" value="异步/增强（虚线边框）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;dashed=1;" vertex="1" parent="legend-container">
+          <mxGeometry x="720" y="15" width="140" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-sync" value="同步调用（实线）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" vertex="1" parent="legend-container">
+          <mxGeometry x="880" y="15" width="140" height="30" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

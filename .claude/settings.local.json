@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(draw.io --version)",
+      "Bash(\"C:\\\\Program Files\\\\draw.io\\\\draw.io.exe\" --version)",
+      "Bash(python \"C:\\\\Users\\\\WYZ\\\\.claude\\\\skills\\\\drawio-skill\\\\scripts\\\\encode_drawio_url.py\" \"d:\\\\study\\\\蓝山最终考核项目\\\\agent-platform\\\\实际开发\\\\阶段1\\\\mybatis-plus-flow.drawio\")"
+    ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "将本次会话的关键进度写入 memory 系统。步骤：1) 回顾本轮对话中完成的工作（新建/修改了哪些文件，做了什么决策，代码写到什么程度）；2) 把进度摘要写入 MEMORY.md 索引，必要时创建/更新具体的 memory 文件；3) 如果今天没有实质进展则跳过。写入路径：C:\\Users\\WYZ\\.claude\\projects\\D--study----------agent-platform\\memory\\",
+            "timeout": 120
+          }
+        ]
+      }
+    ]
+  }
+}
