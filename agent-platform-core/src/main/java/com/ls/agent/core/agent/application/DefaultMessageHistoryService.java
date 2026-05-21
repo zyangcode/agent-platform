@@ -53,12 +53,31 @@ public class DefaultMessageHistoryService implements MessageHistoryService {
                         .last("limit " + Math.max(1, limit))
         );
         return messages.stream()
-                .sorted(Comparator.comparing(ConversationMessageEntity::getCreatedAt,
-                        Comparator.nullsLast(Comparator.naturalOrder())))
+                .sorted(this::compareMessageOrder)
                 .map(message -> new ConversationMessageDTO(
                         message.getRole(),
                         message.getContent(),
                         message.getTokenCount()))
                 .toList();
+    }
+
+    private int compareMessageOrder(ConversationMessageEntity left, ConversationMessageEntity right) {
+        if (left.getCreatedAt() != null && right.getCreatedAt() != null) {
+            int createdAtResult = left.getCreatedAt().compareTo(right.getCreatedAt());
+            if (createdAtResult != 0) {
+                return createdAtResult;
+            }
+        }
+        if (left.getCreatedAt() == null && right.getCreatedAt() != null) {
+            return compareNullableId(left, right);
+        }
+        if (left.getCreatedAt() != null && right.getCreatedAt() == null) {
+            return compareNullableId(left, right);
+        }
+        return compareNullableId(left, right);
+    }
+
+    private int compareNullableId(ConversationMessageEntity left, ConversationMessageEntity right) {
+        return Comparator.nullsLast(Long::compareTo).compare(left.getId(), right.getId());
     }
 }

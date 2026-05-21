@@ -124,6 +124,16 @@ public class DefaultModelConfigService implements ModelConfigService {
      * 获取所有处于激活状态的模型配置列表。
      */
     @Override
+    public ModelConfigDTO getActiveModelConfig(Long modelConfigId) {
+        Long id = ModelValidation.requireNonNull(modelConfigId, "modelConfigId");
+        ModelConfigEntity config = configMapper.selectById(id);
+        if (config == null || !ModelConstants.STATUS_ACTIVE.equals(config.getStatus())) {
+            throw new BizException(ErrorCode.REQUEST_INVALID, "Model config is unavailable");
+        }
+        return toConfigDTO(config);
+    }
+
+    @Override
     public List<ModelConfigDTO> listActiveModelConfigs() {
         // 查询所有状态为 ACTIVE 的模型，按创建时间倒序排列
         return configMapper.selectList(new LambdaQueryWrapper<ModelConfigEntity>()

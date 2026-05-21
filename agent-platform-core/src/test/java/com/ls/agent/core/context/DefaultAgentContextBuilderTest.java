@@ -10,6 +10,8 @@ import com.ls.agent.core.mcp.api.McpToolRegistry;
 import com.ls.agent.core.mcp.dto.McpToolDTO;
 import com.ls.agent.core.memory.api.MemoryRecallService;
 import com.ls.agent.core.memory.dto.MemoryDTO;
+import com.ls.agent.core.model.api.ModelConfigService;
+import com.ls.agent.core.model.dto.ModelConfigDTO;
 import com.ls.agent.core.profile.api.ProfileService;
 import com.ls.agent.core.profile.dto.ProfileDTO;
 import com.ls.agent.core.profile.dto.ProfileMcpToolBindingDTO;
@@ -31,13 +33,15 @@ class DefaultAgentContextBuilderTest {
     private final McpToolRegistry mcpToolRegistry = mock(McpToolRegistry.class);
     private final MessageHistoryService messageHistoryService = mock(MessageHistoryService.class);
     private final MemoryRecallService memoryRecallService = mock(MemoryRecallService.class);
+    private final ModelConfigService modelConfigService = mock(ModelConfigService.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final DefaultAgentContextBuilder builder = new DefaultAgentContextBuilder(
             profileService,
             skillRegistry,
             mcpToolRegistry,
             messageHistoryService,
-            memoryRecallService
+            memoryRecallService,
+            modelConfigService
     );
 
     @Test
@@ -59,7 +63,9 @@ class DefaultAgentContextBuilderTest {
                 50001L,
                 90001L,
                 "Please calculate 128 * 36 + 59.",
-                1_000
+                1_000,
+                null,
+                null
         ));
 
         assertThat(result.profile().profileId()).isEqualTo(50001L);
@@ -96,13 +102,70 @@ class DefaultAgentContextBuilderTest {
                 50001L,
                 90001L,
                 "current question",
-                80
+                80,
+                null,
+                null
         ));
 
         assertThat(result.truncated()).isTrue();
         assertThat(result.messages()).extracting("content")
                 .doesNotContain("old message should be trimmed because it is far from the current turn")
                 .contains("recent answer should remain", "current question");
+    }
+
+    @Test
+    void buildContextUsesSelectedToolsWithinProfileBindings() {
+        when(profileService.getProfile(1L, 10001L, 50001L)).thenReturn(profileWithTwoToolBindings());
+        when(skillRegistry.listAvailableSkills(1L, List.of(2L))).thenReturn(List.of(weatherSkill()));
+        when(mcpToolRegistry.listAvailableTools(1L, List.of(2L))).thenReturn(List.of(searchFileTool()));
+        when(messageHistoryService.listRecentMessages(1L, 20001L, 10001L, 50001L, null, 20)).thenReturn(List.of());
+        when(memoryRecallService.recall(1L, 20001L, 10001L, 50001L, "weather now", 5)).thenReturn(List.of());
+
+        AgentContextDTO result = builder.build(new BuildAgentContextCommand(
+                1L,
+                10001L,
+                20001L,
+                50001L,
+                null,
+                "weather now",
+                1_000,
+                List.of(2L),
+                List.of(2L)
+        ));
+
+        assertThat(result.availableSkills()).extracting("skillId").containsExactly(2L);
+        assertThat(result.availableMcpTools()).extracting("mcpToolId").containsExactly(2L);
+    }
+
+    @Test
+    void buildContextUsesModelConfigTokenLimitWhenCommandLimitIsMissing() {
+        when(profileService.getProfile(1L, 10001L, 50001L)).thenReturn(profile());
+        when(modelConfigService.getActiveModelConfig(30001L)).thenReturn(modelConfig(80));
+        when(skillRegistry.listAvailableSkills(1L, List.of(1L))).thenReturn(List.of(skill()));
+        when(mcpToolRegistry.listAvailableTools(1L, List.of(1L))).thenReturn(List.of(mcpTool()));
+        when(messageHistoryService.listRecentMessages(1L, 20001L, 10001L, 50001L, 90001L, 20)).thenReturn(List.of(
+                message("user", "old message should be trimmed because it is far from the current turn", 20),
+                message("assistant", "recent answer should remain", 5)
+        ));
+        when(memoryRecallService.recall(1L, 20001L, 10001L, 50001L, "current question", 5))
+                .thenReturn(List.of());
+
+        AgentContextDTO result = builder.build(new BuildAgentContextCommand(
+                1L,
+                10001L,
+                20001L,
+                50001L,
+                90001L,
+                "current question",
+                null,
+                null,
+                null
+        ));
+
+        assertThat(result.truncated()).isTrue();
+        assertThat(result.messages()).extracting("content")
+                .doesNotContain("old message should be trimmed because it is far from the current turn")
+                .contains("recent answer should remain");
     }
 
     private ProfileDTO profile() {
@@ -123,12 +186,49 @@ class DefaultAgentContextBuilderTest {
         );
     }
 
+    private ProfileDTO profileWithTwoToolBindings() {
+        return new ProfileDTO(
+                50001L,
+                20001L,
+                "General Assistant",
+                "GENERAL",
+                "Stage 1 profile",
+                30001L,
+                "Be concise.",
+                objectMapper.createObjectNode(),
+                6,
+                "PRIVATE",
+                "DRAFT",
+                List.of(
+                        new ProfileSkillBindingDTO(1L, true, false),
+                        new ProfileSkillBindingDTO(2L, false, false)
+                ),
+                List.of(
+                        new ProfileMcpToolBindingDTO(1L, true),
+                        new ProfileMcpToolBindingDTO(2L, false)
+                )
+        );
+    }
+
     private SkillDTO skill() {
         return new SkillDTO(
                 1L,
                 "calculator",
                 "Calculator",
                 "Evaluate arithmetic expressions.",
+                "BUILTIN",
+                "GLOBAL",
+                "ENABLED",
+                objectMapper.createObjectNode().put("type", "object")
+        );
+    }
+
+    private SkillDTO weatherSkill() {
+        return new SkillDTO(
+                2L,
+                "weather",
+                "Weather",
+                "Return mock weather.",
                 "BUILTIN",
                 "GLOBAL",
                 "ENABLED",
@@ -144,6 +244,30 @@ class DefaultAgentContextBuilderTest {
                 "Read a demo file.",
                 "AVAILABLE",
                 objectMapper.createObjectNode().put("type", "object")
+        );
+    }
+
+    private McpToolDTO searchFileTool() {
+        return new McpToolDTO(
+                2L,
+                1L,
+                "search_file",
+                "Search a demo file.",
+                "AVAILABLE",
+                objectMapper.createObjectNode().put("type", "object")
+        );
+    }
+
+    private ModelConfigDTO modelConfig(Integer maxContextTokens) {
+        return new ModelConfigDTO(
+                30001L,
+                1L,
+                "mock-chat",
+                "Mock Chat",
+                objectMapper.createObjectNode(),
+                null,
+                maxContextTokens,
+                "ACTIVE"
         );
     }
 

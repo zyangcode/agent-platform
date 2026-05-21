@@ -13,5 +13,7 @@ public interface ModelConfigService {
 
     ModelConfigDTO createModelConfig(CreateModelConfigCommand command);
 
+    ModelConfigDTO getActiveModelConfig(Long modelConfigId);
+
     List<ModelConfigDTO> listActiveModelConfigs();
 }

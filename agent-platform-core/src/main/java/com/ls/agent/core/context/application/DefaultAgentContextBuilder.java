@@ -11,6 +11,8 @@ import com.ls.agent.core.mcp.api.McpToolRegistry;
 import com.ls.agent.core.mcp.dto.McpToolDTO;
 import com.ls.agent.core.memory.api.MemoryRecallService;
 import com.ls.agent.core.memory.dto.MemoryDTO;
+import com.ls.agent.core.model.api.ModelConfigService;
+import com.ls.agent.core.model.dto.ModelConfigDTO;
 import com.ls.agent.core.model.dto.ModelMessage;
 import com.ls.agent.core.profile.api.ProfileService;
 import com.ls.agent.core.profile.dto.ProfileDTO;
@@ -37,41 +39,35 @@ public class DefaultAgentContextBuilder implements AgentContextBuilder {
     private final McpToolRegistry mcpToolRegistry;
     private final MessageHistoryService messageHistoryService;
     private final MemoryRecallService memoryRecallService;
+    private final ModelConfigService modelConfigService;
 
     public DefaultAgentContextBuilder(
             ProfileService profileService,
             SkillRegistry skillRegistry,
             McpToolRegistry mcpToolRegistry,
             MessageHistoryService messageHistoryService,
-            MemoryRecallService memoryRecallService
+            MemoryRecallService memoryRecallService,
+            ModelConfigService modelConfigService
     ) {
         this.profileService = profileService;
         this.skillRegistry = skillRegistry;
         this.mcpToolRegistry = mcpToolRegistry;
         this.messageHistoryService = messageHistoryService;
         this.memoryRecallService = memoryRecallService;
+        this.modelConfigService = modelConfigService;
     }
 
     @Override
     public AgentContextDTO build(BuildAgentContextCommand command) {
         validate(command);
-        int maxTokens = command.maxContextTokens() == null || command.maxContextTokens() <= 0
-                ? DEFAULT_MAX_CONTEXT_TOKENS
-                : command.maxContextTokens();
-
         ProfileDTO profile = profileService.getProfile(command.tenantId(), command.userId(), command.profileId());
         if (!command.applicationId().equals(profile.applicationId())) {
             throw new BizException(ErrorCode.REQUEST_INVALID, "Profile does not belong to application");
         }
+        int maxTokens = resolveMaxContextTokens(command, profile);
 
-        List<Long> skillIds = profile.skillBindings().stream()
-                .filter(binding -> Boolean.TRUE.equals(binding.enabledByDefault()))
-                .map(binding -> binding.skillId())
-                .toList();
-        List<Long> mcpToolIds = profile.mcpToolBindings().stream()
-                .filter(binding -> Boolean.TRUE.equals(binding.enabledByDefault()))
-                .map(binding -> binding.mcpToolId())
-                .toList();
+        List<Long> skillIds = resolveSkillIds(profile, command.selectedSkillIds());
+        List<Long> mcpToolIds = resolveMcpToolIds(profile, command.selectedMcpToolIds());
         List<SkillDTO> skills = skillRegistry.listAvailableSkills(command.tenantId(), skillIds);
         List<McpToolDTO> mcpTools = mcpToolRegistry.listAvailableTools(command.tenantId(), mcpToolIds);
         List<MemoryDTO> memories = memoryRecallService.recall(
@@ -121,6 +117,49 @@ public class DefaultAgentContextBuilder implements AgentContextBuilder {
                 || command.userInput().isBlank()) {
             throw new BizException(ErrorCode.PARAM_INVALID, "Context command is invalid");
         }
+    }
+
+    private int resolveMaxContextTokens(BuildAgentContextCommand command, ProfileDTO profile) {
+        if (command.maxContextTokens() != null && command.maxContextTokens() > 0) {
+            return command.maxContextTokens();
+        }
+        ModelConfigDTO modelConfig = modelConfigService.getActiveModelConfig(profile.modelConfigId());
+        Integer maxContextTokens = modelConfig.maxContextTokens();
+        return maxContextTokens == null || maxContextTokens <= 0 ? DEFAULT_MAX_CONTEXT_TOKENS : maxContextTokens;
+    }
+
+    private List<Long> resolveSkillIds(ProfileDTO profile, List<Long> selectedSkillIds) {
+        List<Long> boundSkillIds = profile.skillBindings().stream()
+                .map(binding -> binding.skillId())
+                .toList();
+        if (selectedSkillIds != null) {
+            return selectedSkillIds.stream()
+                    .filter(boundSkillIds::contains)
+                    .distinct()
+                    .toList();
+        }
+        return profile.skillBindings().stream()
+                .filter(binding -> Boolean.TRUE.equals(binding.enabledByDefault()))
+                .map(binding -> binding.skillId())
+                .distinct()
+                .toList();
+    }
+
+    private List<Long> resolveMcpToolIds(ProfileDTO profile, List<Long> selectedMcpToolIds) {
+        List<Long> boundToolIds = profile.mcpToolBindings().stream()
+                .map(binding -> binding.mcpToolId())
+                .toList();
+        if (selectedMcpToolIds != null) {
+            return selectedMcpToolIds.stream()
+                    .filter(boundToolIds::contains)
+                    .distinct()
+                    .toList();
+        }
+        return profile.mcpToolBindings().stream()
+                .filter(binding -> Boolean.TRUE.equals(binding.enabledByDefault()))
+                .map(binding -> binding.mcpToolId())
+                .distinct()
+                .toList();
     }
 
     private String buildSystemPrompt(
