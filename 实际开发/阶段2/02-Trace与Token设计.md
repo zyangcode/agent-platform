@@ -404,6 +404,15 @@ NoopTraceExporter
 
 这样后面接 SkyWalking 时不需要推翻现有 TraceService。
 
+参考项目取舍：
+
+```text
+AgentX-master 的 TraceCollector / TraceContext 可作为当前 TraceService 的设计参考。
+AgentX-master 的前端 agent-trace-service.ts 可作为后续 Trace 页面接口参考。
+AI-Meeting-main 的 UniversalAiChatHandler 可作为后续 token 级真实流式参考。
+当前阶段不引入 Spring AI / WebFlux / single-flight，先保持 JDK HttpClient + PostgreSQL Trace。
+```
+
 ---
 
 ## 9. 阶段 2 第一轮验收结论模板
