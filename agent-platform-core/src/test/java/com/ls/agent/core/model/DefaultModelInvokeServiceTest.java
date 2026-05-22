@@ -3,16 +3,25 @@ package com.ls.agent.core.model;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ls.agent.core.model.application.DefaultModelInvokeService;
 import com.ls.agent.core.model.command.ModelInvokeCommand;
-import com.ls.agent.core.model.dto.ModelMessage;
 import com.ls.agent.core.model.dto.ModelInvokeResult;
+import com.ls.agent.core.model.dto.ModelMessage;
 import com.ls.agent.core.model.entity.ModelConfigEntity;
 import com.ls.agent.core.model.entity.ModelProviderEntity;
 import com.ls.agent.core.model.mapper.ModelConfigMapper;
 import com.ls.agent.core.model.mapper.ModelProviderMapper;
+import com.ls.agent.core.support.security.SecretEncryptor;
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
 import java.math.BigDecimal;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -22,8 +31,14 @@ class DefaultModelInvokeServiceTest {
 
     private final ModelConfigMapper configMapper = mock(ModelConfigMapper.class);
     private final ModelProviderMapper providerMapper = mock(ModelProviderMapper.class);
-    private final DefaultModelInvokeService service = new DefaultModelInvokeService(configMapper, providerMapper);
+    private final SecretEncryptor secretEncryptor = mock(SecretEncryptor.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final DefaultModelInvokeService service = new DefaultModelInvokeService(
+            configMapper,
+            providerMapper,
+            secretEncryptor,
+            objectMapper
+    );
 
     @Test
     void mockChatReturnsAssistantTextWithoutExternalNetwork() {
@@ -42,12 +57,85 @@ class DefaultModelInvokeServiceTest {
         assertThat(result.modelConfigId()).isEqualTo(1L);
     }
 
+    @Test
+    void openAiCompatibleModelPostsChatCompletionAndParsesResponse() throws Exception {
+        List<String> requestBodies = new ArrayList<>();
+        List<String> authorizationHeaders = new ArrayList<>();
+        HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        server.createContext("/v1/chat/completions", exchange -> {
+            requestBodies.add(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            authorizationHeaders.add(exchange.getRequestHeaders().getFirst("Authorization"));
+            writeJson(exchange, 200, """
+                    {
+                      "choices": [
+                        {
+                          "message": {
+                            "role": "assistant",
+                            "content": "real model response"
+                          }
+                        }
+                      ],
+                      "usage": {
+                        "prompt_tokens": 11,
+                        "completion_tokens": 7,
+                        "total_tokens": 18
+                      }
+                    }
+                    """);
+        });
+        server.setExecutor(executor);
+        server.start();
+        try {
+            when(configMapper.selectById(2L)).thenReturn(realConfig());
+            when(providerMapper.selectById(2L)).thenReturn(realProvider(server.getAddress().getPort()));
+            when(secretEncryptor.decrypt("encrypted-key")).thenReturn("sk-test");
+
+            ModelInvokeResult result = service.invoke(new ModelInvokeCommand(
+                    2L,
+                    List.of(new ModelMessage("user", "hello real model")),
+                    BigDecimal.valueOf(0.2),
+                    false
+            ));
+
+            assertThat(result.assistantMessage()).isEqualTo("real model response");
+            assertThat(result.usage().promptTokens()).isEqualTo(11);
+            assertThat(result.usage().completionTokens()).isEqualTo(7);
+            assertThat(result.usage().totalTokens()).isEqualTo(18);
+            assertThat(result.usage().estimated()).isFalse();
+            assertThat(authorizationHeaders).containsExactly("Bearer sk-test");
+            assertThat(requestBodies).singleElement()
+                    .satisfies(body -> {
+                        assertThat(body).contains("\"model\":\"deepseek-chat\"");
+                        assertThat(body).contains("\"temperature\":0.2");
+                        assertThat(body).contains("\"role\":\"user\"");
+                        assertThat(body).contains("\"content\":\"hello real model\"");
+                    });
+        } finally {
+            server.stop(0);
+            executor.shutdownNow();
+        }
+    }
+
     private ModelConfigEntity mockConfig() {
         ModelConfigEntity config = new ModelConfigEntity();
         config.setId(1L);
         config.setProviderId(1L);
         config.setModelName("mock-chat");
         config.setDisplayName("Mock Chat Model");
+        config.setCapabilities(objectMapper.createObjectNode().put("text", true));
+        config.setDefaultTemperature(BigDecimal.valueOf(0.7));
+        config.setMaxContextTokens(8192);
+        config.setStatus("ACTIVE");
+        return config;
+    }
+
+    private ModelConfigEntity realConfig() {
+        ModelConfigEntity config = new ModelConfigEntity();
+        config.setId(2L);
+        config.setProviderId(2L);
+        config.setModelName("deepseek-chat");
+        config.setDisplayName("DeepSeek Chat");
         config.setCapabilities(objectMapper.createObjectNode().put("text", true));
         config.setDefaultTemperature(BigDecimal.valueOf(0.7));
         config.setMaxContextTokens(8192);
@@ -63,5 +151,24 @@ class DefaultModelInvokeServiceTest {
         provider.setBaseUrl("http://localhost:11434/v1");
         provider.setStatus("ACTIVE");
         return provider;
+    }
+
+    private static ModelProviderEntity realProvider(int port) {
+        ModelProviderEntity provider = new ModelProviderEntity();
+        provider.setId(2L);
+        provider.setProviderType("OPENAI_COMPATIBLE");
+        provider.setName("OpenAI Compatible Test Provider");
+        provider.setBaseUrl("http://localhost:" + port + "/v1");
+        provider.setApiKeyEncrypted("encrypted-key");
+        provider.setStatus("ACTIVE");
+        return provider;
+    }
+
+    private static void writeJson(HttpExchange exchange, int status, String body) throws IOException {
+        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().set("Content-Type", "application/json");
+        exchange.sendResponseHeaders(status, bytes.length);
+        exchange.getResponseBody().write(bytes);
+        exchange.close();
     }
 }
