@@ -10,24 +10,19 @@
 database: agent_platform
 username: agent
 password: agent123
-port: 5432
+port: 15432
 ```
 
-如果你用 Docker，可以执行：
+推荐使用项目专用 Docker PostgreSQL。它映射到本机 `15432` 端口，避免和你电脑上已有的 PostgreSQL 5432 端口冲突：
 
 ```powershell
-docker run --name agent-platform-step15-postgres `
-  -e POSTGRES_DB=agent_platform `
-  -e POSTGRES_USER=agent `
-  -e POSTGRES_PASSWORD=agent123 `
-  -p 5432:5432 `
-  -d postgres:16
+docker compose -f docker-compose.dev.yml up -d
 ```
 
 确认数据库可用：
 
 ```powershell
-docker exec agent-platform-step15-postgres pg_isready -U agent -d agent_platform
+docker exec agent-platform-dev-postgres pg_isready -U agent -d agent_platform
 ```
 
 ## 2. 已提供的本地配置
@@ -46,7 +41,7 @@ agent-platform-web/src/main/resources/application-dev.yml
 ```text
 Gateway port: 8081
 Web port: 8080
-Database: jdbc:postgresql://localhost:5432/agent_platform
+Database: jdbc:postgresql://localhost:15432/agent_platform
 Database username: agent
 Database password: agent123
 Internal token: dev-internal-token
@@ -166,7 +161,7 @@ modelName = deepseek-chat
 PostgreSQL 是否已启动
 数据库名是否是 agent_platform
 账号密码是否是 agent / agent123
-5432 端口是否被占用
+项目默认连接端口是否是 15432
 ```
 
 如果 Web 调 Chat SSE 报 Gateway 连接失败，检查：

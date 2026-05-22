@@ -3,7 +3,7 @@ server:
 
 spring:
   datasource:
-    url: ${AGENT_PLATFORM_DB_URL:jdbc:postgresql://localhost:5432/agent_platform}
+    url: ${AGENT_PLATFORM_DB_URL:jdbc:postgresql://localhost:15432/agent_platform}
     username: ${AGENT_PLATFORM_DB_USERNAME:agent}
     password: ${AGENT_PLATFORM_DB_PASSWORD:agent123}
 
