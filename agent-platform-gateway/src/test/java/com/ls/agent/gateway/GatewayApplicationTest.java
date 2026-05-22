@@ -2,6 +2,7 @@ package com.ls.agent.gateway;
 
 import com.ls.agent.core.agent.mapper.ConversationMapper;
 import com.ls.agent.core.agent.mapper.ConversationMessageMapper;
+import com.ls.agent.core.identity.api.ApiKeyService;
 import com.ls.agent.core.identity.api.ApplicationService;
 import com.ls.agent.core.identity.api.AuthService;
 import com.ls.agent.core.model.api.ModelConfigService;
@@ -23,6 +24,9 @@ class GatewayApplicationTest {
 
     @MockBean
     private AuthService authService;
+
+    @MockBean
+    private ApiKeyService apiKeyService;
 
     @MockBean
     private ApplicationService applicationService;
