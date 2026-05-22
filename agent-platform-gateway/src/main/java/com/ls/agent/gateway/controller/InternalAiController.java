@@ -132,7 +132,13 @@ public class InternalAiController {
     private ResponseEntity<StreamingResponseBody> sse(StreamingResponseBody body) {
         return ResponseEntity.ok()
                 .contentType(MediaType.TEXT_EVENT_STREAM)
-                .body(body);
+                .body(output -> {
+                    try {
+                        body.writeTo(output);
+                    } catch (Exception ex) {
+                        writeEvent(output, "error", payload("error", null, null, 0, errorMessage(ex), Map.of()));
+                    }
+                });
     }
 
     private void verifyInternalToken(HttpHeaders headers) {
@@ -161,6 +167,10 @@ public class InternalAiController {
         output.write(("event: " + event + "\n").getBytes(StandardCharsets.UTF_8));
         output.write(("data: " + toJson(payload) + "\n\n").getBytes(StandardCharsets.UTF_8));
         output.flush();
+    }
+
+    private String errorMessage(Exception ex) {
+        return ex.getMessage() == null ? "SSE stream failed" : ex.getMessage();
     }
 
     private String toJson(SseEventPayload payload) {

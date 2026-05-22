@@ -1,6 +1,8 @@
 package com.ls.agent.gateway.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ls.agent.common.error.BizException;
+import com.ls.agent.common.error.ErrorCode;
 import com.ls.agent.core.agent.api.AgentRuntimeService;
 import com.ls.agent.core.agent.command.AgentRunCommand;
 import com.ls.agent.core.agent.dto.AgentRunResult;
@@ -21,6 +23,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -135,6 +138,27 @@ class InternalAiControllerTest {
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("event: message")));
 
         verify(agentRuntimeService).run(any(AgentRunCommand.class));
+    }
+
+    @Test
+    void internalChatStreamConvertsRuntimeFailureToSseErrorEvent() throws Exception {
+        doThrow(new BizException(ErrorCode.REQUEST_INVALID, "Agent failed"))
+                .when(agentRuntimeService).run(any(AgentRunCommand.class));
+
+        var result = mockMvc.perform(post("/internal/ai/chat/stream")
+                        .header("X-Internal-Token", "dev-internal-token")
+                        .accept(MediaType.TEXT_EVENT_STREAM)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(internalRequest())))
+                .andExpect(status().isOk())
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        mockMvc.perform(asyncDispatch(result))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("event: error")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Agent failed")));
     }
 
     @Test

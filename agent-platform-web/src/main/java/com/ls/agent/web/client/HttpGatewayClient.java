@@ -17,9 +17,12 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 
 @Component
 public class HttpGatewayClient implements GatewayClient {
+
+    private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(3);
 
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
@@ -32,7 +35,9 @@ public class HttpGatewayClient implements GatewayClient {
             @Value("${web.gateway.internal-base-url:http://localhost:8081}") String gatewayBaseUrl,
             @Value("${web.gateway.internal-token:dev-internal-token}") String internalToken
     ) {
-        this(HttpClient.newHttpClient(), objectMapper, gatewayBaseUrl, internalToken);
+        this(HttpClient.newBuilder()
+                .connectTimeout(CONNECT_TIMEOUT)
+                .build(), objectMapper, gatewayBaseUrl, internalToken);
     }
 
     HttpGatewayClient(
@@ -110,5 +115,9 @@ public class HttpGatewayClient implements GatewayClient {
             return "http://localhost:8081";
         }
         return value.endsWith("/") ? value.substring(0, value.length() - 1) : value;
+    }
+
+    Duration connectTimeout() {
+        return httpClient.connectTimeout().orElse(null);
     }
 }
