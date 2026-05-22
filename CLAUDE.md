@@ -130,7 +130,7 @@ MVP 的 Developer = 配单 Agent Profile；阶段 4 的 Developer = 在 Profile 
 
 阶段 1 开发时必须同步对照：`考核设计/开发检查清单/01-阶段1开发检查清单.md`。每完成一个小阶段，都按检查清单回查一次，避免忘记 Gateway、ArchUnit、SSE、Context、Quota 等关键护栏。
 
-阶段 1 实际开发还必须同步对照：`实际开发/阶段1/02-阶段1执行顺序.md`。当前代码已完成到 Step 11 context，并通过 `mvn.cmd -s .mvn/settings.xml test` 全量测试；当前测试数 55 个，后续从 Step 12 agent 继续。
+阶段 1 实际开发还必须同步对照：`实际开发/阶段1/02-阶段1执行顺序.md`。当前代码已完成到 Step 12 agent，并通过 `mvn.cmd -s .mvn/settings.xml -pl agent-platform-core -am test` 的 core 全量测试；当前 core+common 测试数 42 个，后续从 Step 13 gateway SSE 空壳继续。
 
 开发协作节奏：
 
@@ -139,6 +139,13 @@ MVP 的 Developer = 配单 Agent Profile；阶段 4 的 Developer = 在 Profile 
 - 每完成一个 Step，必须运行对应测试和全量 `mvn test`，再总结修改文件、验证结果、遗留问题。
 - 用户在每个 Step 完成后集中审查代码；不要等阶段 1 全部写完才审查，也不需要每个小文件都打断审查。
 - Spring AI 封装、模型 API Key 加密、Agent 循环事件、SSE 事件格式、Context token 裁剪等关键设计点，必须在实现前单独说明。
+
+Git 提交与标签约定：
+
+- Step 级别进度只写清楚 commit message，不再为每个 Step 打 tag。
+- 阶段级别完成后再打 tag，例如 `phase-1-complete`、`phase-2-complete`。
+- MVP 可演示版本完成后打 `mvp-demo`。
+- 已存在的 `phase-1`、`phase-1-step-11` 标签保留，不再调整。
 
 必须按阶段推进：
 

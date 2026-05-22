@@ -31,7 +31,12 @@ public class DefaultMcpToolQueryService implements McpToolQueryService, McpToolR
         if (mcpToolIds == null || mcpToolIds.isEmpty()) {
             return true;
         }
+        List<Long> serverIds = activeServerIds(tenantId);
+        if (serverIds.isEmpty()) {
+            return false;
+        }
         Long count = mcpToolMapper.selectCount(new LambdaQueryWrapper<McpToolEntity>()
+                .in(McpToolEntity::getMcpServerId, serverIds)
                 .eq(McpToolEntity::getStatus, STATUS_AVAILABLE)
                 .in(McpToolEntity::getId, mcpToolIds));
         return count == mcpToolIds.stream().distinct().count();

@@ -40,6 +40,16 @@ class DefaultMcpToolQueryServiceTest {
         assertThat(result.get(0).parameterSchema().get("properties").has("path")).isTrue();
     }
 
+    @Test
+    void areMcpToolsBindableRequiresToolsFromTenantActiveServers() {
+        when(serverMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
+        when(toolMapper.selectCount(any(Wrapper.class))).thenReturn(1L);
+
+        boolean result = service.areMcpToolsBindable(1L, List.of(99L));
+
+        assertThat(result).isFalse();
+    }
+
     private McpServerEntity server() {
         McpServerEntity entity = new McpServerEntity();
         entity.setId(10L);
