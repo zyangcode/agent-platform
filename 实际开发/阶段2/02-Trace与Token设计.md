@@ -410,7 +410,8 @@ NoopTraceExporter
 AgentX-master 的 TraceCollector / TraceContext 可作为当前 TraceService 的设计参考。
 AgentX-master 的前端 agent-trace-service.ts 可作为后续 Trace 页面接口参考。
 AI-Meeting-main 的 UniversalAiChatHandler 可作为后续 token 级真实流式参考。
-当前阶段不引入 Spring AI / WebFlux / single-flight，先保持 JDK HttpClient + PostgreSQL Trace。
+smart-cs-multi-agent-main 的 AgentTracer.trace(agentName, method, Supplier<T>) 可作为 Span 包装式写法参考。
+当前阶段不引入 Spring AI / WebFlux / Multi-Agent / single-flight，先保持 JDK HttpClient + PostgreSQL Trace。
 ```
 
 ---
