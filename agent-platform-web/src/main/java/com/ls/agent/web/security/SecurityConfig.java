@@ -1,5 +1,6 @@
 package com.ls.agent.web.security;
 
+import jakarta.servlet.DispatcherType;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -46,6 +47,7 @@ public class SecurityConfig {
                         .accessDeniedHandler(accessDeniedHandler))         // 处理无权限
                 // 4. 配置接口权限控制规则
                 .authorizeHttpRequests(authorize -> authorize
+                        .dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()
                         // 注册和登录接口允许匿名访问
                         .requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login").permitAll()
                         // 管理员相关接口需要具备 ADMIN 角色

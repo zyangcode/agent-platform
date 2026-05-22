@@ -130,7 +130,7 @@ MVP 的 Developer = 配单 Agent Profile；阶段 4 的 Developer = 在 Profile 
 
 阶段 1 开发时必须同步对照：`考核设计/开发检查清单/01-阶段1开发检查清单.md`。每完成一个小阶段，都按检查清单回查一次，避免忘记 Gateway、ArchUnit、SSE、Context、Quota 等关键护栏。
 
-阶段 1 实际开发还必须同步对照：`实际开发/阶段1/02-阶段1执行顺序.md`。当前代码已完成到 Step 13 gateway SSE 空壳，并通过全量 `mvn.cmd -s .mvn/settings.xml test`；当前全量测试数 73 个，后续从 Step 14 web SSE 透传继续。
+阶段 1 实际开发还必须同步对照：`实际开发/阶段1/02-阶段1执行顺序.md`。当前代码已完成到 Step 14 web SSE 透传，并通过全量 `mvn.cmd -s .mvn/settings.xml test`；当前全量测试数 76 个，后续从 Step 15 阶段 1 总体验收继续。
 
 开发协作节奏：
 
