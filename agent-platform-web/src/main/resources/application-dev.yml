@@ -1,0 +1,18 @@
+server:
+  port: 8080
+
+spring:
+  datasource:
+    url: ${AGENT_PLATFORM_DB_URL:jdbc:postgresql://localhost:5432/agent_platform}
+    username: ${AGENT_PLATFORM_DB_USERNAME:agent}
+    password: ${AGENT_PLATFORM_DB_PASSWORD:agent123}
+
+web:
+  gateway:
+    internal-base-url: ${AGENT_PLATFORM_GATEWAY_URL:http://localhost:8081}
+    internal-token: ${AGENT_PLATFORM_INTERNAL_TOKEN:dev-internal-token}
+
+security:
+  jwt:
+    secret: ${AGENT_PLATFORM_JWT_SECRET:dev-only-change-me-dev-only-change-me}
+    expires-in-seconds: ${AGENT_PLATFORM_JWT_EXPIRES_IN_SECONDS:7200}
