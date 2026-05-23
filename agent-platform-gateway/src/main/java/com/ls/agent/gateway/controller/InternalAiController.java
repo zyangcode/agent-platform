@@ -18,6 +18,7 @@ import com.ls.agent.core.trace.command.StartTraceRootCommand;
 import com.ls.agent.gateway.dto.GatewayChatRequest;
 import com.ls.agent.gateway.dto.SseEventPayload;
 import com.ls.agent.gateway.filter.QuotaFilter;
+import com.ls.agent.gateway.filter.SensitiveDataFilter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -46,6 +47,7 @@ public class InternalAiController {
     private final ApiKeyService apiKeyService;
     private final TraceService traceService;
     private final QuotaFilter quotaFilter;
+    private final SensitiveDataFilter sensitiveDataFilter;
     private final ObjectMapper objectMapper;
     private final String internalToken;
 
@@ -55,6 +57,7 @@ public class InternalAiController {
             ApiKeyService apiKeyService,
             TraceService traceService,
             QuotaFilter quotaFilter,
+            SensitiveDataFilter sensitiveDataFilter,
             ObjectMapper objectMapper,
             @Value("${gateway.internal-token:dev-internal-token}") String internalToken
     ) {
@@ -63,6 +66,7 @@ public class InternalAiController {
         this.apiKeyService = apiKeyService;
         this.traceService = traceService;
         this.quotaFilter = quotaFilter;
+        this.sensitiveDataFilter = sensitiveDataFilter;
         this.objectMapper = objectMapper;
         this.internalToken = internalToken;
     }
@@ -108,6 +112,7 @@ public class InternalAiController {
             String apiKeyPrefix
     ) {
         String traceId = newTraceId();
+        sensitiveDataFilter.scanRequest(traceId, tenantId, applicationId, userId, request);
         quotaFilter.reserve(traceId, tenantId, applicationId, userId);
         return sse(output -> {
             startTraceRoot(traceId, request, tenantId, applicationId, userId, entrypoint, apiKeyPrefix);

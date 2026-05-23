@@ -15,11 +15,16 @@ import com.ls.agent.core.quota.command.CommitQuotaReservationCommand;
 import com.ls.agent.core.quota.command.ReleaseQuotaReservationCommand;
 import com.ls.agent.core.quota.command.ReserveQuotaCommand;
 import com.ls.agent.core.quota.dto.QuotaReservationDTO;
+import com.ls.agent.core.security.api.SecurityEventService;
+import com.ls.agent.core.security.api.SensitiveDataScanner;
+import com.ls.agent.core.security.command.RecordSecurityEventCommand;
+import com.ls.agent.core.security.dto.SensitiveDataFindingDTO;
 import com.ls.agent.core.trace.api.TraceService;
 import com.ls.agent.core.trace.command.FinishTraceRootCommand;
 import com.ls.agent.core.trace.command.StartTraceRootCommand;
 import com.ls.agent.gateway.dto.GatewayChatRequest;
 import com.ls.agent.gateway.filter.QuotaFilter;
+import com.ls.agent.gateway.filter.SensitiveDataFilter;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -48,7 +53,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         controllers = InternalAiController.class,
         properties = "gateway.internal-token=dev-internal-token"
 )
-@Import(QuotaFilter.class)
+@Import({QuotaFilter.class, SensitiveDataFilter.class})
 class InternalAiControllerTest {
 
     @Autowired
@@ -71,6 +76,12 @@ class InternalAiControllerTest {
 
     @MockBean
     private QuotaService quotaService;
+
+    @MockBean
+    private SensitiveDataScanner sensitiveDataScanner;
+
+    @MockBean
+    private SecurityEventService securityEventService;
 
     @Test
     void streamTestRequiresInternalToken() throws Exception {
@@ -96,6 +107,7 @@ class InternalAiControllerTest {
 
     @Test
     void internalChatStreamCallsAgentRuntime() throws Exception {
+        when(sensitiveDataScanner.scan("hello", "REQUEST_MESSAGE")).thenReturn(List.of());
         when(quotaService.reserve(any(ReserveQuotaCommand.class))).thenReturn(reservation());
         when(agentRuntimeService.run(any(AgentRunCommand.class))).thenReturn(agentResult());
 
@@ -142,6 +154,7 @@ class InternalAiControllerTest {
 
     @Test
     void internalChatStreamDefaultsToAgentMode() throws Exception {
+        when(sensitiveDataScanner.scan("hello", "REQUEST_MESSAGE")).thenReturn(List.of());
         when(quotaService.reserve(any(ReserveQuotaCommand.class))).thenReturn(reservation());
         when(agentRuntimeService.run(any(AgentRunCommand.class))).thenReturn(agentResult());
 
@@ -180,6 +193,7 @@ class InternalAiControllerTest {
 
     @Test
     void internalChatStreamConvertsRuntimeFailureToSseErrorEvent() throws Exception {
+        when(sensitiveDataScanner.scan("hello", "REQUEST_MESSAGE")).thenReturn(List.of());
         when(quotaService.reserve(any(ReserveQuotaCommand.class))).thenReturn(reservation());
         doThrow(new BizException(ErrorCode.REQUEST_INVALID, "Agent failed"))
                 .when(agentRuntimeService).run(any(AgentRunCommand.class));
@@ -209,6 +223,7 @@ class InternalAiControllerTest {
     @Test
     void apiChatStreamAuthenticatesApiKeyAndCallsAgentRuntime() throws Exception {
         when(apiKeyService.authenticate("sk-valid")).thenReturn(new ApiKeyAuthResult(1L, 20001L, 10001L));
+        when(sensitiveDataScanner.scan("hello", "REQUEST_MESSAGE")).thenReturn(List.of());
         when(quotaService.reserve(any(ReserveQuotaCommand.class))).thenReturn(reservation());
         when(agentRuntimeService.run(any(AgentRunCommand.class))).thenReturn(agentResult());
 
@@ -236,6 +251,7 @@ class InternalAiControllerTest {
 
     @Test
     void traceServiceFailureDoesNotBreakSse() throws Exception {
+        when(sensitiveDataScanner.scan("hello", "REQUEST_MESSAGE")).thenReturn(List.of());
         when(quotaService.reserve(any(ReserveQuotaCommand.class))).thenReturn(reservation());
         doThrow(new IllegalStateException("trace down"))
                 .when(traceService).startRoot(any(StartTraceRootCommand.class));
@@ -260,6 +276,7 @@ class InternalAiControllerTest {
 
     @Test
     void quotaExceededReturns429AndDoesNotCallAgentRuntime() throws Exception {
+        when(sensitiveDataScanner.scan("hello", "REQUEST_MESSAGE")).thenReturn(List.of());
         doThrow(new BizException(ErrorCode.QUOTA_EXCEEDED, "Token quota exceeded"))
                 .when(quotaService).reserve(any(ReserveQuotaCommand.class));
 
@@ -270,6 +287,83 @@ class InternalAiControllerTest {
                         .content(objectMapper.writeValueAsString(internalRequest())))
                 .andExpect(status().isTooManyRequests());
 
+        verify(agentRuntimeService, never()).run(any(AgentRunCommand.class));
+    }
+
+    @Test
+    void sensitiveRequestReturns403AndDoesNotReserveQuotaOrCallRuntime() throws Exception {
+        when(sensitiveDataScanner.scan("hello", "REQUEST_MESSAGE"))
+                .thenReturn(List.of(new SensitiveDataFindingDTO(
+                        "PHONE",
+                        "REQUEST_MESSAGE",
+                        "hash-1",
+                        "138****5678"
+                )));
+
+        mockMvc.perform(post("/internal/ai/chat/stream")
+                        .header("X-Internal-Token", "dev-internal-token")
+                        .accept(MediaType.TEXT_EVENT_STREAM)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(internalRequest())))
+                .andExpect(status().isForbidden())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("SECURITY_BLOCKED")));
+
+        ArgumentCaptor<RecordSecurityEventCommand> eventCaptor =
+                ArgumentCaptor.forClass(RecordSecurityEventCommand.class);
+        verify(securityEventService).record(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().tenantId()).isEqualTo(1L);
+        assertThat(eventCaptor.getValue().applicationId()).isEqualTo(20001L);
+        assertThat(eventCaptor.getValue().userId()).isEqualTo(10001L);
+        assertThat(eventCaptor.getValue().eventType()).isEqualTo("PHONE");
+        assertThat(eventCaptor.getValue().location()).isEqualTo("REQUEST_MESSAGE");
+        assertThat(eventCaptor.getValue().maskedSample()).isEqualTo("138****5678");
+        assertThat(eventCaptor.getValue().action()).isEqualTo("BLOCK");
+
+        verify(quotaService, never()).reserve(any(ReserveQuotaCommand.class));
+        verify(agentRuntimeService, never()).run(any(AgentRunCommand.class));
+    }
+
+    @Test
+    void scannerFailureReturns403AndDoesNotReserveQuotaOrCallRuntime() throws Exception {
+        doThrow(new IllegalStateException("scanner down"))
+                .when(sensitiveDataScanner).scan("hello", "REQUEST_MESSAGE");
+
+        mockMvc.perform(post("/internal/ai/chat/stream")
+                        .header("X-Internal-Token", "dev-internal-token")
+                        .accept(MediaType.TEXT_EVENT_STREAM)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(internalRequest())))
+                .andExpect(status().isForbidden())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("SECURITY_BLOCKED")));
+
+        verify(securityEventService, never()).record(any(RecordSecurityEventCommand.class));
+        verify(quotaService, never()).reserve(any(ReserveQuotaCommand.class));
+        verify(agentRuntimeService, never()).run(any(AgentRunCommand.class));
+    }
+
+    @Test
+    void securityEventRecordFailureStillBlocksRequest() throws Exception {
+        when(sensitiveDataScanner.scan("hello", "REQUEST_MESSAGE"))
+                .thenReturn(List.of(new SensitiveDataFindingDTO(
+                        "EMAIL",
+                        "REQUEST_MESSAGE",
+                        "hash-2",
+                        "a***@example.com"
+                )));
+        doThrow(new IllegalStateException("audit down"))
+                .when(securityEventService).record(any(RecordSecurityEventCommand.class));
+
+        mockMvc.perform(post("/internal/ai/chat/stream")
+                        .header("X-Internal-Token", "dev-internal-token")
+                        .accept(MediaType.TEXT_EVENT_STREAM)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(internalRequest())))
+                .andExpect(status().isForbidden())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("SECURITY_BLOCKED")));
+
+        verify(securityEventService).record(any(RecordSecurityEventCommand.class));
+        verify(quotaService, never()).reserve(any(ReserveQuotaCommand.class));
         verify(agentRuntimeService, never()).run(any(AgentRunCommand.class));
     }
 

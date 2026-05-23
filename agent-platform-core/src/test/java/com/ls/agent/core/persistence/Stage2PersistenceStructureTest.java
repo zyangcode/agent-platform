@@ -24,6 +24,10 @@ class Stage2PersistenceStructureTest {
             "com.ls.agent.core.quota.entity.TokenUsageLogEntity", CreatedEntity.class
     );
 
+    private static final Map<String, Class<?>> SECURITY_ENTITY_SUPER_TYPES = Map.of(
+            "com.ls.agent.core.security.entity.SecurityEventEntity", CreatedEntity.class
+    );
+
     private static final String[] TRACE_MAPPER_NAMES = {
             "com.ls.agent.core.trace.mapper.TraceRootMapper",
             "com.ls.agent.core.trace.mapper.TraceSpanMapper"
@@ -33,6 +37,10 @@ class Stage2PersistenceStructureTest {
             "com.ls.agent.core.quota.mapper.QuotaConfigMapper",
             "com.ls.agent.core.quota.mapper.QuotaReservationMapper",
             "com.ls.agent.core.quota.mapper.TokenUsageLogMapper"
+    };
+
+    private static final String[] SECURITY_MAPPER_NAMES = {
+            "com.ls.agent.core.security.mapper.SecurityEventMapper"
     };
 
     @Test
@@ -70,6 +78,23 @@ class Stage2PersistenceStructureTest {
     }
 
     @Test
+    void securityMigrationCreatesSecurityEventsTableWithoutRawSensitiveText() throws IOException {
+        String sql = readMigration("db/migration/V008__init_security_events.sql");
+
+        assertThat(sql).contains(
+                "create table security_events",
+                "event_type varchar(64) not null",
+                "location varchar(64) not null",
+                "source_text_hash varchar(64) not null",
+                "masked_sample text not null",
+                "action varchar(32) not null",
+                "idx_security_events_trace",
+                "idx_security_events_tenant_created"
+        );
+        assertThat(sql).doesNotContain("source_text text", "raw_text", "plain_text");
+    }
+
+    @Test
     void stage2TraceEntitiesExistAndUseExpectedBaseClasses() throws ClassNotFoundException {
         for (Map.Entry<String, Class<?>> entry : TRACE_ENTITY_SUPER_TYPES.entrySet()) {
             Class<?> entityClass = Class.forName(entry.getKey());
@@ -92,6 +117,17 @@ class Stage2PersistenceStructureTest {
     }
 
     @Test
+    void stage2SecurityEntitiesExistAndUseExpectedBaseClasses() throws ClassNotFoundException {
+        for (Map.Entry<String, Class<?>> entry : SECURITY_ENTITY_SUPER_TYPES.entrySet()) {
+            Class<?> entityClass = Class.forName(entry.getKey());
+
+            assertThat(entityClass.getSuperclass())
+                    .as(entry.getKey())
+                    .isEqualTo(entry.getValue());
+        }
+    }
+
+    @Test
     void stage2TraceMappersExist() throws ClassNotFoundException {
         for (String mapperName : TRACE_MAPPER_NAMES) {
             assertThat(Class.forName(mapperName))
@@ -103,6 +139,15 @@ class Stage2PersistenceStructureTest {
     @Test
     void stage2QuotaMappersExist() throws ClassNotFoundException {
         for (String mapperName : QUOTA_MAPPER_NAMES) {
+            assertThat(Class.forName(mapperName))
+                    .as(mapperName)
+                    .isInterface();
+        }
+    }
+
+    @Test
+    void stage2SecurityMappersExist() throws ClassNotFoundException {
+        for (String mapperName : SECURITY_MAPPER_NAMES) {
             assertThat(Class.forName(mapperName))
                     .as(mapperName)
                     .isInterface();
