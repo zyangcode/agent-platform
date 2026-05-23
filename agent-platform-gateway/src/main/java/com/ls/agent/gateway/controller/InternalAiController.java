@@ -17,6 +17,7 @@ import com.ls.agent.core.trace.command.FinishTraceRootCommand;
 import com.ls.agent.core.trace.command.StartTraceRootCommand;
 import com.ls.agent.gateway.dto.GatewayChatRequest;
 import com.ls.agent.gateway.dto.SseEventPayload;
+import com.ls.agent.gateway.filter.AlertFilter;
 import com.ls.agent.gateway.filter.QuotaFilter;
 import com.ls.agent.gateway.filter.SensitiveDataFilter;
 import org.springframework.beans.factory.annotation.Value;
@@ -48,6 +49,7 @@ public class InternalAiController {
     private final TraceService traceService;
     private final QuotaFilter quotaFilter;
     private final SensitiveDataFilter sensitiveDataFilter;
+    private final AlertFilter alertFilter;
     private final ObjectMapper objectMapper;
     private final String internalToken;
 
@@ -58,6 +60,7 @@ public class InternalAiController {
             TraceService traceService,
             QuotaFilter quotaFilter,
             SensitiveDataFilter sensitiveDataFilter,
+            AlertFilter alertFilter,
             ObjectMapper objectMapper,
             @Value("${gateway.internal-token:dev-internal-token}") String internalToken
     ) {
@@ -67,6 +70,7 @@ public class InternalAiController {
         this.traceService = traceService;
         this.quotaFilter = quotaFilter;
         this.sensitiveDataFilter = sensitiveDataFilter;
+        this.alertFilter = alertFilter;
         this.objectMapper = objectMapper;
         this.internalToken = internalToken;
     }
@@ -112,8 +116,13 @@ public class InternalAiController {
             String apiKeyPrefix
     ) {
         String traceId = newTraceId();
-        sensitiveDataFilter.scanRequest(traceId, tenantId, applicationId, userId, request);
-        quotaFilter.reserve(traceId, tenantId, applicationId, userId);
+        try {
+            sensitiveDataFilter.scanRequest(traceId, tenantId, applicationId, userId, request);
+            quotaFilter.reserve(traceId, tenantId, applicationId, userId);
+        } catch (Exception ex) {
+            alertFilter.recordFailure(traceId, tenantId, applicationId, ex);
+            throw ex;
+        }
         return sse(output -> {
             startTraceRoot(traceId, request, tenantId, applicationId, userId, entrypoint, apiKeyPrefix);
             Long conversationId = null;
@@ -155,6 +164,7 @@ public class InternalAiController {
             } catch (Exception ex) {
                 quotaFilter.release(traceId);
                 finishTraceRoot(traceId, conversationId, "FAILED", errorCode(ex), errorMessage(ex));
+                alertFilter.recordFailure(traceId, tenantId, applicationId, ex);
                 throw ex;
             }
         });

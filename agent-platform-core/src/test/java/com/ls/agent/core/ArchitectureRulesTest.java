@@ -25,7 +25,8 @@ class ArchitectureRulesTest {
             "context",
             "quota",
             "trace",
-            "security"
+            "security",
+            "alert"
     );
 
     @Test
@@ -70,7 +71,8 @@ class ArchitectureRulesTest {
                         "com.ls.agent.core.memory.mapper..",
                         "com.ls.agent.core.quota.mapper..",
                         "com.ls.agent.core.trace.mapper..",
-                        "com.ls.agent.core.security.mapper..")
+                        "com.ls.agent.core.security.mapper..",
+                        "com.ls.agent.core.alert.mapper..")
                 .should().haveSimpleNameEndingWith("Mapper")
                 .because("Mapper is persistence detail and must stay inside the owning core package");
 

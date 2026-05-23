@@ -5,6 +5,7 @@ import com.ls.agent.core.identity.api.ApplicationService;
 import com.ls.agent.core.identity.api.AuthService;
 import com.ls.agent.core.agent.api.ConversationRepository;
 import com.ls.agent.core.agent.api.MessageHistoryService;
+import com.ls.agent.core.alert.api.AlertEventService;
 import com.ls.agent.core.model.api.ModelConfigService;
 import com.ls.agent.core.model.api.ModelInvokeService;
 import com.ls.agent.core.mcp.api.McpToolQueryService;
@@ -84,6 +85,9 @@ class GatewayApplicationTest {
 
     @MockBean
     private SecurityEventService securityEventService;
+
+    @MockBean
+    private AlertEventService alertEventService;
 
     @Test
     void contextLoads() {

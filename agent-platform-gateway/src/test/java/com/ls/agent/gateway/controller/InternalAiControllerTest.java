@@ -6,6 +6,8 @@ import com.ls.agent.common.error.ErrorCode;
 import com.ls.agent.core.agent.api.AgentRuntimeService;
 import com.ls.agent.core.agent.command.AgentRunCommand;
 import com.ls.agent.core.agent.dto.AgentRunResult;
+import com.ls.agent.core.alert.api.AlertEventService;
+import com.ls.agent.core.alert.command.RecordAlertEventCommand;
 import com.ls.agent.core.identity.api.ApiKeyService;
 import com.ls.agent.core.identity.dto.ApiKeyAuthResult;
 import com.ls.agent.core.model.api.ModelInvokeService;
@@ -23,6 +25,7 @@ import com.ls.agent.core.trace.api.TraceService;
 import com.ls.agent.core.trace.command.FinishTraceRootCommand;
 import com.ls.agent.core.trace.command.StartTraceRootCommand;
 import com.ls.agent.gateway.dto.GatewayChatRequest;
+import com.ls.agent.gateway.filter.AlertFilter;
 import com.ls.agent.gateway.filter.QuotaFilter;
 import com.ls.agent.gateway.filter.SensitiveDataFilter;
 import org.junit.jupiter.api.Test;
@@ -53,7 +56,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         controllers = InternalAiController.class,
         properties = "gateway.internal-token=dev-internal-token"
 )
-@Import({QuotaFilter.class, SensitiveDataFilter.class})
+@Import({QuotaFilter.class, SensitiveDataFilter.class, AlertFilter.class})
 class InternalAiControllerTest {
 
     @Autowired
@@ -82,6 +85,9 @@ class InternalAiControllerTest {
 
     @MockBean
     private SecurityEventService securityEventService;
+
+    @MockBean
+    private AlertEventService alertEventService;
 
     @Test
     void streamTestRequiresInternalToken() throws Exception {
@@ -218,6 +224,12 @@ class InternalAiControllerTest {
         assertThat(finishCaptor.getValue().status()).isEqualTo("FAILED");
         assertThat(finishCaptor.getValue().errorMessage()).contains("Agent failed");
         verify(quotaService).release(any(ReleaseQuotaReservationCommand.class));
+        ArgumentCaptor<RecordAlertEventCommand> alertCaptor =
+                ArgumentCaptor.forClass(RecordAlertEventCommand.class);
+        verify(alertEventService).record(alertCaptor.capture());
+        assertThat(alertCaptor.getValue().alertType()).isEqualTo("MODEL_ERROR");
+        assertThat(alertCaptor.getValue().level()).isEqualTo("ERROR");
+        assertThat(alertCaptor.getValue().tenantId()).isEqualTo(1L);
     }
 
     @Test
@@ -288,6 +300,11 @@ class InternalAiControllerTest {
                 .andExpect(status().isTooManyRequests());
 
         verify(agentRuntimeService, never()).run(any(AgentRunCommand.class));
+        ArgumentCaptor<RecordAlertEventCommand> alertCaptor =
+                ArgumentCaptor.forClass(RecordAlertEventCommand.class);
+        verify(alertEventService).record(alertCaptor.capture());
+        assertThat(alertCaptor.getValue().alertType()).isEqualTo("TOKEN_EXCEEDED");
+        assertThat(alertCaptor.getValue().level()).isEqualTo("WARN");
     }
 
     @Test
@@ -322,6 +339,11 @@ class InternalAiControllerTest {
 
         verify(quotaService, never()).reserve(any(ReserveQuotaCommand.class));
         verify(agentRuntimeService, never()).run(any(AgentRunCommand.class));
+        ArgumentCaptor<RecordAlertEventCommand> alertCaptor =
+                ArgumentCaptor.forClass(RecordAlertEventCommand.class);
+        verify(alertEventService).record(alertCaptor.capture());
+        assertThat(alertCaptor.getValue().alertType()).isEqualTo("SECURITY_BLOCKED");
+        assertThat(alertCaptor.getValue().level()).isEqualTo("WARN");
     }
 
     @Test
@@ -340,6 +362,7 @@ class InternalAiControllerTest {
         verify(securityEventService, never()).record(any(RecordSecurityEventCommand.class));
         verify(quotaService, never()).reserve(any(ReserveQuotaCommand.class));
         verify(agentRuntimeService, never()).run(any(AgentRunCommand.class));
+        verify(alertEventService).record(any(RecordAlertEventCommand.class));
     }
 
     @Test
@@ -364,6 +387,27 @@ class InternalAiControllerTest {
 
         verify(securityEventService).record(any(RecordSecurityEventCommand.class));
         verify(quotaService, never()).reserve(any(ReserveQuotaCommand.class));
+        verify(agentRuntimeService, never()).run(any(AgentRunCommand.class));
+        verify(alertEventService).record(any(RecordAlertEventCommand.class));
+    }
+
+    @Test
+    void alertRecordFailureDoesNotChangeQuotaExceededResponse() throws Exception {
+        when(sensitiveDataScanner.scan("hello", "REQUEST_MESSAGE")).thenReturn(List.of());
+        doThrow(new BizException(ErrorCode.QUOTA_EXCEEDED, "Token quota exceeded"))
+                .when(quotaService).reserve(any(ReserveQuotaCommand.class));
+        doThrow(new IllegalStateException("alert down"))
+                .when(alertEventService).record(any(RecordAlertEventCommand.class));
+
+        mockMvc.perform(post("/internal/ai/chat/stream")
+                        .header("X-Internal-Token", "dev-internal-token")
+                        .accept(MediaType.TEXT_EVENT_STREAM)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(internalRequest())))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("QUOTA_EXCEEDED")));
+
+        verify(alertEventService).record(any(RecordAlertEventCommand.class));
         verify(agentRuntimeService, never()).run(any(AgentRunCommand.class));
     }
 

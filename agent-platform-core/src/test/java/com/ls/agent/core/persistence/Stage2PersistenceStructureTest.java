@@ -28,6 +28,10 @@ class Stage2PersistenceStructureTest {
             "com.ls.agent.core.security.entity.SecurityEventEntity", CreatedEntity.class
     );
 
+    private static final Map<String, Class<?>> ALERT_ENTITY_SUPER_TYPES = Map.of(
+            "com.ls.agent.core.alert.entity.AlertEventEntity", CreatedEntity.class
+    );
+
     private static final String[] TRACE_MAPPER_NAMES = {
             "com.ls.agent.core.trace.mapper.TraceRootMapper",
             "com.ls.agent.core.trace.mapper.TraceSpanMapper"
@@ -41,6 +45,10 @@ class Stage2PersistenceStructureTest {
 
     private static final String[] SECURITY_MAPPER_NAMES = {
             "com.ls.agent.core.security.mapper.SecurityEventMapper"
+    };
+
+    private static final String[] ALERT_MAPPER_NAMES = {
+            "com.ls.agent.core.alert.mapper.AlertEventMapper"
     };
 
     @Test
@@ -95,6 +103,28 @@ class Stage2PersistenceStructureTest {
     }
 
     @Test
+    void alertMigrationCreatesAlertEventsTable() throws IOException {
+        String sql = readMigration("db/migration/V009__init_alert_events.sql");
+
+        assertThat(sql).contains(
+                "create table alert_events",
+                "trace_id varchar(64)",
+                "tenant_id bigint not null references tenants (id)",
+                "application_id bigint references applications (id)",
+                "alert_type varchar(64) not null",
+                "level varchar(32) not null",
+                "title varchar(255) not null",
+                "content text not null",
+                "suggestion text",
+                "notify_status varchar(32) not null",
+                "retry_count int not null default 0",
+                "sent_at timestamp",
+                "idx_alert_events_trace",
+                "idx_alert_events_tenant_notify_created"
+        );
+    }
+
+    @Test
     void stage2TraceEntitiesExistAndUseExpectedBaseClasses() throws ClassNotFoundException {
         for (Map.Entry<String, Class<?>> entry : TRACE_ENTITY_SUPER_TYPES.entrySet()) {
             Class<?> entityClass = Class.forName(entry.getKey());
@@ -128,6 +158,17 @@ class Stage2PersistenceStructureTest {
     }
 
     @Test
+    void stage2AlertEntitiesExistAndUseExpectedBaseClasses() throws ClassNotFoundException {
+        for (Map.Entry<String, Class<?>> entry : ALERT_ENTITY_SUPER_TYPES.entrySet()) {
+            Class<?> entityClass = Class.forName(entry.getKey());
+
+            assertThat(entityClass.getSuperclass())
+                    .as(entry.getKey())
+                    .isEqualTo(entry.getValue());
+        }
+    }
+
+    @Test
     void stage2TraceMappersExist() throws ClassNotFoundException {
         for (String mapperName : TRACE_MAPPER_NAMES) {
             assertThat(Class.forName(mapperName))
@@ -148,6 +189,15 @@ class Stage2PersistenceStructureTest {
     @Test
     void stage2SecurityMappersExist() throws ClassNotFoundException {
         for (String mapperName : SECURITY_MAPPER_NAMES) {
+            assertThat(Class.forName(mapperName))
+                    .as(mapperName)
+                    .isInterface();
+        }
+    }
+
+    @Test
+    void stage2AlertMappersExist() throws ClassNotFoundException {
+        for (String mapperName : ALERT_MAPPER_NAMES) {
             assertThat(Class.forName(mapperName))
                     .as(mapperName)
                     .isInterface();
