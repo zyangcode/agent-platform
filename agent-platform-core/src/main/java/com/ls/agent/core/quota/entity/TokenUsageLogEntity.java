@@ -1,4 +1,5 @@
 package com.ls.agent.core.quota.entity;
+
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.ls.agent.core.support.persistence.CreatedEntity;

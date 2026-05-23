@@ -2,6 +2,7 @@ package com.ls.agent.core.persistence;
 
 import com.ls.agent.core.support.persistence.BaseEntity;
 import com.ls.agent.core.support.persistence.CreatedEntity;
+import com.ls.agent.core.support.persistence.VersionedEntity;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -18,6 +19,8 @@ class Stage2PersistenceStructureTest {
     );
 
     private static final Map<String, Class<?>> QUOTA_ENTITY_SUPER_TYPES = Map.of(
+            "com.ls.agent.core.quota.entity.QuotaConfigEntity", VersionedEntity.class,
+            "com.ls.agent.core.quota.entity.QuotaReservationEntity", VersionedEntity.class,
             "com.ls.agent.core.quota.entity.TokenUsageLogEntity", CreatedEntity.class
     );
 
@@ -27,6 +30,8 @@ class Stage2PersistenceStructureTest {
     };
 
     private static final String[] QUOTA_MAPPER_NAMES = {
+            "com.ls.agent.core.quota.mapper.QuotaConfigMapper",
+            "com.ls.agent.core.quota.mapper.QuotaReservationMapper",
             "com.ls.agent.core.quota.mapper.TokenUsageLogMapper"
     };
 
@@ -45,6 +50,22 @@ class Stage2PersistenceStructureTest {
                 "idx_trace_roots_tenant_started",
                 "idx_trace_spans_trace_started",
                 "idx_token_usage_trace"
+        );
+    }
+
+    @Test
+    void quotaMigrationCreatesConfigAndReservationTables() throws IOException {
+        String sql = readMigration("db/migration/V007__init_quota_reservation.sql");
+
+        assertThat(sql).contains(
+                "create table quota_configs",
+                "create table quota_reservations",
+                "unique (tenant_id, subject_type, subject_id)",
+                "trace_id varchar(64) not null unique",
+                "version int not null default 0",
+                "idx_quota_configs_subject",
+                "idx_quota_reservations_trace",
+                "idx_quota_reservations_status"
         );
     }
 

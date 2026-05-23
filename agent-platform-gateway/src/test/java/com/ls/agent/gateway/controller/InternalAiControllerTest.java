@@ -10,15 +10,22 @@ import com.ls.agent.core.identity.api.ApiKeyService;
 import com.ls.agent.core.identity.dto.ApiKeyAuthResult;
 import com.ls.agent.core.model.api.ModelInvokeService;
 import com.ls.agent.core.model.dto.ModelUsageDTO;
+import com.ls.agent.core.quota.api.QuotaService;
+import com.ls.agent.core.quota.command.CommitQuotaReservationCommand;
+import com.ls.agent.core.quota.command.ReleaseQuotaReservationCommand;
+import com.ls.agent.core.quota.command.ReserveQuotaCommand;
+import com.ls.agent.core.quota.dto.QuotaReservationDTO;
 import com.ls.agent.core.trace.api.TraceService;
 import com.ls.agent.core.trace.command.FinishTraceRootCommand;
 import com.ls.agent.core.trace.command.StartTraceRootCommand;
 import com.ls.agent.gateway.dto.GatewayChatRequest;
+import com.ls.agent.gateway.filter.QuotaFilter;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -27,6 +34,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -40,6 +48,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         controllers = InternalAiController.class,
         properties = "gateway.internal-token=dev-internal-token"
 )
+@Import(QuotaFilter.class)
 class InternalAiControllerTest {
 
     @Autowired
@@ -59,6 +68,9 @@ class InternalAiControllerTest {
 
     @MockBean
     private TraceService traceService;
+
+    @MockBean
+    private QuotaService quotaService;
 
     @Test
     void streamTestRequiresInternalToken() throws Exception {
@@ -84,6 +96,7 @@ class InternalAiControllerTest {
 
     @Test
     void internalChatStreamCallsAgentRuntime() throws Exception {
+        when(quotaService.reserve(any(ReserveQuotaCommand.class))).thenReturn(reservation());
         when(agentRuntimeService.run(any(AgentRunCommand.class))).thenReturn(agentResult());
 
         var result = mockMvc.perform(post("/internal/ai/chat/stream")
@@ -119,10 +132,17 @@ class InternalAiControllerTest {
         assertThat(finishCaptor.getValue().traceId()).isEqualTo(startCaptor.getValue().traceId());
         assertThat(finishCaptor.getValue().conversationId()).isEqualTo(90001L);
         assertThat(finishCaptor.getValue().status()).isEqualTo("SUCCESS");
+
+        verify(quotaService).reserve(any(ReserveQuotaCommand.class));
+        ArgumentCaptor<CommitQuotaReservationCommand> commitCaptor =
+                ArgumentCaptor.forClass(CommitQuotaReservationCommand.class);
+        verify(quotaService).commit(commitCaptor.capture());
+        assertThat(commitCaptor.getValue().actualTokens()).isEqualTo(3L);
     }
 
     @Test
     void internalChatStreamDefaultsToAgentMode() throws Exception {
+        when(quotaService.reserve(any(ReserveQuotaCommand.class))).thenReturn(reservation());
         when(agentRuntimeService.run(any(AgentRunCommand.class))).thenReturn(agentResult());
 
         GatewayChatRequest request = new GatewayChatRequest(
@@ -160,6 +180,7 @@ class InternalAiControllerTest {
 
     @Test
     void internalChatStreamConvertsRuntimeFailureToSseErrorEvent() throws Exception {
+        when(quotaService.reserve(any(ReserveQuotaCommand.class))).thenReturn(reservation());
         doThrow(new BizException(ErrorCode.REQUEST_INVALID, "Agent failed"))
                 .when(agentRuntimeService).run(any(AgentRunCommand.class));
 
@@ -182,11 +203,13 @@ class InternalAiControllerTest {
         verify(traceService).finishRoot(finishCaptor.capture());
         assertThat(finishCaptor.getValue().status()).isEqualTo("FAILED");
         assertThat(finishCaptor.getValue().errorMessage()).contains("Agent failed");
+        verify(quotaService).release(any(ReleaseQuotaReservationCommand.class));
     }
 
     @Test
     void apiChatStreamAuthenticatesApiKeyAndCallsAgentRuntime() throws Exception {
         when(apiKeyService.authenticate("sk-valid")).thenReturn(new ApiKeyAuthResult(1L, 20001L, 10001L));
+        when(quotaService.reserve(any(ReserveQuotaCommand.class))).thenReturn(reservation());
         when(agentRuntimeService.run(any(AgentRunCommand.class))).thenReturn(agentResult());
 
         var result = mockMvc.perform(post("/api/ai/chat/stream")
@@ -213,6 +236,7 @@ class InternalAiControllerTest {
 
     @Test
     void traceServiceFailureDoesNotBreakSse() throws Exception {
+        when(quotaService.reserve(any(ReserveQuotaCommand.class))).thenReturn(reservation());
         doThrow(new IllegalStateException("trace down"))
                 .when(traceService).startRoot(any(StartTraceRootCommand.class));
         doThrow(new IllegalStateException("trace down"))
@@ -232,6 +256,21 @@ class InternalAiControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("event: message")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("event: done")));
+    }
+
+    @Test
+    void quotaExceededReturns429AndDoesNotCallAgentRuntime() throws Exception {
+        doThrow(new BizException(ErrorCode.QUOTA_EXCEEDED, "Token quota exceeded"))
+                .when(quotaService).reserve(any(ReserveQuotaCommand.class));
+
+        mockMvc.perform(post("/internal/ai/chat/stream")
+                        .header("X-Internal-Token", "dev-internal-token")
+                        .accept(MediaType.TEXT_EVENT_STREAM)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(internalRequest())))
+                .andExpect(status().isTooManyRequests());
+
+        verify(agentRuntimeService, never()).run(any(AgentRunCommand.class));
     }
 
     private GatewayChatRequest internalRequest() {
@@ -277,6 +316,19 @@ class InternalAiControllerTest {
                 90001L,
                 "assistant says hello",
                 new ModelUsageDTO(1, 2, 3, true)
+        );
+    }
+
+    private QuotaReservationDTO reservation() {
+        return new QuotaReservationDTO(
+                "tr_1",
+                1L,
+                20001L,
+                10001L,
+                1000L,
+                null,
+                "RESERVED",
+                0
         );
     }
 }

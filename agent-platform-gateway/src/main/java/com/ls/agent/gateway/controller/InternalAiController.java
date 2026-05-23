@@ -17,6 +17,7 @@ import com.ls.agent.core.trace.command.FinishTraceRootCommand;
 import com.ls.agent.core.trace.command.StartTraceRootCommand;
 import com.ls.agent.gateway.dto.GatewayChatRequest;
 import com.ls.agent.gateway.dto.SseEventPayload;
+import com.ls.agent.gateway.filter.QuotaFilter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -44,6 +45,7 @@ public class InternalAiController {
     private final ModelInvokeService modelInvokeService;
     private final ApiKeyService apiKeyService;
     private final TraceService traceService;
+    private final QuotaFilter quotaFilter;
     private final ObjectMapper objectMapper;
     private final String internalToken;
 
@@ -52,6 +54,7 @@ public class InternalAiController {
             ModelInvokeService modelInvokeService,
             ApiKeyService apiKeyService,
             TraceService traceService,
+            QuotaFilter quotaFilter,
             ObjectMapper objectMapper,
             @Value("${gateway.internal-token:dev-internal-token}") String internalToken
     ) {
@@ -59,6 +62,7 @@ public class InternalAiController {
         this.modelInvokeService = modelInvokeService;
         this.apiKeyService = apiKeyService;
         this.traceService = traceService;
+        this.quotaFilter = quotaFilter;
         this.objectMapper = objectMapper;
         this.internalToken = internalToken;
     }
@@ -104,6 +108,7 @@ public class InternalAiController {
             String apiKeyPrefix
     ) {
         String traceId = newTraceId();
+        quotaFilter.reserve(traceId, tenantId, applicationId, userId);
         return sse(output -> {
             startTraceRoot(traceId, request, tenantId, applicationId, userId, entrypoint, apiKeyPrefix);
             Long conversationId = null;
@@ -118,6 +123,7 @@ public class InternalAiController {
                     ));
                     writeEvent(output, "message", payload("message", traceId, null, 2, result.assistantMessage(), Map.of()));
                     writeEvent(output, "done", payload("done", traceId, null, 3, null, Map.of("modelConfigId", result.modelConfigId())));
+                    quotaFilter.commit(traceId, totalTokens(result.usage()));
                     finishTraceRoot(traceId, null, "SUCCESS", null, null);
                     return;
                 }
@@ -139,8 +145,10 @@ public class InternalAiController {
                 conversationId = result.conversationId();
                 writeEvent(output, "message", payload("message", traceId, result.conversationId(), 2, result.assistantMessage(), Map.of()));
                 writeEvent(output, "done", payload("done", traceId, result.conversationId(), 3, null, Map.of()));
+                quotaFilter.commit(traceId, totalTokens(result.usage()));
                 finishTraceRoot(traceId, conversationId, "SUCCESS", null, null);
             } catch (Exception ex) {
+                quotaFilter.release(traceId);
                 finishTraceRoot(traceId, conversationId, "FAILED", errorCode(ex), errorMessage(ex));
                 throw ex;
             }
@@ -240,6 +248,10 @@ public class InternalAiController {
 
     private String newTraceId() {
         return "tr_" + UUID.randomUUID().toString().replace("-", "");
+    }
+
+    private Long totalTokens(com.ls.agent.core.model.dto.ModelUsageDTO usage) {
+        return usage == null ? 0L : (long) usage.totalTokens();
     }
 
     private SseEventPayload payload(String type, String traceId, Long conversationId, int step, String content, Map<String, Object> metadata) {
