@@ -1,5 +1,4 @@
-package com.ls.agent.core.trace.command;
-
+package com.ls.agent.core.quota.command;
 import java.time.LocalDateTime;
 
 public record QueryTokenUsageSummaryCommand(

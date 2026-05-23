@@ -14,7 +14,7 @@ import com.ls.agent.core.memory.api.MemoryWriteService;
 import com.ls.agent.core.profile.api.ProfileService;
 import com.ls.agent.core.skill.api.SkillQueryService;
 import com.ls.agent.core.skill.api.SkillRegistry;
-import com.ls.agent.core.trace.api.TokenUsageService;
+import com.ls.agent.core.quota.api.TokenUsageService;
 import com.ls.agent.core.trace.api.TraceService;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;

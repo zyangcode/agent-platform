@@ -2,12 +2,12 @@ package com.ls.agent.web.controller;
 
 import com.ls.agent.common.response.PageResult;
 import com.ls.agent.core.identity.dto.CurrentUserDTO;
-import com.ls.agent.core.trace.api.TokenUsageService;
-import com.ls.agent.core.trace.command.QueryTokenUsagePageCommand;
-import com.ls.agent.core.trace.command.QueryTokenUsageSummaryCommand;
-import com.ls.agent.core.trace.dto.TokenUsageDTO;
-import com.ls.agent.core.trace.dto.TokenUsageSummaryDTO;
-import com.ls.agent.core.trace.dto.TokenUsageTopModelDTO;
+import com.ls.agent.core.quota.api.TokenUsageService;
+import com.ls.agent.core.quota.command.QueryTokenUsagePageCommand;
+import com.ls.agent.core.quota.command.QueryTokenUsageSummaryCommand;
+import com.ls.agent.core.quota.dto.TokenUsageDTO;
+import com.ls.agent.core.quota.dto.TokenUsageSummaryDTO;
+import com.ls.agent.core.quota.dto.TokenUsageTopModelDTO;
 import com.ls.agent.web.security.JwtTokenService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;

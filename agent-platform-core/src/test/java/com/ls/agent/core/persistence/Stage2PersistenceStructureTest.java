@@ -14,14 +14,20 @@ class Stage2PersistenceStructureTest {
 
     private static final Map<String, Class<?>> TRACE_ENTITY_SUPER_TYPES = Map.of(
             "com.ls.agent.core.trace.entity.TraceRootEntity", BaseEntity.class,
-            "com.ls.agent.core.trace.entity.TraceSpanEntity", CreatedEntity.class,
-            "com.ls.agent.core.trace.entity.TokenUsageLogEntity", CreatedEntity.class
+            "com.ls.agent.core.trace.entity.TraceSpanEntity", CreatedEntity.class
+    );
+
+    private static final Map<String, Class<?>> QUOTA_ENTITY_SUPER_TYPES = Map.of(
+            "com.ls.agent.core.quota.entity.TokenUsageLogEntity", CreatedEntity.class
     );
 
     private static final String[] TRACE_MAPPER_NAMES = {
             "com.ls.agent.core.trace.mapper.TraceRootMapper",
-            "com.ls.agent.core.trace.mapper.TraceSpanMapper",
-            "com.ls.agent.core.trace.mapper.TokenUsageLogMapper"
+            "com.ls.agent.core.trace.mapper.TraceSpanMapper"
+    };
+
+    private static final String[] QUOTA_MAPPER_NAMES = {
+            "com.ls.agent.core.quota.mapper.TokenUsageLogMapper"
     };
 
     @Test
@@ -54,8 +60,28 @@ class Stage2PersistenceStructureTest {
     }
 
     @Test
+    void stage2QuotaEntitiesExistAndUseExpectedBaseClasses() throws ClassNotFoundException {
+        for (Map.Entry<String, Class<?>> entry : QUOTA_ENTITY_SUPER_TYPES.entrySet()) {
+            Class<?> entityClass = Class.forName(entry.getKey());
+
+            assertThat(entityClass.getSuperclass())
+                    .as(entry.getKey())
+                    .isEqualTo(entry.getValue());
+        }
+    }
+
+    @Test
     void stage2TraceMappersExist() throws ClassNotFoundException {
         for (String mapperName : TRACE_MAPPER_NAMES) {
+            assertThat(Class.forName(mapperName))
+                    .as(mapperName)
+                    .isInterface();
+        }
+    }
+
+    @Test
+    void stage2QuotaMappersExist() throws ClassNotFoundException {
+        for (String mapperName : QUOTA_MAPPER_NAMES) {
             assertThat(Class.forName(mapperName))
                     .as(mapperName)
                     .isInterface();

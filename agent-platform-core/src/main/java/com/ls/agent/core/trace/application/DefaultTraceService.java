@@ -7,6 +7,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ls.agent.common.error.BizException;
 import com.ls.agent.common.error.ErrorCode;
 import com.ls.agent.common.response.PageResult;
+import com.ls.agent.core.quota.api.TokenUsageService;
+import com.ls.agent.core.quota.dto.TokenUsageAggregateDTO;
+import com.ls.agent.core.quota.dto.TokenUsageDTO;
 import com.ls.agent.core.trace.api.TraceService;
 import com.ls.agent.core.trace.command.FinishTraceRootCommand;
 import com.ls.agent.core.trace.command.FinishTraceSpanCommand;
@@ -17,13 +20,10 @@ import com.ls.agent.core.trace.dto.TraceDetailDTO;
 import com.ls.agent.core.trace.dto.TraceRootDTO;
 import com.ls.agent.core.trace.dto.TraceSpanDTO;
 import com.ls.agent.core.trace.dto.TraceSummaryDTO;
-import com.ls.agent.core.trace.dto.TokenUsageDTO;
 import com.ls.agent.core.trace.entity.TraceRootEntity;
 import com.ls.agent.core.trace.entity.TraceSpanEntity;
-import com.ls.agent.core.trace.entity.TokenUsageLogEntity;
 import com.ls.agent.core.trace.mapper.TraceRootMapper;
 import com.ls.agent.core.trace.mapper.TraceSpanMapper;
-import com.ls.agent.core.trace.mapper.TokenUsageLogMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -33,7 +33,6 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 @Service
 public class DefaultTraceService implements TraceService {
@@ -45,29 +44,29 @@ public class DefaultTraceService implements TraceService {
 
     private final TraceRootMapper rootMapper;
     private final TraceSpanMapper spanMapper;
-    private final TokenUsageLogMapper tokenUsageMapper;
+    private final TokenUsageService tokenUsageService;
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
     public DefaultTraceService(
             TraceRootMapper rootMapper,
             TraceSpanMapper spanMapper,
-            TokenUsageLogMapper tokenUsageMapper,
+            TokenUsageService tokenUsageService,
             ObjectMapper objectMapper
     ) {
-        this(rootMapper, spanMapper, tokenUsageMapper, objectMapper, Clock.systemDefaultZone());
+        this(rootMapper, spanMapper, tokenUsageService, objectMapper, Clock.systemDefaultZone());
     }
 
     public DefaultTraceService(
             TraceRootMapper rootMapper,
             TraceSpanMapper spanMapper,
-            TokenUsageLogMapper tokenUsageMapper,
+            TokenUsageService tokenUsageService,
             ObjectMapper objectMapper,
             Clock clock
     ) {
         this.rootMapper = rootMapper;
         this.spanMapper = spanMapper;
-        this.tokenUsageMapper = tokenUsageMapper;
+        this.tokenUsageService = tokenUsageService;
         this.objectMapper = objectMapper;
         this.clock = clock;
     }
@@ -166,15 +165,7 @@ public class DefaultTraceService implements TraceService {
                 .stream()
                 .map(this::toSpanDTO)
                 .toList();
-        List<TokenUsageDTO> tokenUsages = tokenUsageMapper.selectList(new LambdaQueryWrapper<TokenUsageLogEntity>()
-                        .eq(TokenUsageLogEntity::getTenantId, tenantId)
-                        .eq(TokenUsageLogEntity::getUserId, userId)
-                        .eq(TokenUsageLogEntity::getTraceId, traceId)
-                        .orderByAsc(TokenUsageLogEntity::getCreatedAt)
-                        .orderByAsc(TokenUsageLogEntity::getId))
-                .stream()
-                .map(this::toTokenUsageDTO)
-                .toList();
+        List<TokenUsageDTO> tokenUsages = tokenUsageService.listByTrace(tenantId, userId, traceId);
         return toTraceDetailDTO(root, spans, tokenUsages);
     }
 
@@ -196,7 +187,12 @@ public class DefaultTraceService implements TraceService {
                 .orderByDesc(TraceRootEntity::getId);
         Page<TraceRootEntity> page = rootMapper.selectPage(Page.of(pageNo, pageSize), wrapper);
         List<TraceRootEntity> roots = page.getRecords();
-        Map<String, TokenAggregate> tokenAggregates = tokenAggregates(tenantId, userId, roots, command.modelConfigId());
+        Map<String, TokenUsageAggregateDTO> tokenAggregates = tokenUsageService.aggregateByTraceIds(
+                tenantId,
+                userId,
+                roots.stream().map(TraceRootEntity::getTraceId).toList(),
+                command.modelConfigId()
+        );
         List<TraceSummaryDTO> records = roots.stream()
                 .map(root -> toTraceSummaryDTO(root, tokenAggregates.get(root.getTraceId())))
                 .toList();
@@ -285,28 +281,7 @@ public class DefaultTraceService implements TraceService {
         );
     }
 
-    private TokenUsageDTO toTokenUsageDTO(TokenUsageLogEntity entity) {
-        return new TokenUsageDTO(
-                entity.getId(),
-                entity.getTraceId(),
-                entity.getSpanId(),
-                entity.getTenantId(),
-                entity.getApplicationId(),
-                entity.getUserId(),
-                entity.getProfileId(),
-                entity.getModelConfigId(),
-                entity.getProviderId(),
-                entity.getModelName(),
-                entity.getProviderType(),
-                entity.getPromptTokens(),
-                entity.getCompletionTokens(),
-                entity.getTotalTokens(),
-                entity.getEstimated(),
-                entity.getCreatedAt()
-        );
-    }
-
-    private TraceSummaryDTO toTraceSummaryDTO(TraceRootEntity root, TokenAggregate tokenAggregate) {
+    private TraceSummaryDTO toTraceSummaryDTO(TraceRootEntity root, TokenUsageAggregateDTO tokenAggregate) {
         return new TraceSummaryDTO(
                 root.getTraceId(),
                 root.getApplicationId(),
@@ -318,45 +293,10 @@ public class DefaultTraceService implements TraceService {
                 root.getStatus(),
                 root.getLatencyMs(),
                 tokenAggregate == null ? 0 : tokenAggregate.totalTokens(),
-                tokenAggregate != null && tokenAggregate.estimated(),
+                tokenAggregate != null && Boolean.TRUE.equals(tokenAggregate.estimated()),
                 root.getStartedAt(),
                 root.getEndedAt()
         );
-    }
-
-    private Map<String, TokenAggregate> tokenAggregates(
-            Long tenantId,
-            Long userId,
-            List<TraceRootEntity> roots,
-            Long modelConfigId
-    ) {
-        List<String> traceIds = roots.stream()
-                .map(TraceRootEntity::getTraceId)
-                .toList();
-        if (traceIds.isEmpty()) {
-            return Map.of();
-        }
-        return tokenUsageMapper.selectList(new LambdaQueryWrapper<TokenUsageLogEntity>()
-                        .eq(TokenUsageLogEntity::getTenantId, tenantId)
-                        .eq(TokenUsageLogEntity::getUserId, userId)
-                        .in(TokenUsageLogEntity::getTraceId, traceIds)
-                        .eq(modelConfigId != null, TokenUsageLogEntity::getModelConfigId, modelConfigId))
-                .stream()
-                .collect(Collectors.groupingBy(
-                        TokenUsageLogEntity::getTraceId,
-                        Collectors.collectingAndThen(Collectors.toList(), this::aggregateTokenUsage)
-                ));
-    }
-
-    private TokenAggregate aggregateTokenUsage(List<TokenUsageLogEntity> usages) {
-        int totalTokens = usages.stream()
-                .map(TokenUsageLogEntity::getTotalTokens)
-                .filter(value -> value != null)
-                .mapToInt(Integer::intValue)
-                .sum();
-        boolean estimated = usages.stream()
-                .anyMatch(usage -> Boolean.TRUE.equals(usage.getEstimated()));
-        return new TokenAggregate(totalTokens, estimated);
     }
 
     private int normalizePageNo(Integer pageNo) {
@@ -368,8 +308,5 @@ public class DefaultTraceService implements TraceService {
             return DEFAULT_PAGE_SIZE;
         }
         return Math.min(pageSize, MAX_PAGE_SIZE);
-    }
-
-    private record TokenAggregate(int totalTokens, boolean estimated) {
     }
 }

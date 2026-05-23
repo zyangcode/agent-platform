@@ -1,16 +1,16 @@
-package com.ls.agent.core.trace;
+package com.ls.agent.core.quota;
 
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ls.agent.common.response.PageResult;
-import com.ls.agent.core.trace.command.QueryTokenUsagePageCommand;
-import com.ls.agent.core.trace.command.QueryTokenUsageSummaryCommand;
-import com.ls.agent.core.trace.application.DefaultTokenUsageService;
-import com.ls.agent.core.trace.command.RecordTokenUsageCommand;
-import com.ls.agent.core.trace.dto.TokenUsageDTO;
-import com.ls.agent.core.trace.dto.TokenUsageSummaryDTO;
-import com.ls.agent.core.trace.entity.TokenUsageLogEntity;
-import com.ls.agent.core.trace.mapper.TokenUsageLogMapper;
+import com.ls.agent.core.quota.command.QueryTokenUsagePageCommand;
+import com.ls.agent.core.quota.command.QueryTokenUsageSummaryCommand;
+import com.ls.agent.core.quota.application.DefaultTokenUsageService;
+import com.ls.agent.core.quota.command.RecordTokenUsageCommand;
+import com.ls.agent.core.quota.dto.TokenUsageDTO;
+import com.ls.agent.core.quota.dto.TokenUsageSummaryDTO;
+import com.ls.agent.core.quota.entity.TokenUsageLogEntity;
+import com.ls.agent.core.quota.mapper.TokenUsageLogMapper;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 

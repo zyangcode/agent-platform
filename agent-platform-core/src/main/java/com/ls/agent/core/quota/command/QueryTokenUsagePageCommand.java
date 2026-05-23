@@ -1,5 +1,4 @@
-package com.ls.agent.core.trace.command;
-
+package com.ls.agent.core.quota.command;
 public record QueryTokenUsagePageCommand(
         Long tenantId,
         Long userId,

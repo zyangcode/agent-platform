@@ -5,7 +5,7 @@ import com.ls.agent.common.response.PageResult;
 import com.ls.agent.core.identity.dto.CurrentUserDTO;
 import com.ls.agent.core.trace.api.TraceService;
 import com.ls.agent.core.trace.command.QueryTracePageCommand;
-import com.ls.agent.core.trace.dto.TokenUsageDTO;
+import com.ls.agent.core.quota.dto.TokenUsageDTO;
 import com.ls.agent.core.trace.dto.TraceDetailDTO;
 import com.ls.agent.core.trace.dto.TraceSpanDTO;
 import com.ls.agent.core.trace.dto.TraceSummaryDTO;

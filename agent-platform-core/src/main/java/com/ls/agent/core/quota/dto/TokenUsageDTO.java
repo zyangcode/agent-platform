@@ -1,5 +1,4 @@
-package com.ls.agent.core.trace.dto;
-
+package com.ls.agent.core.quota.dto;
 import java.time.LocalDateTime;
 
 public record TokenUsageDTO(

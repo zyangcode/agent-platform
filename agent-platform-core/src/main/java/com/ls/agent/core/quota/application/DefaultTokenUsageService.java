@@ -1,17 +1,18 @@
-package com.ls.agent.core.trace.application;
+package com.ls.agent.core.quota.application;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ls.agent.common.response.PageResult;
-import com.ls.agent.core.trace.api.TokenUsageService;
-import com.ls.agent.core.trace.command.QueryTokenUsagePageCommand;
-import com.ls.agent.core.trace.command.QueryTokenUsageSummaryCommand;
-import com.ls.agent.core.trace.command.RecordTokenUsageCommand;
-import com.ls.agent.core.trace.dto.TokenUsageDTO;
-import com.ls.agent.core.trace.dto.TokenUsageSummaryDTO;
-import com.ls.agent.core.trace.dto.TokenUsageTopModelDTO;
-import com.ls.agent.core.trace.entity.TokenUsageLogEntity;
-import com.ls.agent.core.trace.mapper.TokenUsageLogMapper;
+import com.ls.agent.core.quota.api.TokenUsageService;
+import com.ls.agent.core.quota.command.QueryTokenUsagePageCommand;
+import com.ls.agent.core.quota.command.QueryTokenUsageSummaryCommand;
+import com.ls.agent.core.quota.command.RecordTokenUsageCommand;
+import com.ls.agent.core.quota.dto.TokenUsageAggregateDTO;
+import com.ls.agent.core.quota.dto.TokenUsageDTO;
+import com.ls.agent.core.quota.dto.TokenUsageSummaryDTO;
+import com.ls.agent.core.quota.dto.TokenUsageTopModelDTO;
+import com.ls.agent.core.quota.entity.TokenUsageLogEntity;
+import com.ls.agent.core.quota.mapper.TokenUsageLogMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -19,6 +20,7 @@ import org.springframework.stereotype.Service;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Service
@@ -39,16 +41,16 @@ public class DefaultTokenUsageService implements TokenUsageService {
     @Override
     public void record(RecordTokenUsageCommand command) {
         TokenUsageLogEntity entity = new TokenUsageLogEntity();
-        entity.setTraceId(TraceValidation.requireText(command.traceId(), "traceId"));
+        entity.setTraceId(requireText(command.traceId(), "traceId"));
         entity.setSpanId(command.spanId());
-        entity.setTenantId(TraceValidation.requireNonNull(command.tenantId(), "tenantId"));
+        entity.setTenantId(requireNonNull(command.tenantId(), "tenantId"));
         entity.setApplicationId(command.applicationId());
         entity.setUserId(command.userId());
         entity.setProfileId(command.profileId());
-        entity.setModelConfigId(TraceValidation.requireNonNull(command.modelConfigId(), "modelConfigId"));
-        entity.setProviderId(TraceValidation.requireNonNull(command.providerId(), "providerId"));
-        entity.setModelName(TraceValidation.requireText(command.modelName(), "modelName"));
-        entity.setProviderType(TraceValidation.requireText(command.providerType(), "providerType"));
+        entity.setModelConfigId(requireNonNull(command.modelConfigId(), "modelConfigId"));
+        entity.setProviderId(requireNonNull(command.providerId(), "providerId"));
+        entity.setModelName(requireText(command.modelName(), "modelName"));
+        entity.setProviderType(requireText(command.providerType(), "providerType"));
         entity.setPromptTokens(defaultInt(command.promptTokens()));
         entity.setCompletionTokens(defaultInt(command.completionTokens()));
         entity.setTotalTokens(defaultInt(command.totalTokens()));
@@ -62,8 +64,8 @@ public class DefaultTokenUsageService implements TokenUsageService {
 
     @Override
     public PageResult<TokenUsageDTO> pageTokenUsages(QueryTokenUsagePageCommand command) {
-        Long tenantId = TraceValidation.requireNonNull(command.tenantId(), "tenantId");
-        Long userId = TraceValidation.requireNonNull(command.userId(), "userId");
+        Long tenantId = requireNonNull(command.tenantId(), "tenantId");
+        Long userId = requireNonNull(command.userId(), "userId");
         int pageNo = normalizePageNo(command.pageNo());
         int pageSize = normalizePageSize(command.pageSize());
 
@@ -82,8 +84,8 @@ public class DefaultTokenUsageService implements TokenUsageService {
 
     @Override
     public TokenUsageSummaryDTO summarizeTokenUsages(QueryTokenUsageSummaryCommand command) {
-        Long tenantId = TraceValidation.requireNonNull(command.tenantId(), "tenantId");
-        Long userId = TraceValidation.requireNonNull(command.userId(), "userId");
+        Long tenantId = requireNonNull(command.tenantId(), "tenantId");
+        Long userId = requireNonNull(command.userId(), "userId");
         List<TokenUsageLogEntity> usages = tokenUsageMapper.selectList(baseOwnedWrapper(tenantId, userId)
                 .eq(command.applicationId() != null, TokenUsageLogEntity::getApplicationId, command.applicationId())
                 .ge(command.startedFrom() != null, TokenUsageLogEntity::getCreatedAt, command.startedFrom())
@@ -103,6 +105,41 @@ public class DefaultTokenUsageService implements TokenUsageService {
                 usages.size() - estimatedCount,
                 topModels(usages)
         );
+    }
+
+    @Override
+    public List<TokenUsageDTO> listByTrace(Long tenantId, Long userId, String traceId) {
+        return tokenUsageMapper.selectList(baseOwnedWrapper(
+                        requireNonNull(tenantId, "tenantId"),
+                        requireNonNull(userId, "userId"))
+                        .eq(TokenUsageLogEntity::getTraceId, requireText(traceId, "traceId"))
+                        .orderByAsc(TokenUsageLogEntity::getCreatedAt)
+                        .orderByAsc(TokenUsageLogEntity::getId))
+                .stream()
+                .map(this::toDTO)
+                .toList();
+    }
+
+    @Override
+    public Map<String, TokenUsageAggregateDTO> aggregateByTraceIds(
+            Long tenantId,
+            Long userId,
+            List<String> traceIds,
+            Long modelConfigId
+    ) {
+        requireNonNull(tenantId, "tenantId");
+        requireNonNull(userId, "userId");
+        if (traceIds == null || traceIds.isEmpty()) {
+            return Map.of();
+        }
+        return tokenUsageMapper.selectList(baseOwnedWrapper(tenantId, userId)
+                        .in(TokenUsageLogEntity::getTraceId, traceIds)
+                        .eq(modelConfigId != null, TokenUsageLogEntity::getModelConfigId, modelConfigId))
+                .stream()
+                .collect(Collectors.groupingBy(
+                        TokenUsageLogEntity::getTraceId,
+                        Collectors.collectingAndThen(Collectors.toList(), this::aggregateTokenUsage)
+                ));
     }
 
     private LambdaQueryWrapper<TokenUsageLogEntity> baseOwnedWrapper(Long tenantId, Long userId) {
@@ -157,6 +194,16 @@ public class DefaultTokenUsageService implements TokenUsageService {
         );
     }
 
+    private TokenUsageAggregateDTO aggregateTokenUsage(List<TokenUsageLogEntity> usages) {
+        int totalTokens = usages.stream()
+                .map(TokenUsageLogEntity::getTotalTokens)
+                .mapToInt(this::defaultInt)
+                .sum();
+        boolean estimated = usages.stream()
+                .anyMatch(usage -> Boolean.TRUE.equals(usage.getEstimated()));
+        return new TokenUsageAggregateDTO(totalTokens, estimated);
+    }
+
     private ModelKey modelKey(TokenUsageLogEntity entity) {
         return new ModelKey(entity.getModelConfigId(), entity.getModelName(), entity.getProviderType());
     }
@@ -174,6 +221,17 @@ public class DefaultTokenUsageService implements TokenUsageService {
             return DEFAULT_PAGE_SIZE;
         }
         return Math.min(pageSize, MAX_PAGE_SIZE);
+    }
+
+    private String requireText(String value, String field) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(field + " is required");
+        }
+        return value.strip();
+    }
+
+    private <T> T requireNonNull(T value, String field) {
+        return Objects.requireNonNull(value, field + " is required");
     }
 
     private record ModelKey(Long modelConfigId, String modelName, String providerType) {

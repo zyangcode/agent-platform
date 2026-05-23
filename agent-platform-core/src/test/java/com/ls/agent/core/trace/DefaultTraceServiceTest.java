@@ -6,6 +6,9 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ls.agent.common.error.BizException;
 import com.ls.agent.common.response.PageResult;
+import com.ls.agent.core.quota.api.TokenUsageService;
+import com.ls.agent.core.quota.dto.TokenUsageAggregateDTO;
+import com.ls.agent.core.quota.dto.TokenUsageDTO;
 import com.ls.agent.core.trace.application.DefaultTraceService;
 import com.ls.agent.core.trace.command.FinishTraceRootCommand;
 import com.ls.agent.core.trace.command.FinishTraceSpanCommand;
@@ -16,10 +19,8 @@ import com.ls.agent.core.trace.dto.TraceDetailDTO;
 import com.ls.agent.core.trace.dto.TraceSummaryDTO;
 import com.ls.agent.core.trace.entity.TraceRootEntity;
 import com.ls.agent.core.trace.entity.TraceSpanEntity;
-import com.ls.agent.core.trace.entity.TokenUsageLogEntity;
 import com.ls.agent.core.trace.mapper.TraceRootMapper;
 import com.ls.agent.core.trace.mapper.TraceSpanMapper;
-import com.ls.agent.core.trace.mapper.TokenUsageLogMapper;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -28,6 +29,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -42,13 +44,13 @@ class DefaultTraceServiceTest {
 
     private final TraceRootMapper rootMapper = mock(TraceRootMapper.class);
     private final TraceSpanMapper spanMapper = mock(TraceSpanMapper.class);
-    private final TokenUsageLogMapper tokenUsageMapper = mock(TokenUsageLogMapper.class);
+    private final TokenUsageService tokenUsageService = mock(TokenUsageService.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final Clock clock = Clock.fixed(Instant.parse("2026-05-23T10:00:00Z"), ZoneOffset.UTC);
     private final DefaultTraceService service = new DefaultTraceService(
             rootMapper,
             spanMapper,
-            tokenUsageMapper,
+            tokenUsageService,
             objectMapper,
             clock
     );
@@ -150,7 +152,7 @@ class DefaultTraceServiceTest {
     void getTraceReturnsOwnedRootSpansAndTokenUsages() {
         when(rootMapper.selectOne(any())).thenReturn(traceRoot(1L, 10001L));
         when(spanMapper.selectList(any())).thenReturn(List.of(traceSpan(10L, "context.build")));
-        when(tokenUsageMapper.selectList(any())).thenReturn(List.of(tokenUsage(20L, 128)));
+        when(tokenUsageService.listByTrace(1L, 10001L, "tr_1")).thenReturn(List.of(tokenUsage(20L, 128)));
 
         TraceDetailDTO result = service.getTrace(1L, 10001L, "tr_1");
 
@@ -175,10 +177,8 @@ class DefaultTraceServiceTest {
         page.setTotal(1);
         page.setRecords(List.of(traceRoot(1L, 10001L)));
         when(rootMapper.selectPage(any(Page.class), any(Wrapper.class))).thenReturn(page);
-        when(tokenUsageMapper.selectList(any())).thenReturn(List.of(
-                tokenUsage(20L, 128),
-                tokenUsage(21L, 32)
-        ));
+        when(tokenUsageService.aggregateByTraceIds(1L, 10001L, List.of("tr_1"), null))
+                .thenReturn(Map.of("tr_1", new TokenUsageAggregateDTO(160, false)));
 
         PageResult<TraceSummaryDTO> result = service.pageTraces(new QueryTracePageCommand(
                 1L,
@@ -257,23 +257,24 @@ class DefaultTraceServiceTest {
         return span;
     }
 
-    private TokenUsageLogEntity tokenUsage(Long id, int totalTokens) {
-        TokenUsageLogEntity usage = new TokenUsageLogEntity();
-        usage.setId(id);
-        usage.setTraceId("tr_1");
-        usage.setSpanId(10L);
-        usage.setTenantId(1L);
-        usage.setApplicationId(20001L);
-        usage.setUserId(10001L);
-        usage.setProfileId(50001L);
-        usage.setModelConfigId(30001L);
-        usage.setProviderId(40001L);
-        usage.setModelName("mock-chat");
-        usage.setProviderType("mock");
-        usage.setPromptTokens(totalTokens / 2);
-        usage.setCompletionTokens(totalTokens / 2);
-        usage.setTotalTokens(totalTokens);
-        usage.setEstimated(false);
-        return usage;
+    private TokenUsageDTO tokenUsage(Long id, int totalTokens) {
+        return new TokenUsageDTO(
+                id,
+                "tr_1",
+                10L,
+                1L,
+                20001L,
+                10001L,
+                50001L,
+                30001L,
+                40001L,
+                "mock-chat",
+                "mock",
+                totalTokens / 2,
+                totalTokens / 2,
+                totalTokens,
+                false,
+                null
+        );
     }
 }

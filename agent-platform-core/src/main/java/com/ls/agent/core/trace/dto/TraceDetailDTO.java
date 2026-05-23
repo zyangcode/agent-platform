@@ -1,6 +1,7 @@
 package com.ls.agent.core.trace.dto;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.ls.agent.core.quota.dto.TokenUsageDTO;
 
 import java.time.LocalDateTime;
 import java.util.List;
