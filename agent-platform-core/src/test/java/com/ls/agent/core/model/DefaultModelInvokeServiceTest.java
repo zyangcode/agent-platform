@@ -9,6 +9,10 @@ import com.ls.agent.core.model.entity.ModelConfigEntity;
 import com.ls.agent.core.model.entity.ModelProviderEntity;
 import com.ls.agent.core.model.mapper.ModelConfigMapper;
 import com.ls.agent.core.model.mapper.ModelProviderMapper;
+import com.ls.agent.core.model.provider.ModelProvider;
+import com.ls.agent.core.model.provider.ModelProviderRegistry;
+import com.ls.agent.core.model.provider.ProviderRequest;
+import com.ls.agent.core.model.provider.ProviderResponse;
 import com.ls.agent.core.support.security.SecretEncryptor;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -24,6 +28,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -53,7 +58,13 @@ class DefaultModelInvokeServiceTest {
         ));
 
         assertThat(result.assistantMessage()).contains("mock-chat");
+        assertThat(result.providerId()).isEqualTo(1L);
+        assertThat(result.providerType()).isEqualTo("OPENAI_COMPATIBLE");
+        assertThat(result.modelName()).isEqualTo("mock-chat");
         assertThat(result.usage().estimated()).isTrue();
+        assertThat(result.usage().promptTokens()).isGreaterThan(0);
+        assertThat(result.usage().completionTokens()).isGreaterThan(0);
+        assertThat(result.usage().totalTokens()).isGreaterThan(0);
         assertThat(result.modelConfigId()).isEqualTo(1L);
     }
 
@@ -99,6 +110,9 @@ class DefaultModelInvokeServiceTest {
             ));
 
             assertThat(result.assistantMessage()).isEqualTo("real model response");
+            assertThat(result.providerId()).isEqualTo(2L);
+            assertThat(result.providerType()).isEqualTo("OPENAI_COMPATIBLE");
+            assertThat(result.modelName()).isEqualTo("deepseek-chat");
             assertThat(result.usage().promptTokens()).isEqualTo(11);
             assertThat(result.usage().completionTokens()).isEqualTo(7);
             assertThat(result.usage().totalTokens()).isEqualTo(18);
@@ -115,6 +129,61 @@ class DefaultModelInvokeServiceTest {
             server.stop(0);
             executor.shutdownNow();
         }
+    }
+
+    @Test
+    void invokeDelegatesToProviderRegistry() {
+        ModelProvider customProvider = new ModelProvider() {
+            @Override
+            public boolean supports(ModelConfigEntity config, ModelProviderEntity provider) {
+                return "CUSTOM".equals(provider.getProviderType());
+            }
+
+            @Override
+            public ProviderResponse invoke(ProviderRequest request) {
+                return new ProviderResponse(
+                        "custom provider response",
+                        new com.ls.agent.core.model.dto.ModelUsageDTO(3, 5, 8, false)
+                );
+            }
+        };
+        DefaultModelInvokeService serviceWithRegistry = new DefaultModelInvokeService(
+                configMapper,
+                providerMapper,
+                new ModelProviderRegistry(List.of(customProvider))
+        );
+        when(configMapper.selectById(3L)).thenReturn(customConfig());
+        when(providerMapper.selectById(3L)).thenReturn(customProviderEntity());
+
+        ModelInvokeResult result = serviceWithRegistry.invoke(new ModelInvokeCommand(
+                3L,
+                List.of(new ModelMessage("user", "hello custom")),
+                BigDecimal.valueOf(0.5),
+                false
+        ));
+
+        assertThat(result.assistantMessage()).isEqualTo("custom provider response");
+        assertThat(result.providerId()).isEqualTo(3L);
+        assertThat(result.providerType()).isEqualTo("CUSTOM");
+        assertThat(result.usage().totalTokens()).isEqualTo(8);
+    }
+
+    @Test
+    void unknownProviderTypeReturnsBizException() {
+        DefaultModelInvokeService serviceWithRegistry = new DefaultModelInvokeService(
+                configMapper,
+                providerMapper,
+                new ModelProviderRegistry(List.of())
+        );
+        when(configMapper.selectById(3L)).thenReturn(customConfig());
+        when(providerMapper.selectById(3L)).thenReturn(customProviderEntity());
+
+        assertThatThrownBy(() -> serviceWithRegistry.invoke(new ModelInvokeCommand(
+                3L,
+                List.of(new ModelMessage("user", "hello custom")),
+                BigDecimal.valueOf(0.5),
+                false
+        ))).isInstanceOf(com.ls.agent.common.error.BizException.class);
     }
 
     private ModelConfigEntity mockConfig() {
@@ -143,6 +212,19 @@ class DefaultModelInvokeServiceTest {
         return config;
     }
 
+    private ModelConfigEntity customConfig() {
+        ModelConfigEntity config = new ModelConfigEntity();
+        config.setId(3L);
+        config.setProviderId(3L);
+        config.setModelName("custom-chat");
+        config.setDisplayName("Custom Chat");
+        config.setCapabilities(objectMapper.createObjectNode().put("text", true));
+        config.setDefaultTemperature(BigDecimal.valueOf(0.7));
+        config.setMaxContextTokens(8192);
+        config.setStatus("ACTIVE");
+        return config;
+    }
+
     private static ModelProviderEntity mockProvider() {
         ModelProviderEntity provider = new ModelProviderEntity();
         provider.setId(1L);
@@ -160,6 +242,16 @@ class DefaultModelInvokeServiceTest {
         provider.setName("OpenAI Compatible Test Provider");
         provider.setBaseUrl("http://localhost:" + port + "/v1");
         provider.setApiKeyEncrypted("encrypted-key");
+        provider.setStatus("ACTIVE");
+        return provider;
+    }
+
+    private static ModelProviderEntity customProviderEntity() {
+        ModelProviderEntity provider = new ModelProviderEntity();
+        provider.setId(3L);
+        provider.setProviderType("CUSTOM");
+        provider.setName("Custom Test Provider");
+        provider.setBaseUrl("http://localhost/custom");
         provider.setStatus("ACTIVE");
         return provider;
     }

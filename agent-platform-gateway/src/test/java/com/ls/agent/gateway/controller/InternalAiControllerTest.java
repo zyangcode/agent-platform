@@ -10,6 +10,9 @@ import com.ls.agent.core.identity.api.ApiKeyService;
 import com.ls.agent.core.identity.dto.ApiKeyAuthResult;
 import com.ls.agent.core.model.api.ModelInvokeService;
 import com.ls.agent.core.model.dto.ModelUsageDTO;
+import com.ls.agent.core.trace.api.TraceService;
+import com.ls.agent.core.trace.command.FinishTraceRootCommand;
+import com.ls.agent.core.trace.command.StartTraceRootCommand;
 import com.ls.agent.gateway.dto.GatewayChatRequest;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -53,6 +56,9 @@ class InternalAiControllerTest {
 
     @MockBean
     private ApiKeyService apiKeyService;
+
+    @MockBean
+    private TraceService traceService;
 
     @Test
     void streamTestRequiresInternalToken() throws Exception {
@@ -101,6 +107,18 @@ class InternalAiControllerTest {
         assertThat(captor.getValue().userId()).isEqualTo(10001L);
         assertThat(captor.getValue().profileId()).isEqualTo(50001L);
         assertThat(captor.getValue().selectedSkillIds()).containsExactly(60001L);
+
+        ArgumentCaptor<StartTraceRootCommand> startCaptor = ArgumentCaptor.forClass(StartTraceRootCommand.class);
+        verify(traceService).startRoot(startCaptor.capture());
+        assertThat(startCaptor.getValue().tenantId()).isEqualTo(1L);
+        assertThat(startCaptor.getValue().entrypoint()).isEqualTo("INTERNAL_WEB");
+        assertThat(startCaptor.getValue().agentMode()).isEqualTo("agent");
+
+        ArgumentCaptor<FinishTraceRootCommand> finishCaptor = ArgumentCaptor.forClass(FinishTraceRootCommand.class);
+        verify(traceService).finishRoot(finishCaptor.capture());
+        assertThat(finishCaptor.getValue().traceId()).isEqualTo(startCaptor.getValue().traceId());
+        assertThat(finishCaptor.getValue().conversationId()).isEqualTo(90001L);
+        assertThat(finishCaptor.getValue().status()).isEqualTo("SUCCESS");
     }
 
     @Test
@@ -159,6 +177,11 @@ class InternalAiControllerTest {
                 .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("event: error")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Agent failed")));
+
+        ArgumentCaptor<FinishTraceRootCommand> finishCaptor = ArgumentCaptor.forClass(FinishTraceRootCommand.class);
+        verify(traceService).finishRoot(finishCaptor.capture());
+        assertThat(finishCaptor.getValue().status()).isEqualTo("FAILED");
+        assertThat(finishCaptor.getValue().errorMessage()).contains("Agent failed");
     }
 
     @Test
@@ -181,6 +204,34 @@ class InternalAiControllerTest {
 
         verify(apiKeyService).authenticate("sk-valid");
         verify(agentRuntimeService).run(any(AgentRunCommand.class));
+
+        ArgumentCaptor<StartTraceRootCommand> startCaptor = ArgumentCaptor.forClass(StartTraceRootCommand.class);
+        verify(traceService).startRoot(startCaptor.capture());
+        assertThat(startCaptor.getValue().tenantId()).isEqualTo(1L);
+        assertThat(startCaptor.getValue().entrypoint()).isEqualTo("API_KEY");
+    }
+
+    @Test
+    void traceServiceFailureDoesNotBreakSse() throws Exception {
+        doThrow(new IllegalStateException("trace down"))
+                .when(traceService).startRoot(any(StartTraceRootCommand.class));
+        doThrow(new IllegalStateException("trace down"))
+                .when(traceService).finishRoot(any(FinishTraceRootCommand.class));
+        when(agentRuntimeService.run(any(AgentRunCommand.class))).thenReturn(agentResult());
+
+        var result = mockMvc.perform(post("/internal/ai/chat/stream")
+                        .header("X-Internal-Token", "dev-internal-token")
+                        .accept(MediaType.TEXT_EVENT_STREAM)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(internalRequest())))
+                .andExpect(status().isOk())
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        mockMvc.perform(asyncDispatch(result))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("event: message")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("event: done")));
     }
 
     private GatewayChatRequest internalRequest() {

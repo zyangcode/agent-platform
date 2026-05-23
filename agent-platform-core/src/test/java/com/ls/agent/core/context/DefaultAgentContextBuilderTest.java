@@ -23,6 +23,8 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -49,7 +51,7 @@ class DefaultAgentContextBuilderTest {
         when(profileService.getProfile(1L, 10001L, 50001L)).thenReturn(profile());
         when(skillRegistry.listAvailableSkills(1L, List.of(1L))).thenReturn(List.of(skill()));
         when(mcpToolRegistry.listAvailableTools(1L, List.of(1L))).thenReturn(List.of(mcpTool()));
-        when(messageHistoryService.listRecentMessages(1L, 20001L, 10001L, 50001L, 90001L, 20)).thenReturn(List.of(
+        when(messageHistoryService.listRecentMessages(eq(1L), eq(20001L), eq(10001L), eq(50001L), eq(90001L), anyInt())).thenReturn(List.of(
                 message("user", "My name is Ada.", 4),
                 message("assistant", "Nice to meet you.", 5)
         ));

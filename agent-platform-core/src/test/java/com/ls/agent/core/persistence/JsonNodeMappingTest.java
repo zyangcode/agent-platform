@@ -8,13 +8,14 @@ import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class JsonNodeMappingTest {
 
-    private static final List<Class<?>> JSON_NODE_ENTITIES = List.of(
+    private static final List<Class<?>> JSON_NODE_ENTITIES = Arrays.asList(
             com.ls.agent.core.agent.entity.ConversationEntity.class,
             com.ls.agent.core.agent.entity.ConversationMessageEntity.class,
             com.ls.agent.core.model.entity.ModelConfigEntity.class,
@@ -24,7 +25,9 @@ class JsonNodeMappingTest {
             com.ls.agent.core.skill.entity.SkillEntity.class,
             com.ls.agent.core.skill.entity.SkillVersionEntity.class,
             com.ls.agent.core.mcp.entity.McpServerEntity.class,
-            com.ls.agent.core.mcp.entity.McpToolEntity.class
+            com.ls.agent.core.mcp.entity.McpToolEntity.class,
+            com.ls.agent.core.trace.entity.TraceRootEntity.class,
+            com.ls.agent.core.trace.entity.TraceSpanEntity.class
     );
 
     @Test

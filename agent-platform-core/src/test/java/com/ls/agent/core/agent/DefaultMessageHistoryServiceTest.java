@@ -1,13 +1,11 @@
 package com.ls.agent.core.agent;
 
-import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.ls.agent.common.error.BizException;
+import com.ls.agent.core.agent.api.ConversationRepository;
 import com.ls.agent.core.agent.application.DefaultMessageHistoryService;
 import com.ls.agent.core.agent.dto.ConversationMessageDTO;
 import com.ls.agent.core.agent.entity.ConversationEntity;
 import com.ls.agent.core.agent.entity.ConversationMessageEntity;
-import com.ls.agent.core.agent.mapper.ConversationMapper;
-import com.ls.agent.core.agent.mapper.ConversationMessageMapper;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
@@ -16,19 +14,19 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class DefaultMessageHistoryServiceTest {
 
-    private final ConversationMapper conversationMapper = mock(ConversationMapper.class);
-    private final ConversationMessageMapper messageMapper = mock(ConversationMessageMapper.class);
-    private final DefaultMessageHistoryService service = new DefaultMessageHistoryService(conversationMapper, messageMapper);
+    private final ConversationRepository conversationRepository = mock(ConversationRepository.class);
+    private final DefaultMessageHistoryService service = new DefaultMessageHistoryService(conversationRepository);
 
     @Test
     void listRecentMessagesReturnsMessagesInChronologicalOrderWithIdFallback() {
-        when(conversationMapper.selectById(90001L)).thenReturn(conversation());
-        when(messageMapper.selectList(any(Wrapper.class))).thenReturn(List.of(
+        when(conversationRepository.findConversationById(90001L)).thenReturn(conversation());
+        when(conversationRepository.listRecentMessages(any(), anyInt())).thenReturn(List.of(
                 message(2L, null, "assistant", "second"),
                 message(1L, null, "user", "first"),
                 message(3L, LocalDateTime.of(2026, 5, 21, 20, 0), "assistant", "third")
@@ -43,7 +41,7 @@ class DefaultMessageHistoryServiceTest {
     void listRecentMessagesRejectsConversationOutsideCurrentScope() {
         ConversationEntity conversation = conversation();
         conversation.setUserId(99999L);
-        when(conversationMapper.selectById(90001L)).thenReturn(conversation);
+        when(conversationRepository.findConversationById(90001L)).thenReturn(conversation);
 
         assertThatThrownBy(() -> service.listRecentMessages(1L, 20001L, 10001L, 50001L, 90001L, 20))
                 .isInstanceOf(BizException.class);

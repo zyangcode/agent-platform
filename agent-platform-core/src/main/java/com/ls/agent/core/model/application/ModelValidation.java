@@ -3,19 +3,19 @@ package com.ls.agent.core.model.application;
 import com.ls.agent.common.error.BizException;
 import com.ls.agent.common.error.ErrorCode;
 
-final class ModelValidation {
+public final class ModelValidation {
 
     private ModelValidation() {
     }
 
-    static String normalizeRequired(String value, String fieldName) {
+    public static String normalizeRequired(String value, String fieldName) {
         if (value == null || value.isBlank()) {
             throw new BizException(ErrorCode.REQUEST_INVALID, fieldName + " must not be blank");
         }
         return value.trim();
     }
 
-    static <T> T requireNonNull(T value, String fieldName) {
+    public static <T> T requireNonNull(T value, String fieldName) {
         if (value == null) {
             throw new BizException(ErrorCode.REQUEST_INVALID, fieldName + " must not be null");
         }

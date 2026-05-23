@@ -12,6 +12,9 @@ import com.ls.agent.core.identity.dto.ApiKeyAuthResult;
 import com.ls.agent.core.model.api.ModelInvokeService;
 import com.ls.agent.core.model.command.ModelInvokeCommand;
 import com.ls.agent.core.model.dto.ModelInvokeResult;
+import com.ls.agent.core.trace.api.TraceService;
+import com.ls.agent.core.trace.command.FinishTraceRootCommand;
+import com.ls.agent.core.trace.command.StartTraceRootCommand;
 import com.ls.agent.gateway.dto.GatewayChatRequest;
 import com.ls.agent.gateway.dto.SseEventPayload;
 import org.springframework.beans.factory.annotation.Value;
@@ -40,6 +43,7 @@ public class InternalAiController {
     private final AgentRuntimeService agentRuntimeService;
     private final ModelInvokeService modelInvokeService;
     private final ApiKeyService apiKeyService;
+    private final TraceService traceService;
     private final ObjectMapper objectMapper;
     private final String internalToken;
 
@@ -47,12 +51,14 @@ public class InternalAiController {
             AgentRuntimeService agentRuntimeService,
             ModelInvokeService modelInvokeService,
             ApiKeyService apiKeyService,
+            TraceService traceService,
             ObjectMapper objectMapper,
             @Value("${gateway.internal-token:dev-internal-token}") String internalToken
     ) {
         this.agentRuntimeService = agentRuntimeService;
         this.modelInvokeService = modelInvokeService;
         this.apiKeyService = apiKeyService;
+        this.traceService = traceService;
         this.objectMapper = objectMapper;
         this.internalToken = internalToken;
     }
@@ -76,7 +82,7 @@ public class InternalAiController {
             @RequestBody GatewayChatRequest request
     ) {
         verifyInternalToken(headers);
-        return runChatStream(request, request.tenantId(), request.applicationId(), request.userId());
+        return runChatStream(request, request.tenantId(), request.applicationId(), request.userId(), "INTERNAL_WEB", null);
     }
 
     @PostMapping(value = "/api/ai/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -86,46 +92,58 @@ public class InternalAiController {
     ) {
         String apiKey = bearerToken(headers.getFirst(HttpHeaders.AUTHORIZATION));
         ApiKeyAuthResult auth = apiKeyService.authenticate(apiKey);
-        return runChatStream(request, auth.tenantId(), auth.applicationId(), auth.userId());
+        return runChatStream(request, auth.tenantId(), auth.applicationId(), auth.userId(), "API_KEY", apiKeyPrefix(apiKey));
     }
 
     private ResponseEntity<StreamingResponseBody> runChatStream(
             GatewayChatRequest request,
             Long tenantId,
             Long applicationId,
-            Long userId
+            Long userId,
+            String entrypoint,
+            String apiKeyPrefix
     ) {
         String traceId = newTraceId();
         return sse(output -> {
+            startTraceRoot(traceId, request, tenantId, applicationId, userId, entrypoint, apiKeyPrefix);
+            Long conversationId = null;
             writeEvent(output, "thinking", payload("thinking", traceId, null, 1, "request accepted", Map.of()));
-            if (MODE_NONE.equalsIgnoreCase(request.agentMode())) {
-                ModelInvokeResult result = modelInvokeService.invoke(new ModelInvokeCommand(
-                        request.modelConfigId(),
-                        request.messages(),
-                        null,
-                        false
+            try {
+                if (MODE_NONE.equalsIgnoreCase(request.agentMode())) {
+                    ModelInvokeResult result = modelInvokeService.invoke(new ModelInvokeCommand(
+                            request.modelConfigId(),
+                            request.messages(),
+                            null,
+                            false
+                    ));
+                    writeEvent(output, "message", payload("message", traceId, null, 2, result.assistantMessage(), Map.of()));
+                    writeEvent(output, "done", payload("done", traceId, null, 3, null, Map.of("modelConfigId", result.modelConfigId())));
+                    finishTraceRoot(traceId, null, "SUCCESS", null, null);
+                    return;
+                }
+                if (request.agentMode() != null && !MODE_AGENT.equalsIgnoreCase(request.agentMode())) {
+                    throw new BizException(ErrorCode.REQUEST_INVALID, "agentMode is invalid");
+                }
+                AgentRunResult result = agentRuntimeService.run(new AgentRunCommand(
+                        tenantId,
+                        userId,
+                        applicationId,
+                        request.profileId(),
+                        request.conversationId(),
+                        request.message(),
+                        traceId,
+                        request.enabledSkillIds(),
+                        request.enabledMcpToolIds(),
+                        null
                 ));
-                writeEvent(output, "message", payload("message", traceId, null, 2, result.assistantMessage(), Map.of()));
-                writeEvent(output, "done", payload("done", traceId, null, 3, null, Map.of("modelConfigId", result.modelConfigId())));
-                return;
+                conversationId = result.conversationId();
+                writeEvent(output, "message", payload("message", traceId, result.conversationId(), 2, result.assistantMessage(), Map.of()));
+                writeEvent(output, "done", payload("done", traceId, result.conversationId(), 3, null, Map.of()));
+                finishTraceRoot(traceId, conversationId, "SUCCESS", null, null);
+            } catch (Exception ex) {
+                finishTraceRoot(traceId, conversationId, "FAILED", errorCode(ex), errorMessage(ex));
+                throw ex;
             }
-            if (request.agentMode() != null && !MODE_AGENT.equalsIgnoreCase(request.agentMode())) {
-                throw new BizException(ErrorCode.REQUEST_INVALID, "agentMode is invalid");
-            }
-            AgentRunResult result = agentRuntimeService.run(new AgentRunCommand(
-                    tenantId,
-                    userId,
-                    applicationId,
-                    request.profileId(),
-                    request.conversationId(),
-                    request.message(),
-                    traceId,
-                    request.enabledSkillIds(),
-                    request.enabledMcpToolIds(),
-                    null
-            ));
-            writeEvent(output, "message", payload("message", traceId, result.conversationId(), 2, result.assistantMessage(), Map.of()));
-            writeEvent(output, "done", payload("done", traceId, result.conversationId(), 3, null, Map.of()));
         });
     }
 
@@ -153,6 +171,71 @@ public class InternalAiController {
             throw new BizException(ErrorCode.API_KEY_INVALID, "API key is required");
         }
         return authorization.substring("Bearer ".length()).strip();
+    }
+
+    private void startTraceRoot(
+            String traceId,
+            GatewayChatRequest request,
+            Long tenantId,
+            Long applicationId,
+            Long userId,
+            String entrypoint,
+            String apiKeyPrefix
+    ) {
+        try {
+            traceService.startRoot(new StartTraceRootCommand(
+                    traceId,
+                    tenantId,
+                    applicationId,
+                    userId,
+                    request.profileId(),
+                    request.conversationId(),
+                    request.clientRequestId(),
+                    entrypoint,
+                    effectiveAgentMode(request),
+                    objectMapper.createObjectNode()
+                            .put("channel", request.channel() == null ? "" : request.channel())
+                            .put("stream", request.stream() == null || request.stream())
+                            .put("apiKeyPrefix", apiKeyPrefix == null ? "" : apiKeyPrefix)
+            ));
+        } catch (Exception ex) {
+            // Trace is diagnostic data; it must not break the chat stream.
+        }
+    }
+
+    private void finishTraceRoot(
+            String traceId,
+            Long conversationId,
+            String status,
+            String errorCode,
+            String errorMessage
+    ) {
+        try {
+            traceService.finishRoot(new FinishTraceRootCommand(
+                    traceId,
+                    conversationId,
+                    status,
+                    errorCode,
+                    errorMessage
+            ));
+        } catch (Exception ex) {
+            // Trace is diagnostic data; it must not break the chat stream.
+        }
+    }
+
+    private String effectiveAgentMode(GatewayChatRequest request) {
+        return request.agentMode() == null ? MODE_AGENT : request.agentMode();
+    }
+
+    private String apiKeyPrefix(String apiKey) {
+        if (apiKey == null || apiKey.isBlank()) {
+            return "";
+        }
+        return apiKey.length() <= 8 ? apiKey : apiKey.substring(0, 8);
+    }
+
+    private String errorCode(Exception ex) {
+        return ex instanceof BizException bizException ? bizException.getCode() : ErrorCode.INTERNAL_ERROR.getCode();
     }
 
     private String newTraceId() {

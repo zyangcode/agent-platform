@@ -4,13 +4,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ls.agent.common.error.BizException;
 import com.ls.agent.common.error.ErrorCode;
+import com.ls.agent.core.agent.api.ConversationRepository;
 import com.ls.agent.core.agent.api.AgentRuntimeService;
 import com.ls.agent.core.agent.command.AgentRunCommand;
 import com.ls.agent.core.agent.dto.AgentRunResult;
 import com.ls.agent.core.agent.entity.ConversationEntity;
 import com.ls.agent.core.agent.entity.ConversationMessageEntity;
-import com.ls.agent.core.agent.mapper.ConversationMapper;
-import com.ls.agent.core.agent.mapper.ConversationMessageMapper;
 import com.ls.agent.core.context.api.AgentContextBuilder;
 import com.ls.agent.core.context.command.BuildAgentContextCommand;
 import com.ls.agent.core.context.dto.AgentContextDTO;
@@ -26,6 +25,12 @@ import com.ls.agent.core.model.dto.ModelMessage;
 import com.ls.agent.core.skill.api.SkillExecutor;
 import com.ls.agent.core.skill.command.SkillExecuteCommand;
 import com.ls.agent.core.skill.dto.SkillExecuteResult;
+import com.ls.agent.core.trace.api.TokenUsageService;
+import com.ls.agent.core.trace.api.TraceService;
+import com.ls.agent.core.trace.command.FinishTraceSpanCommand;
+import com.ls.agent.core.trace.command.RecordTokenUsageCommand;
+import com.ls.agent.core.trace.command.StartTraceSpanCommand;
+import com.ls.agent.core.trace.dto.TraceSpanDTO;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -45,9 +50,10 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
     private final ModelInvokeService modelInvokeService;
     private final SkillExecutor skillExecutor;
     private final McpToolExecutor mcpToolExecutor;
-    private final ConversationMapper conversationMapper;
-    private final ConversationMessageMapper messageMapper;
+    private final ConversationRepository conversationRepository;
     private final MemoryWriteService memoryWriteService;
+    private final TraceService traceService;
+    private final TokenUsageService tokenUsageService;
     private final ObjectMapper objectMapper;
 
     public DefaultAgentRuntimeService(
@@ -55,61 +61,81 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
             ModelInvokeService modelInvokeService,
             SkillExecutor skillExecutor,
             McpToolExecutor mcpToolExecutor,
-            ConversationMapper conversationMapper,
-            ConversationMessageMapper messageMapper,
+            ConversationRepository conversationRepository,
             MemoryWriteService memoryWriteService,
+            TraceService traceService,
+            TokenUsageService tokenUsageService,
             ObjectMapper objectMapper
     ) {
         this.contextBuilder = contextBuilder;
         this.modelInvokeService = modelInvokeService;
         this.skillExecutor = skillExecutor;
         this.mcpToolExecutor = mcpToolExecutor;
-        this.conversationMapper = conversationMapper;
-        this.messageMapper = messageMapper;
+        this.conversationRepository = conversationRepository;
         this.memoryWriteService = memoryWriteService;
+        this.traceService = traceService;
+        this.tokenUsageService = tokenUsageService;
         this.objectMapper = objectMapper;
     }
 
     @Override
     public AgentRunResult run(AgentRunCommand command) {
         validate(command);
-        Long conversationId = ensureConversation(command);
-        saveMessage(conversationId, command.traceId(), "user", command.userInput(), null);
+        TraceSpanDTO runSpan = safeStartSpan(command.traceId(), null, "agent_runtime.run", "AGENT",
+                objectMapper.createObjectNode().put("profileId", command.profileId()));
+        try {
+            Long conversationId = ensureConversation(command);
+            saveMessage(conversationId, command.traceId(), "user", command.userInput(), null);
 
-        AgentContextDTO context = contextBuilder.build(new BuildAgentContextCommand(
-                command.tenantId(),
-                command.userId(),
-                command.applicationId(),
-                command.profileId(),
-                conversationId,
-                command.userInput(),
-                command.maxContextTokens(),
-                command.selectedSkillIds(),
-                command.selectedMcpToolIds()
-        ));
+            AgentContextDTO context = buildContext(command, conversationId, runSpan == null ? null : runSpan.id());
 
-        ModelInvokeResult modelResult = runModelLoop(command, context);
-        saveMessage(
-                conversationId,
-                command.traceId(),
-                "assistant",
-                modelResult.assistantMessage(),
-                modelResult.usage() == null ? null : modelResult.usage().completionTokens()
-        );
-        saveMemory(command, conversationId, modelResult.assistantMessage());
-        return new AgentRunResult(conversationId, modelResult.assistantMessage(), modelResult.usage());
+            ModelInvokeResult modelResult = runModelLoop(command, context, runSpan == null ? null : runSpan.id());
+            saveMessage(
+                    conversationId,
+                    command.traceId(),
+                    "assistant",
+                    modelResult.assistantMessage(),
+                    modelResult.usage() == null ? null : modelResult.usage().completionTokens()
+            );
+            saveMemory(command, conversationId, modelResult.assistantMessage());
+            safeFinishSpan(runSpan, "SUCCESS", null, null);
+            return new AgentRunResult(conversationId, modelResult.assistantMessage(), modelResult.usage());
+        } catch (Exception ex) {
+            safeFinishSpan(runSpan, "FAILED", errorCode(ex), errorMessage(ex));
+            throw ex;
+        }
     }
 
-    private ModelInvokeResult runModelLoop(AgentRunCommand command, AgentContextDTO context) {
+    private AgentContextDTO buildContext(AgentRunCommand command, Long conversationId, Long parentSpanId) {
+        TraceSpanDTO span = safeStartSpan(command.traceId(), parentSpanId, "context.build", "CONTEXT",
+                objectMapper.createObjectNode()
+                        .put("conversationId", conversationId)
+                        .put("maxContextTokens", command.maxContextTokens() == null ? 0 : command.maxContextTokens()));
+        try {
+            AgentContextDTO context = contextBuilder.build(new BuildAgentContextCommand(
+                    command.tenantId(),
+                    command.userId(),
+                    command.applicationId(),
+                    command.profileId(),
+                    conversationId,
+                    command.userInput(),
+                    command.maxContextTokens(),
+                    command.selectedSkillIds(),
+                    command.selectedMcpToolIds()
+            ));
+            safeFinishSpan(span, "SUCCESS", null, null);
+            return context;
+        } catch (Exception ex) {
+            safeFinishSpan(span, "FAILED", errorCode(ex), errorMessage(ex));
+            throw ex;
+        }
+    }
+
+    private ModelInvokeResult runModelLoop(AgentRunCommand command, AgentContextDTO context, Long parentSpanId) {
         List<ModelMessage> messages = new ArrayList<>(context.messages());
         ModelInvokeResult result = null;
         for (int step = 0; step < MAX_AGENT_STEPS; step++) {
-            result = modelInvokeService.invoke(new ModelInvokeCommand(
-                    context.modelConfigId(),
-                    messages,
-                    BigDecimal.valueOf(0.7),
-                    false
-            ));
+            result = invokeModel(command, context, messages, parentSpanId, step + 1);
             ToolCall toolCall = parseToolCall(result.assistantMessage());
             if (toolCall == null) {
                 return result;
@@ -119,6 +145,33 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
             messages.add(new ModelMessage("tool", toolOutput));
         }
         throw new BizException(ErrorCode.AGENT_MAX_STEPS_EXCEEDED, "Agent max steps exceeded");
+    }
+
+    private ModelInvokeResult invokeModel(
+            AgentRunCommand command,
+            AgentContextDTO context,
+            List<ModelMessage> messages,
+            Long parentSpanId,
+            int step
+    ) {
+        TraceSpanDTO span = safeStartSpan(command.traceId(), parentSpanId, "model.invoke", "MODEL",
+                objectMapper.createObjectNode()
+                        .put("modelConfigId", context.modelConfigId())
+                        .put("step", step));
+        try {
+            ModelInvokeResult result = modelInvokeService.invoke(new ModelInvokeCommand(
+                    context.modelConfigId(),
+                    messages,
+                    BigDecimal.valueOf(0.7),
+                    false
+            ));
+            safeRecordTokenUsage(command, result, span == null ? null : span.id());
+            safeFinishSpan(span, "SUCCESS", null, null);
+            return result;
+        } catch (Exception ex) {
+            safeFinishSpan(span, "FAILED", errorCode(ex), errorMessage(ex));
+            throw ex;
+        }
     }
 
     private ToolCall parseToolCall(String assistantMessage) {
@@ -187,7 +240,7 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
 
     private Long ensureConversation(AgentRunCommand command) {
         if (command.conversationId() != null) {
-            ConversationEntity conversation = conversationMapper.selectById(command.conversationId());
+            ConversationEntity conversation = conversationRepository.findConversationById(command.conversationId());
             if (conversation == null
                     || !command.tenantId().equals(conversation.getTenantId())
                     || !command.applicationId().equals(conversation.getApplicationId())
@@ -206,7 +259,7 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
         entity.setTitle(titleFrom(command.userInput()));
         entity.setChannel(CHANNEL_WEB);
         entity.setStatus(STATUS_ACTIVE);
-        conversationMapper.insert(entity);
+        conversationRepository.insertConversation(entity);
         return entity.getId();
     }
 
@@ -217,7 +270,7 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
         entity.setRole(role);
         entity.setContent(content == null ? "" : content);
         entity.setTokenCount(tokenCount);
-        messageMapper.insert(entity);
+        conversationRepository.insertMessage(entity);
     }
 
     private void saveMemory(AgentRunCommand command, Long conversationId, String assistantMessage) {
@@ -244,6 +297,69 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
         if (value == null) {
             throw new BizException(ErrorCode.REQUEST_INVALID, field + " is required");
         }
+    }
+
+    private TraceSpanDTO safeStartSpan(String traceId, Long parentSpanId, String spanName, String spanType, JsonNode attributes) {
+        if (traceId == null || traceId.isBlank()) {
+            return null;
+        }
+        try {
+            return traceService.startSpan(new StartTraceSpanCommand(
+                    traceId,
+                    parentSpanId,
+                    spanName,
+                    spanType,
+                    "core",
+                    attributes
+            ));
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    private void safeFinishSpan(TraceSpanDTO span, String status, String errorCode, String errorMessage) {
+        if (span == null || span.id() == null) {
+            return;
+        }
+        try {
+            traceService.finishSpan(new FinishTraceSpanCommand(span.id(), status, errorCode, errorMessage));
+        } catch (Exception ex) {
+            // Trace is diagnostic data; it must not break the agent run.
+        }
+    }
+
+    private void safeRecordTokenUsage(AgentRunCommand command, ModelInvokeResult result, Long spanId) {
+        if (command.traceId() == null || command.traceId().isBlank() || result == null || result.usage() == null) {
+            return;
+        }
+        try {
+            tokenUsageService.record(new RecordTokenUsageCommand(
+                    command.traceId(),
+                    spanId,
+                    command.tenantId(),
+                    command.applicationId(),
+                    command.userId(),
+                    command.profileId(),
+                    result.modelConfigId(),
+                    result.providerId(),
+                    result.modelName(),
+                    result.providerType(),
+                    result.usage().promptTokens(),
+                    result.usage().completionTokens(),
+                    result.usage().totalTokens(),
+                    result.usage().estimated()
+            ));
+        } catch (Exception ex) {
+            // Token usage is diagnostic/accounting data in stage 2.1; do not break chat.
+        }
+    }
+
+    private String errorCode(Exception ex) {
+        return ex instanceof BizException bizException ? bizException.getCode() : ErrorCode.INTERNAL_ERROR.getCode();
+    }
+
+    private String errorMessage(Exception ex) {
+        return ex.getMessage() == null ? "Agent runtime failed" : ex.getMessage();
     }
 
     private record ToolCall(String type, String name, JsonNode arguments) {
