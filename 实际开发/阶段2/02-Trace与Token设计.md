@@ -25,6 +25,26 @@ trace_roots 1 --- n token_usage_logs
 trace_spans 1 --- 0..1 token_usage_logs
 ```
 
+阶段 2 只做最小可用可观测闭环，不把参考项目的完整平台能力搬进来。
+
+本阶段吸收的参考思路：
+
+```text
+AgentX：Trace/Token 独立建模，按执行阶段拆 span。
+Spring AI Alibaba：Hook/Interceptor、TraceId 透传、模型/工具调用限制的设计思想。
+JeecgBoot：OpenAPI 调用日志、API Key 维度、后台 Trace/Token 页面字段预留。
+InterviewGuide：如 03 参考文档中有接口、答辩或文档表达建议，则作为阶段文档表达参考。
+```
+
+本阶段明确不引入：
+
+```text
+Graph Core / Reactor / WebFlux。
+JeecgBoot 动态网关路由。
+完整低代码、RAG、工作流、报表、大屏。
+完整 Hook 框架和复杂 Agent Team 编排。
+```
+
 ---
 
 ## 2. TraceId 规则
@@ -102,7 +122,19 @@ entrypoint        INTERNAL_WEB 或 API_KEY，区分 Web 登录态调用和开放
 agent_mode        agent 或 none。
 status            RUNNING / SUCCESS / FAILED。
 latency_ms        整体耗时。
-metadata          第一版可记录 modelConfigId、stream 等扩展信息。
+metadata          第一版可记录 modelConfigId、stream、clientIp、userAgent、apiKeyPrefix 等扩展信息。
+```
+
+第一版不强制把所有入口字段都建成独立列。以下字段优先放入 metadata，后续查询频繁后再升为独立列：
+
+```text
+client_ip
+user_agent
+api_key_prefix
+request_path
+request_method
+stream
+model_config_id(agent_mode=none 时尤其有用)
 ```
 
 ### 3.2 trace_spans
@@ -222,6 +254,17 @@ startRoot 只在 Gateway 主入口调用。
 finishRoot 在请求成功或失败时调用。
 startSpan / finishSpan 在 Core 关键步骤调用。
 TraceService 内部捕获写库异常，避免影响 Chat 主流程。
+startRoot 失败时仍继续 Chat；finishRoot 失败不能影响 SSE done。
+span 写入失败只记录日志，不反向中断 AgentRuntime。
+```
+
+TraceService 的失败策略必须清楚：
+
+```text
+数据库写入异常：捕获并 log.warn，返回空 DTO 或 no-op DTO。
+finishRoot 找不到 root：记录 warn，不抛出影响主链路的异常。
+finishSpan 找不到 span：记录 warn，不抛出影响主链路的异常。
+Trace 数据不完整时，以 Chat 成功为优先；测试中要覆盖 Trace 写入失败不影响 Chat。
 ```
 
 ### 4.2 TokenUsageService
@@ -247,6 +290,14 @@ DefaultModelInvokeService.invoke 成功拿到 ModelInvokeResult 后记录。
 ```
 
 如果 ModelInvokeService 当前不知道 tenantId/applicationId/profileId，可以第一轮在 AgentRuntime 拿到 ModelInvokeResult 后记录。这样字段更完整，也不需要立刻改 ModelInvokeCommand。
+
+TokenUsageService 的失败策略：
+
+```text
+token_usage_logs 写入失败不能导致 Chat 失败。
+Token 配额预扣/结算属于后续治理能力，不能和普通 token_usage_logs 混为一谈。
+如果后续开始做真实配额扣减，配额扣减失败必须阻断请求；普通 Trace/Usage 明细失败仍只降级记录日志。
+```
 
 ---
 
@@ -279,6 +330,15 @@ Token 记录能拿到 tenantId、applicationId、userId、profileId。
 后续如果要记录 provider HTTP 细节，再把 model.invoke span 下沉到 ModelInvokeService。
 ```
 
+模型/工具调用限制的阶段边界：
+
+```text
+阶段 2 不做完整 Hook 框架。
+阶段 2 继续保留 DefaultAgentRuntimeService.MAX_AGENT_STEPS 和 Profile.maxSteps 预留。
+超过最大步骤仍返回 AGENT_MAX_STEPS_EXCEEDED，并写 trace_roots FAILED / trace_spans FAILED。
+阶段 4 再扩展 model_call_limit、tool_call_limit、指定工具限制和 END/ERROR 策略。
+```
+
 ---
 
 ## 6. 状态流转
@@ -307,6 +367,33 @@ BizException:
 其他异常:
   error_code = INTERNAL_ERROR
   error_message = exception message
+```
+
+入口类型：
+
+```text
+INTERNAL_WEB：Web 登录态通过内部 token 调 Gateway。
+API_KEY：外部调用通过 API Key 调 Gateway。
+```
+
+第一版 API Key 维度记录：
+
+```text
+trace_roots.entrypoint = API_KEY
+trace_roots.application_id = API Key 绑定的 Application
+trace_roots.user_id = API Key 归属用户
+trace_roots.metadata.apiKeyPrefix = api_keys.prefix
+trace_roots.metadata.clientIp = 请求 IP
+trace_roots.metadata.userAgent = 请求 User-Agent
+```
+
+后续增强：
+
+```text
+api_keys.last_used_at
+api_keys.last_used_ip
+api_keys.allow_ips
+企业增强签名模式（不影响 OpenAI 兼容 Bearer token）
 ```
 
 ---
@@ -409,9 +496,23 @@ NoopTraceExporter
 ```text
 AgentX-master 的 TraceCollector / TraceContext 可作为当前 TraceService 的设计参考。
 AgentX-master 的前端 agent-trace-service.ts 可作为后续 Trace 页面接口参考。
+Spring AI Alibaba 的 Hook / Interceptor 链、TraceId 透传、模型/工具调用限制只借鉴思想，不引入 Graph Core / Reactor。
+JeecgBoot 的 OpenAPI 调用日志、菜单权限、Trace/监控页面只借鉴后台设计，不引入动态网关路由和低代码平台。
 AI-Meeting-main 的 UniversalAiChatHandler 可作为后续 token 级真实流式参考。
 smart-cs-multi-agent-main 的 AgentTracer.trace(agentName, method, Supplier<T>) 可作为 Span 包装式写法参考。
 当前阶段不引入 Spring AI / WebFlux / Multi-Agent / single-flight，先保持 JDK HttpClient + PostgreSQL Trace。
+```
+
+阶段 2 查询接口设计见：
+
+```text
+考核设计/接口设计/02-阶段2接口设计.md
+```
+
+阶段 2 手工验收步骤见：
+
+```text
+实际开发/阶段2/03-阶段2测试指南.md
 ```
 
 ---
