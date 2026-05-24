@@ -17,6 +17,7 @@ import com.ls.agent.core.model.provider.OpenAiCompatibleProvider;
 import com.ls.agent.core.model.provider.ProviderRequest;
 import com.ls.agent.core.model.provider.ProviderResponse;
 import com.ls.agent.core.support.security.SecretEncryptor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -28,6 +29,7 @@ public class DefaultModelInvokeService implements ModelInvokeService {
     private final ModelProviderMapper providerMapper;
     private final ModelProviderRegistry providerRegistry;
 
+    @Autowired
     public DefaultModelInvokeService(
             ModelConfigMapper configMapper,
             ModelProviderMapper providerMapper,
