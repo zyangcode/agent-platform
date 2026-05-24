@@ -80,6 +80,10 @@ class DefaultTraceServiceTest {
 
     @Test
     void finishRootUpdatesStatusAndLatencyWithoutThrowing() {
+        TraceRootEntity existing = traceRoot(1L, 10001L);
+        existing.setStartedAt(LocalDateTime.of(2026, 5, 23, 9, 59, 58, 500_000_000));
+        when(rootMapper.selectOne(any())).thenReturn(existing);
+
         service.finishRoot(new FinishTraceRootCommand(
                 "tr_1",
                 90001L,
@@ -93,7 +97,7 @@ class DefaultTraceServiceTest {
         assertThat(entityCaptor.getValue().getStatus()).isEqualTo("SUCCESS");
         assertThat(entityCaptor.getValue().getConversationId()).isEqualTo(90001L);
         assertThat(entityCaptor.getValue().getEndedAt()).isNotNull();
-        assertThat(entityCaptor.getValue().getLatencyMs()).isNotNegative();
+        assertThat(entityCaptor.getValue().getLatencyMs()).isEqualTo(1500L);
     }
 
     @Test
@@ -112,12 +116,16 @@ class DefaultTraceServiceTest {
         assertThat(spanCaptor.getValue().getStatus()).isEqualTo("RUNNING");
         assertThat(spanCaptor.getValue().getAttributes().get("step").asInt()).isEqualTo(1);
 
+        TraceSpanEntity existing = traceSpan(100L, "model.invoke");
+        existing.setStartedAt(LocalDateTime.of(2026, 5, 23, 9, 59, 59, 250_000_000));
+        when(spanMapper.selectById(100L)).thenReturn(existing);
+
         service.finishSpan(new FinishTraceSpanCommand(100L, "SUCCESS", null, null));
 
         ArgumentCaptor<TraceSpanEntity> finishCaptor = ArgumentCaptor.forClass(TraceSpanEntity.class);
         verify(spanMapper).update(finishCaptor.capture(), any(LambdaUpdateWrapper.class));
         assertThat(finishCaptor.getValue().getStatus()).isEqualTo("SUCCESS");
-        assertThat(finishCaptor.getValue().getLatencyMs()).isNotNegative();
+        assertThat(finishCaptor.getValue().getLatencyMs()).isEqualTo(750L);
     }
 
     @Test

@@ -97,13 +97,15 @@ public class DefaultTraceService implements TraceService {
     @Override
     public void finishRoot(FinishTraceRootCommand command) {
         TraceValidation.requireText(command.traceId(), "traceId");
+        LocalDateTime endedAt = now();
+        LocalDateTime startedAt = findRootStartedAt(command.traceId());
         TraceRootEntity entity = new TraceRootEntity();
         entity.setConversationId(command.conversationId());
         entity.setStatus(TraceValidation.requireText(command.status(), "status"));
         entity.setErrorCode(command.errorCode());
         entity.setErrorMessage(command.errorMessage());
-        entity.setEndedAt(now());
-        entity.setLatencyMs(0L);
+        entity.setEndedAt(endedAt);
+        entity.setLatencyMs(latencyMillis(startedAt, endedAt));
         try {
             rootMapper.update(entity, new LambdaUpdateWrapper<TraceRootEntity>()
                     .eq(TraceRootEntity::getTraceId, command.traceId()));
@@ -134,12 +136,14 @@ public class DefaultTraceService implements TraceService {
     @Override
     public void finishSpan(FinishTraceSpanCommand command) {
         TraceValidation.requireNonNull(command.spanId(), "spanId");
+        LocalDateTime endedAt = now();
+        LocalDateTime startedAt = findSpanStartedAt(command.spanId());
         TraceSpanEntity entity = new TraceSpanEntity();
         entity.setStatus(TraceValidation.requireText(command.status(), "status"));
         entity.setErrorCode(command.errorCode());
         entity.setErrorMessage(command.errorMessage());
-        entity.setEndedAt(now());
-        entity.setLatencyMs(0L);
+        entity.setEndedAt(endedAt);
+        entity.setLatencyMs(latencyMillis(startedAt, endedAt));
         try {
             spanMapper.update(entity, new LambdaUpdateWrapper<TraceSpanEntity>()
                     .eq(TraceSpanEntity::getId, command.spanId()));
@@ -203,7 +207,27 @@ public class DefaultTraceService implements TraceService {
         return LocalDateTime.now(clock);
     }
 
-    @SuppressWarnings("unused")
+    private LocalDateTime findRootStartedAt(String traceId) {
+        try {
+            TraceRootEntity root = rootMapper.selectOne(new LambdaQueryWrapper<TraceRootEntity>()
+                    .eq(TraceRootEntity::getTraceId, traceId));
+            return root == null ? null : root.getStartedAt();
+        } catch (Exception ex) {
+            log.warn("Trace root start time query failed, traceId={}", traceId, ex);
+            return null;
+        }
+    }
+
+    private LocalDateTime findSpanStartedAt(Long spanId) {
+        try {
+            TraceSpanEntity span = spanMapper.selectById(spanId);
+            return span == null ? null : span.getStartedAt();
+        } catch (Exception ex) {
+            log.warn("Trace span start time query failed, spanId={}", spanId, ex);
+            return null;
+        }
+    }
+
     private long latencyMillis(LocalDateTime start, LocalDateTime end) {
         if (start == null || end == null) {
             return 0L;
