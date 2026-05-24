@@ -140,6 +140,10 @@ MVP 的 Developer = 配单 Agent Profile；阶段 4 的 Developer = 在 Profile 
 
 阶段 2 开发前重点参考 emo 的 LLM Provider Registry 思路；Pipeline 只作为阶段 2 后或阶段 3 前的重构方向，不作为阶段 2 前置任务。
 
+阶段 3 前端开发采用 `agent-platform-frontend` 独立工程，技术栈固定为 React + Vite + TypeScript + Tailwind CSS + shadcn/ui + ECharts。本地开发阶段不引入 nginx，先使用 Vite dev server 代理 `/api` 到 Web 后端；nginx 放到最终 Docker Compose / 交付阶段再补。
+
+阶段 3 涉及审美和页面体验选择时，必须先给用户 2-3 个明确方案并等待确认，再写页面代码。需要确认的内容包括但不限于：整体视觉风格、导航布局、Dashboard 信息密度、对话页布局、Trace 时间线表现、图表风格、动效强度、颜色主题、登录页视觉方向。接口封装、类型定义、目录搭建、API Client、路由骨架等非审美基础工程可以直接按既定技术栈推进。
+
 阶段 1 开发时必须同步对照：`考核设计/开发检查清单/01-阶段1开发检查清单.md`。每完成一个小阶段，都按检查清单回查一次，避免忘记 Gateway、ArchUnit、SSE、Context、Quota 等关键护栏。
 
 阶段 1 实际开发还必须同步对照：`实际开发/阶段1/02-阶段1执行顺序.md`。当前代码已完成 Step 15 阶段 1 总体验收，并通过全量 `mvn.cmd -s .mvn/settings.xml test`；当前全量测试数 79 个。阶段 1 手工验收步骤见 `实际开发/阶段1/03-阶段1测试指南.md`。
