@@ -9,12 +9,11 @@ import com.ls.agent.core.agent.command.AgentRunCommand;
 import com.ls.agent.core.agent.dto.AgentRunResult;
 import com.ls.agent.core.identity.api.ApiKeyService;
 import com.ls.agent.core.identity.dto.ApiKeyAuthResult;
-import com.ls.agent.core.model.api.ModelInvokeService;
-import com.ls.agent.core.model.command.ModelInvokeCommand;
 import com.ls.agent.core.model.dto.ModelInvokeResult;
 import com.ls.agent.core.trace.api.TraceService;
 import com.ls.agent.core.trace.command.FinishTraceRootCommand;
 import com.ls.agent.core.trace.command.StartTraceRootCommand;
+import com.ls.agent.gateway.application.DirectModelRunService;
 import com.ls.agent.gateway.dto.GatewayChatRequest;
 import com.ls.agent.gateway.dto.SseEventPayload;
 import com.ls.agent.gateway.filter.AlertFilter;
@@ -44,7 +43,7 @@ public class InternalAiController {
     private static final String MODE_NONE = "none";
 
     private final AgentRuntimeService agentRuntimeService;
-    private final ModelInvokeService modelInvokeService;
+    private final DirectModelRunService directModelRunService;
     private final ApiKeyService apiKeyService;
     private final TraceService traceService;
     private final QuotaFilter quotaFilter;
@@ -55,7 +54,7 @@ public class InternalAiController {
 
     public InternalAiController(
             AgentRuntimeService agentRuntimeService,
-            ModelInvokeService modelInvokeService,
+            DirectModelRunService directModelRunService,
             ApiKeyService apiKeyService,
             TraceService traceService,
             QuotaFilter quotaFilter,
@@ -65,7 +64,7 @@ public class InternalAiController {
             @Value("${gateway.internal-token:dev-internal-token}") String internalToken
     ) {
         this.agentRuntimeService = agentRuntimeService;
-        this.modelInvokeService = modelInvokeService;
+        this.directModelRunService = directModelRunService;
         this.apiKeyService = apiKeyService;
         this.traceService = traceService;
         this.quotaFilter = quotaFilter;
@@ -129,12 +128,15 @@ public class InternalAiController {
             writeEvent(output, "thinking", payload("thinking", traceId, null, 1, "request accepted", Map.of()));
             try {
                 if (MODE_NONE.equalsIgnoreCase(request.agentMode())) {
-                    ModelInvokeResult result = modelInvokeService.invoke(new ModelInvokeCommand(
+                    ModelInvokeResult result = directModelRunService.run(
+                            traceId,
+                            tenantId,
+                            applicationId,
+                            userId,
+                            request.profileId(),
                             request.modelConfigId(),
-                            request.messages(),
-                            null,
-                            false
-                    ));
+                            request.messages()
+                    );
                     writeEvent(output, "message", payload("message", traceId, null, 2, result.assistantMessage(), Map.of()));
                     writeEvent(output, "done", payload("done", traceId, null, 3, null, Map.of("modelConfigId", result.modelConfigId())));
                     quotaFilter.commit(traceId, totalTokens(result.usage()));

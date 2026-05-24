@@ -11,9 +11,14 @@ import com.ls.agent.core.alert.command.RecordAlertEventCommand;
 import com.ls.agent.core.identity.api.ApiKeyService;
 import com.ls.agent.core.identity.dto.ApiKeyAuthResult;
 import com.ls.agent.core.model.api.ModelInvokeService;
+import com.ls.agent.core.model.command.ModelInvokeCommand;
+import com.ls.agent.core.model.dto.ModelInvokeResult;
+import com.ls.agent.core.model.dto.ModelMessage;
 import com.ls.agent.core.model.dto.ModelUsageDTO;
 import com.ls.agent.core.quota.api.QuotaService;
 import com.ls.agent.core.quota.command.CommitQuotaReservationCommand;
+import com.ls.agent.core.quota.api.TokenUsageService;
+import com.ls.agent.core.quota.command.RecordTokenUsageCommand;
 import com.ls.agent.core.quota.command.ReleaseQuotaReservationCommand;
 import com.ls.agent.core.quota.command.ReserveQuotaCommand;
 import com.ls.agent.core.quota.dto.QuotaReservationDTO;
@@ -23,7 +28,11 @@ import com.ls.agent.core.security.command.RecordSecurityEventCommand;
 import com.ls.agent.core.security.dto.SensitiveDataFindingDTO;
 import com.ls.agent.core.trace.api.TraceService;
 import com.ls.agent.core.trace.command.FinishTraceRootCommand;
+import com.ls.agent.core.trace.command.FinishTraceSpanCommand;
 import com.ls.agent.core.trace.command.StartTraceRootCommand;
+import com.ls.agent.core.trace.command.StartTraceSpanCommand;
+import com.ls.agent.core.trace.dto.TraceSpanDTO;
+import com.ls.agent.gateway.application.DirectModelRunService;
 import com.ls.agent.gateway.dto.GatewayChatRequest;
 import com.ls.agent.gateway.filter.AlertFilter;
 import com.ls.agent.gateway.filter.QuotaFilter;
@@ -56,7 +65,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         controllers = InternalAiController.class,
         properties = "gateway.internal-token=dev-internal-token"
 )
-@Import({QuotaFilter.class, SensitiveDataFilter.class, AlertFilter.class})
+@Import({QuotaFilter.class, SensitiveDataFilter.class, AlertFilter.class, DirectModelRunService.class})
 class InternalAiControllerTest {
 
     @Autowired
@@ -79,6 +88,9 @@ class InternalAiControllerTest {
 
     @MockBean
     private QuotaService quotaService;
+
+    @MockBean
+    private TokenUsageService tokenUsageService;
 
     @MockBean
     private SensitiveDataScanner sensitiveDataScanner;
@@ -347,6 +359,78 @@ class InternalAiControllerTest {
     }
 
     @Test
+    void directModeScansMessagesAndBlocksBeforeModelInvoke() throws Exception {
+        GatewayChatRequest request = directRequest(List.of(new ModelMessage("user", "call me at 13812345678")));
+        when(sensitiveDataScanner.scan(null, "REQUEST_MESSAGE")).thenReturn(List.of());
+        when(sensitiveDataScanner.scan("call me at 13812345678", "REQUEST_MESSAGES"))
+                .thenReturn(List.of(new SensitiveDataFindingDTO(
+                        "PHONE",
+                        "REQUEST_MESSAGES",
+                        "hash-3",
+                        "138****5678"
+                )));
+
+        mockMvc.perform(post("/internal/ai/chat/stream")
+                        .header("X-Internal-Token", "dev-internal-token")
+                        .accept(MediaType.TEXT_EVENT_STREAM)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isForbidden())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("SECURITY_BLOCKED")));
+
+        ArgumentCaptor<RecordSecurityEventCommand> eventCaptor =
+                ArgumentCaptor.forClass(RecordSecurityEventCommand.class);
+        verify(securityEventService).record(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().location()).isEqualTo("REQUEST_MESSAGES");
+
+        verify(quotaService, never()).reserve(any(ReserveQuotaCommand.class));
+        verify(modelInvokeService, never()).invoke(any(ModelInvokeCommand.class));
+    }
+
+    @Test
+    void directModeRecordsModelSpanAndTokenUsage() throws Exception {
+        GatewayChatRequest request = directRequest(List.of(new ModelMessage("user", "hello direct")));
+        when(sensitiveDataScanner.scan(null, "REQUEST_MESSAGE")).thenReturn(List.of());
+        when(sensitiveDataScanner.scan("hello direct", "REQUEST_MESSAGES")).thenReturn(List.of());
+        when(quotaService.reserve(any(ReserveQuotaCommand.class))).thenReturn(reservation());
+        when(traceService.startSpan(any(StartTraceSpanCommand.class))).thenReturn(traceSpan());
+        when(modelInvokeService.invoke(any(ModelInvokeCommand.class))).thenReturn(modelResult());
+
+        var result = mockMvc.perform(post("/internal/ai/chat/stream")
+                        .header("X-Internal-Token", "dev-internal-token")
+                        .accept(MediaType.TEXT_EVENT_STREAM)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        mockMvc.perform(asyncDispatch(result))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("event: message")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("direct assistant")));
+
+        ArgumentCaptor<StartTraceSpanCommand> spanCaptor = ArgumentCaptor.forClass(StartTraceSpanCommand.class);
+        verify(traceService).startSpan(spanCaptor.capture());
+        assertThat(spanCaptor.getValue().spanName()).isEqualTo("model.invoke");
+        assertThat(spanCaptor.getValue().spanType()).isEqualTo("MODEL");
+        assertThat(spanCaptor.getValue().attributes().get("modelConfigId").asLong()).isEqualTo(30001L);
+
+        ArgumentCaptor<RecordTokenUsageCommand> usageCaptor = ArgumentCaptor.forClass(RecordTokenUsageCommand.class);
+        verify(tokenUsageService).record(usageCaptor.capture());
+        assertThat(usageCaptor.getValue().spanId()).isEqualTo(80001L);
+        assertThat(usageCaptor.getValue().tenantId()).isEqualTo(1L);
+        assertThat(usageCaptor.getValue().applicationId()).isEqualTo(20001L);
+        assertThat(usageCaptor.getValue().userId()).isEqualTo(10001L);
+        assertThat(usageCaptor.getValue().profileId()).isNull();
+        assertThat(usageCaptor.getValue().modelConfigId()).isEqualTo(30001L);
+        assertThat(usageCaptor.getValue().totalTokens()).isEqualTo(7);
+
+        verify(traceService).finishSpan(any(FinishTraceSpanCommand.class));
+        verify(agentRuntimeService, never()).run(any(AgentRunCommand.class));
+    }
+
+    @Test
     void scannerFailureReturns403AndDoesNotReserveQuotaOrCallRuntime() throws Exception {
         doThrow(new IllegalStateException("scanner down"))
                 .when(sensitiveDataScanner).scan("hello", "REQUEST_MESSAGE");
@@ -449,11 +533,60 @@ class InternalAiControllerTest {
         );
     }
 
+    private GatewayChatRequest directRequest(List<ModelMessage> messages) {
+        return new GatewayChatRequest(
+                1L,
+                20001L,
+                10001L,
+                "WEB",
+                "none",
+                null,
+                null,
+                null,
+                null,
+                null,
+                "client-1",
+                30001L,
+                messages,
+                null
+        );
+    }
+
     private AgentRunResult agentResult() {
         return new AgentRunResult(
                 90001L,
                 "assistant says hello",
                 new ModelUsageDTO(1, 2, 3, true)
+        );
+    }
+
+    private ModelInvokeResult modelResult() {
+        return new ModelInvokeResult(
+                30001L,
+                40001L,
+                "mock",
+                "mock-chat",
+                "direct assistant",
+                new ModelUsageDTO(3, 4, 7, false)
+        );
+    }
+
+    private TraceSpanDTO traceSpan() {
+        return new TraceSpanDTO(
+                80001L,
+                "tr_1",
+                null,
+                "model.invoke",
+                "MODEL",
+                "core",
+                "RUNNING",
+                null,
+                null,
+                null,
+                null,
+                null,
+                objectMapper.createObjectNode(),
+                null
         );
     }
 

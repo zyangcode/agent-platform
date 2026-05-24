@@ -2,6 +2,7 @@ package com.ls.agent.gateway.filter;
 
 import com.ls.agent.common.error.BizException;
 import com.ls.agent.common.error.ErrorCode;
+import com.ls.agent.core.model.dto.ModelMessage;
 import com.ls.agent.core.security.api.SecurityEventService;
 import com.ls.agent.core.security.api.SensitiveDataScanner;
 import com.ls.agent.core.security.command.RecordSecurityEventCommand;
@@ -19,6 +20,7 @@ public class SensitiveDataFilter {
     private static final Logger log = LoggerFactory.getLogger(SensitiveDataFilter.class);
 
     private static final String LOCATION_REQUEST_MESSAGE = "REQUEST_MESSAGE";
+    private static final String LOCATION_REQUEST_MESSAGES = "REQUEST_MESSAGES";
     private static final String ACTION_BLOCK = "BLOCK";
 
     private final SensitiveDataScanner sensitiveDataScanner;
@@ -33,7 +35,9 @@ public class SensitiveDataFilter {
     }
 
     public void scanRequest(String traceId, Long tenantId, Long applicationId, Long userId, GatewayChatRequest request) {
-        List<SensitiveDataFindingDTO> findings = scanMessage(request == null ? null : request.message());
+        List<SensitiveDataFindingDTO> findings = new java.util.ArrayList<>();
+        findings.addAll(scanContent(request == null ? null : request.message(), LOCATION_REQUEST_MESSAGE));
+        findings.addAll(scanMessages(request == null ? null : request.messages()));
         if (findings.isEmpty()) {
             return;
         }
@@ -41,9 +45,20 @@ public class SensitiveDataFilter {
         throw new BizException(ErrorCode.SECURITY_BLOCKED, "Request contains sensitive data");
     }
 
-    private List<SensitiveDataFindingDTO> scanMessage(String message) {
+    private List<SensitiveDataFindingDTO> scanMessages(List<ModelMessage> messages) {
+        if (messages == null || messages.isEmpty()) {
+            return List.of();
+        }
+        List<SensitiveDataFindingDTO> findings = new java.util.ArrayList<>();
+        for (ModelMessage message : messages) {
+            findings.addAll(scanContent(message == null ? null : message.content(), LOCATION_REQUEST_MESSAGES));
+        }
+        return findings;
+    }
+
+    private List<SensitiveDataFindingDTO> scanContent(String content, String location) {
         try {
-            List<SensitiveDataFindingDTO> findings = sensitiveDataScanner.scan(message, LOCATION_REQUEST_MESSAGE);
+            List<SensitiveDataFindingDTO> findings = sensitiveDataScanner.scan(content, location);
             return findings == null ? List.of() : findings;
         } catch (Exception ex) {
             throw new BizException(ErrorCode.SECURITY_BLOCKED, "Sensitive data scan failed");
