@@ -26,6 +26,7 @@ import com.ls.agent.core.trace.mapper.TraceRootMapper;
 import com.ls.agent.core.trace.mapper.TraceSpanMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.Clock;
@@ -48,6 +49,7 @@ public class DefaultTraceService implements TraceService {
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
+    @Autowired
     public DefaultTraceService(
             TraceRootMapper rootMapper,
             TraceSpanMapper spanMapper,

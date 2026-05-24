@@ -13,7 +13,11 @@ import org.springframework.context.annotation.Configuration;
         "com.ls.agent.core.mcp.mapper",
         "com.ls.agent.core.model.mapper",
         "com.ls.agent.core.profile.mapper",
-        "com.ls.agent.core.skill.mapper"
+        "com.ls.agent.core.skill.mapper",
+        "com.ls.agent.core.trace.mapper",
+        "com.ls.agent.core.quota.mapper",
+        "com.ls.agent.core.security.mapper",
+        "com.ls.agent.core.alert.mapper"
 })
 public class MybatisPlusConfiguration {
 }

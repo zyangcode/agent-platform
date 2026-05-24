@@ -1,7 +1,14 @@
 package com.ls.agent.core.persistence;
 
 import com.ls.agent.core.profile.mapper.AgentProfileMapper;
+import com.ls.agent.core.alert.mapper.AlertEventMapper;
+import com.ls.agent.core.quota.mapper.QuotaConfigMapper;
+import com.ls.agent.core.quota.mapper.QuotaReservationMapper;
+import com.ls.agent.core.quota.mapper.TokenUsageLogMapper;
+import com.ls.agent.core.security.mapper.SecurityEventMapper;
 import com.ls.agent.core.support.persistence.MybatisPlusConfiguration;
+import com.ls.agent.core.trace.mapper.TraceRootMapper;
+import com.ls.agent.core.trace.mapper.TraceSpanMapper;
 import com.baomidou.mybatisplus.autoconfigure.MybatisPlusAutoConfiguration;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -31,6 +38,15 @@ class MybatisPlusConfigurationTest {
 
     @Test
     void registersCoreMappersWhenDataSourceExists() {
-        contextRunner.run(context -> assertThat(context).hasSingleBean(AgentProfileMapper.class));
+        contextRunner.run(context -> {
+            assertThat(context).hasSingleBean(AgentProfileMapper.class);
+            assertThat(context).hasSingleBean(TraceRootMapper.class);
+            assertThat(context).hasSingleBean(TraceSpanMapper.class);
+            assertThat(context).hasSingleBean(QuotaConfigMapper.class);
+            assertThat(context).hasSingleBean(QuotaReservationMapper.class);
+            assertThat(context).hasSingleBean(TokenUsageLogMapper.class);
+            assertThat(context).hasSingleBean(SecurityEventMapper.class);
+            assertThat(context).hasSingleBean(AlertEventMapper.class);
+        });
     }
 }
