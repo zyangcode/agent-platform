@@ -3,7 +3,6 @@ import {
   Activity,
   Bot,
   Boxes,
-  KeyRound,
   Settings,
   Shield,
   TerminalSquare,
@@ -13,6 +12,7 @@ import {
 import { ConsoleLayout } from '@/components/layout/ConsoleLayout'
 import { RouteErrorBoundary } from '@/app/ErrorBoundary'
 import { ProtectedRoute } from '@/app/protected-route'
+import { ApplicationsPage } from '@/features/applications/ApplicationsPage'
 import { LoginPage } from '@/features/auth/LoginPage'
 import { ConsoleHomePage } from '@/features/dashboard/ConsoleHomePage'
 import { PlaceholderPage } from '@/features/dashboard/PlaceholderPage'
@@ -37,13 +37,7 @@ export const router = createBrowserRouter([
           },
           {
             path: '/applications',
-            element: (
-              <PlaceholderPage
-                description="Create applications, reveal one-time API keys, and manage key status."
-                icon={KeyRound}
-                title="Applications"
-              />
-            ),
+            element: <ApplicationsPage />,
           },
           {
             path: '/profiles',
