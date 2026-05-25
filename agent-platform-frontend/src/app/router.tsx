@@ -5,7 +5,6 @@ import {
   Boxes,
   Settings,
   Shield,
-  TerminalSquare,
   UserCog,
   Wrench,
 } from 'lucide-react'
@@ -14,6 +13,7 @@ import { RouteErrorBoundary } from '@/app/ErrorBoundary'
 import { ProtectedRoute } from '@/app/protected-route'
 import { ApplicationsPage } from '@/features/applications/ApplicationsPage'
 import { LoginPage } from '@/features/auth/LoginPage'
+import { ChatPage } from '@/features/chat/ChatPage'
 import { ConsoleHomePage } from '@/features/dashboard/ConsoleHomePage'
 import { PlaceholderPage } from '@/features/dashboard/PlaceholderPage'
 
@@ -51,13 +51,7 @@ export const router = createBrowserRouter([
           },
           {
             path: '/chat',
-            element: (
-              <PlaceholderPage
-                description="Run Agent conversations through Web and observe SSE events."
-                icon={TerminalSquare}
-                title="Agent Chat"
-              />
-            ),
+            element: <ChatPage />,
           },
           {
             path: '/tools',
