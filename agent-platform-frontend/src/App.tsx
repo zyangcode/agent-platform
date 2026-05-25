@@ -29,6 +29,11 @@ const metrics = [
   { label: 'Token usage', value: '0', icon: Database },
 ]
 
+const apiReadinessChecks: Array<{ layer: string; status: string; signal: string }> = [
+  { layer: 'API client', status: 'Ready', signal: 'ApiResponse<T>' },
+  { layer: 'DTO map', status: 'Typed', signal: 'Stage 3 scope' },
+]
+
 function App() {
   return (
     <main className="min-h-[100dvh] bg-[radial-gradient(circle_at_top_left,rgba(20,184,166,0.12),transparent_34rem),linear-gradient(135deg,#09090b_0%,#111827_45%,#0f172a_100%)] text-zinc-100">
@@ -110,20 +115,17 @@ function App() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    <TableRow>
-                      <TableCell>UI primitives</TableCell>
-                      <TableCell>
-                        <Badge variant="success">Ready</Badge>
-                      </TableCell>
-                      <TableCell className="font-mono text-zinc-300">10 components</TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell>Backend proxy</TableCell>
-                      <TableCell>
-                        <Badge variant="default">Configured</Badge>
-                      </TableCell>
-                      <TableCell className="font-mono text-zinc-300">/api</TableCell>
-                    </TableRow>
+                    {apiReadinessChecks.map((check) => (
+                      <TableRow key={check.layer}>
+                        <TableCell>{check.layer}</TableCell>
+                        <TableCell>
+                          <Badge variant={check.status === 'Ready' ? 'success' : 'default'}>
+                            {check.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="font-mono text-zinc-300">{check.signal}</TableCell>
+                      </TableRow>
+                    ))}
                   </TableBody>
                 </Table>
 
