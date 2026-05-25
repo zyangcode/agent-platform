@@ -189,7 +189,7 @@ export function ChatPage() {
   async function sendMessage() {
     const trimmedInput = input.trim()
 
-    if (!trimmedInput || !selectedApplication || disabledReason) {
+    if (!trimmedInput || !selectedApplication || disabledReason || runtimeStatus === 'streaming') {
       return
     }
 

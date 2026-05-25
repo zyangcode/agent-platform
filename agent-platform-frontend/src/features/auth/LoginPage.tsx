@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ApiError } from '@/lib/api/errors'
+import { register as registerRequest } from './api'
 import { useAuth } from './use-auth'
 
 type LocationState = {
@@ -26,10 +27,12 @@ export function LoginPage() {
   const { isAuthenticated, login, status } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
+  const [displayName, setDisplayName] = useState('')
   const [username, setUsername] = useState('admin')
   const [password, setPassword] = useState('admin123')
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [mode, setMode] = useState<'login' | 'register'>('login')
 
   const returnTo = useMemo(() => {
     const state = location.state as LocationState | null
@@ -46,7 +49,16 @@ export function LoginPage() {
     setIsSubmitting(true)
 
     try {
-      await login({ password, username })
+      const normalizedUsername = username.trim()
+
+      if (mode === 'register') {
+        await registerRequest({
+          displayName: displayName.trim(),
+          password,
+          username: normalizedUsername,
+        })
+      }
+      await login({ password, username: normalizedUsername })
       navigate(returnTo, { replace: true })
     } catch (caught) {
       if (caught instanceof ApiError) {
@@ -96,17 +108,36 @@ export function LoginPage() {
               <LockKeyhole className="h-5 w-5 text-cyan-100" strokeWidth={1.75} />
             </div>
             <CardTitle>登录控制台</CardTitle>
-            <CardDescription>使用阶段 1 已初始化的账号进入前端 MVP。</CardDescription>
+            <CardDescription>
+              {mode === 'login' ? '使用阶段 1 已初始化的账号进入前端 MVP。' : '创建账号后自动登录控制台。'}
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <form className="space-y-5" onSubmit={handleSubmit}>
+              {mode === 'register' ? (
+                <div className="space-y-2">
+                  <Label htmlFor="displayName">显示名称</Label>
+                  <Input
+                    autoComplete="name"
+                    id="displayName"
+                    maxLength={128}
+                    onChange={(event) => setDisplayName(event.target.value)}
+                    placeholder="Blue Mountain User"
+                    required
+                    value={displayName}
+                  />
+                </div>
+              ) : null}
+
               <div className="space-y-2">
                 <Label htmlFor="username">用户名</Label>
                 <Input
                   autoComplete="username"
                   id="username"
+                  maxLength={64}
                   onChange={(event) => setUsername(event.target.value)}
                   placeholder="admin"
+                  required
                   value={username}
                 />
               </div>
@@ -116,8 +147,11 @@ export function LoginPage() {
                 <Input
                   autoComplete="current-password"
                   id="password"
+                  maxLength={128}
+                  minLength={6}
                   onChange={(event) => setPassword(event.target.value)}
                   placeholder="admin123"
+                  required
                   type="password"
                   value={password}
                 />
@@ -131,9 +165,29 @@ export function LoginPage() {
               ) : null}
 
               <Button className="w-full" disabled={isSubmitting || status === 'checking'} type="submit">
-                {isSubmitting ? '正在登录' : '登录'}
+                {isSubmitting ? (mode === 'login' ? '正在登录' : '正在注册') : mode === 'login' ? '登录' : '注册并登录'}
               </Button>
             </form>
+            <div className="mt-5 border-t border-white/10 pt-4">
+              <Button
+                className="w-full"
+                onClick={() => {
+                  setError(null)
+                  setMode((current) => (current === 'login' ? 'register' : 'login'))
+                  if (mode === 'login') {
+                    setUsername('')
+                    setPassword('')
+                  } else {
+                    setUsername('admin')
+                    setPassword('admin123')
+                    setDisplayName('')
+                  }
+                }}
+                variant="ghost"
+              >
+                {mode === 'login' ? '没有账号，注册一个' : '已有账号，返回登录'}
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </section>
