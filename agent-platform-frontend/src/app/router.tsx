@@ -1,5 +1,5 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom'
-import { Boxes, Settings, Shield, UserCog } from 'lucide-react'
+import { Settings, Shield, UserCog } from 'lucide-react'
 import { ConsoleLayout } from '@/components/layout/ConsoleLayout'
 import { RouteErrorBoundary } from '@/app/ErrorBoundary'
 import { ProtectedRoute } from '@/app/protected-route'
@@ -11,6 +11,7 @@ import { PlaceholderPage } from '@/features/dashboard/PlaceholderPage'
 import { ProfilesPage } from '@/features/profiles/ProfilesPage'
 import { ToolsPage } from '@/features/tools/ToolsPage'
 import { TraceListPage } from '@/features/traces/TraceListPage'
+import { TokenUsagePage } from '@/features/token-usage/TokenUsagePage'
 
 export const router = createBrowserRouter([
   {
@@ -52,13 +53,7 @@ export const router = createBrowserRouter([
           },
           {
             path: '/token-usage',
-            element: (
-              <PlaceholderPage
-                description="Review token usage summaries, estimated records, and call details."
-                icon={Boxes}
-                title="Token Usage"
-              />
-            ),
+            element: <TokenUsagePage />,
           },
           {
             path: '/admin/models',
