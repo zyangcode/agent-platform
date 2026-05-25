@@ -1,5 +1,5 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom'
-import { Activity, Boxes, Settings, Shield, UserCog, Wrench } from 'lucide-react'
+import { Activity, Boxes, Settings, Shield, UserCog } from 'lucide-react'
 import { ConsoleLayout } from '@/components/layout/ConsoleLayout'
 import { RouteErrorBoundary } from '@/app/ErrorBoundary'
 import { ProtectedRoute } from '@/app/protected-route'
@@ -9,6 +9,7 @@ import { ChatPage } from '@/features/chat/ChatPage'
 import { ConsoleHomePage } from '@/features/dashboard/ConsoleHomePage'
 import { PlaceholderPage } from '@/features/dashboard/PlaceholderPage'
 import { ProfilesPage } from '@/features/profiles/ProfilesPage'
+import { ToolsPage } from '@/features/tools/ToolsPage'
 
 export const router = createBrowserRouter([
   {
@@ -42,13 +43,7 @@ export const router = createBrowserRouter([
           },
           {
             path: '/tools',
-            element: (
-              <PlaceholderPage
-                description="Browse built-in Skills and MCP tools available to profiles."
-                icon={Wrench}
-                title="Tools"
-              />
-            ),
+            element: <ToolsPage />,
           },
           {
             path: '/traces',
