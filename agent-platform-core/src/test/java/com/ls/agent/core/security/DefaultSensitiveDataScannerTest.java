@@ -31,6 +31,18 @@ class DefaultSensitiveDataScannerTest {
     }
 
     @Test
+    void scanFindsSensitiveDataAdjacentToChineseCharacters() {
+        List<SensitiveDataFindingDTO> findings = scanner.scan("我的手机号是13812345678邮箱是test@abc.com", "REQUEST_MESSAGE");
+
+        assertThat(findings).extracting(SensitiveDataFindingDTO::eventType)
+                .contains("PHONE", "EMAIL");
+        assertThat(findings).allSatisfy(finding -> {
+            assertThat(finding.location()).isEqualTo("REQUEST_MESSAGE");
+            assertThat(finding.sourceTextHash()).hasSize(64);
+        });
+    }
+
+    @Test
     void scanReturnsEmptyListWhenTextHasNoSensitiveData() {
         List<SensitiveDataFindingDTO> findings = scanner.scan("hello normal request", "REQUEST_MESSAGE");
 

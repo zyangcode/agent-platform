@@ -10,7 +10,7 @@ spring:
 web:
   gateway:
     internal-base-url: ${AGENT_PLATFORM_GATEWAY_URL:http://localhost:8081}
-    internal-token: ${AGENT_PLATFORM_INTERNAL_TOKEN:dev-internal-token}
+    internal-token: ${AGENT_PLATFORM_GATEWAY_INTERNAL_TOKEN:dev-internal-token}
 
 security:
   jwt:

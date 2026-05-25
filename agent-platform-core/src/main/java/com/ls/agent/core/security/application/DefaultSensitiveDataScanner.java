@@ -16,10 +16,12 @@ import java.util.regex.Pattern;
 public class DefaultSensitiveDataScanner implements SensitiveDataScanner {
 
     private static final List<RegexRule> RULES = List.of(
-            new RegexRule("PHONE", Pattern.compile("\\b1[3-9]\\d{9}\\b"), DefaultSensitiveDataScanner::maskPhone),
-            new RegexRule("EMAIL", Pattern.compile("\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b"), DefaultSensitiveDataScanner::maskEmail),
-            new RegexRule("ID_CARD", Pattern.compile("\\b[1-9]\\d{5}(18|19|20)\\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\\d|3[01])\\d{3}[\\dXx]\\b"), DefaultSensitiveDataScanner::maskIdCard),
-            new RegexRule("API_KEY_PATTERN", Pattern.compile("\\bsk-[A-Za-z0-9]{32,}\\b"), DefaultSensitiveDataScanner::maskApiKey)
+            // 使用 (?<!\d)/(?!\d) 替代 \b，因为 Java 的 \b 只认 [a-zA-Z0-9_] 为单词字符，
+            // 中文等 Unicode 字符被视为非单词字符，导致手机号紧贴中文时 \b 失效
+            new RegexRule("PHONE", Pattern.compile("(?<!\\d)1[3-9]\\d{9}(?!\\d)"), DefaultSensitiveDataScanner::maskPhone),
+            new RegexRule("EMAIL", Pattern.compile("(?<![A-Za-z0-9._%+\\-])[A-Za-z0-9._%+\\-]+@[A-Za-z0-9.\\-]+\\.[A-Za-z]{2,}(?![A-Za-z0-9.\\-])"), DefaultSensitiveDataScanner::maskEmail),
+            new RegexRule("ID_CARD", Pattern.compile("(?<!\\d)[1-9]\\d{5}(18|19|20)\\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\\d|3[01])\\d{3}[\\dXx](?!\\d)"), DefaultSensitiveDataScanner::maskIdCard),
+            new RegexRule("API_KEY_PATTERN", Pattern.compile("(?<![A-Za-z0-9])sk-[A-Za-z0-9]{32,}(?![A-Za-z0-9])"), DefaultSensitiveDataScanner::maskApiKey)
     );
 
     @Override
