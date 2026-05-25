@@ -1,5 +1,5 @@
 import { apiClient } from '@/lib/api/client'
-import type { JsonValue, McpTool, ModelConfig, PageResult, Profile, Skill } from '@/lib/api/types'
+import type { JsonValue, McpTool, Profile, Skill } from '@/lib/api/types'
 
 export type CreateProfileRequest = {
   applicationId: number
@@ -11,12 +11,6 @@ export type CreateProfileRequest = {
   memoryStrategy?: JsonValue
   maxSteps?: number
   visibility: string
-}
-
-export function listProfiles(applicationId: number, pageNo = 1, pageSize = 20) {
-  return apiClient.get<PageResult<Profile>>('/profiles', {
-    query: { applicationId, pageNo, pageSize },
-  })
 }
 
 export function createProfile(request: CreateProfileRequest) {
@@ -33,10 +27,6 @@ export function bindProfileSkills(profileId: number, skillIds: number[]) {
 
 export function bindProfileMcpTools(profileId: number, mcpToolIds: number[]) {
   return apiClient.put<boolean>(`/profiles/${profileId}/mcp-tools`, { mcpToolIds })
-}
-
-export function listModelConfigs() {
-  return apiClient.get<ModelConfig[]>('/model-configs')
 }
 
 export function listSkills() {

@@ -68,8 +68,10 @@ export function ConsoleHomePage() {
     }
   }
 
-  async function loadDashboard() {
-    setState({ data: null, error: null, status: 'loading' })
+  async function refreshDashboard(setLoading: boolean) {
+    if (setLoading) {
+      setState({ data: null, error: null, status: 'loading' })
+    }
     setState(await fetchDashboardData())
   }
 
@@ -90,6 +92,10 @@ export function ConsoleHomePage() {
       isMounted = false
     }
   }, [])
+
+  async function loadDashboard() {
+    await refreshDashboard(true)
+  }
 
   const metrics = useMemo(() => {
     const data = state.data
