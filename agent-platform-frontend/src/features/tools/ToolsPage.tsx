@@ -3,9 +3,9 @@ import { RefreshCw, Search, Wrench } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { FilterSelect } from '@/components/ui/filter-select'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ApiError } from '@/lib/api/errors'
 import type { McpTool, Skill } from '@/lib/api/types'
 import {
@@ -235,32 +235,5 @@ export function ToolsPage() {
         </Card>
       </div>
     </section>
-  )
-}
-
-type FilterSelectProps = {
-  label: string
-  onChange: (value: string) => void
-  options: Array<{ label: string; value: string }>
-  value: string
-}
-
-function FilterSelect({ label, onChange, options, value }: FilterSelectProps) {
-  return (
-    <div className="space-y-2">
-      <Label>{label}</Label>
-      <Select onValueChange={onChange} value={value}>
-        <SelectTrigger>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {options.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
   )
 }

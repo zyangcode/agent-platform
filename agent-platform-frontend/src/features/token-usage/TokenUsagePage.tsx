@@ -11,8 +11,8 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { FilterSelect } from '@/components/ui/filter-select'
+import { PaginationControls } from '@/components/ui/pagination-controls'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { listApplications } from '@/features/applications/api'
@@ -60,7 +60,7 @@ function normalizeIdFilter(value: string) {
   return value === 'ALL' ? null : Number(value)
 }
 
-async function fetchTokenUsageForFilters(applicationFilter: string, modelConfigFilter: string) {
+async function fetchTokenUsageForFilters(applicationFilter: string, modelConfigFilter: string, pageNo: number) {
   try {
     const applicationId = normalizeIdFilter(applicationFilter)
     const modelConfigId = normalizeIdFilter(modelConfigFilter)
@@ -71,7 +71,7 @@ async function fetchTokenUsageForFilters(applicationFilter: string, modelConfigF
       listTokenUsages({
         applicationId,
         modelConfigId,
-        pageNo: 1,
+        pageNo,
         pageSize: 20,
       }),
     ])
@@ -99,6 +99,7 @@ async function fetchTokenUsageForFilters(applicationFilter: string, modelConfigF
 export function TokenUsagePage() {
   const [applicationFilter, setApplicationFilter] = useState('ALL')
   const [modelConfigFilter, setModelConfigFilter] = useState('ALL')
+  const [pageNo, setPageNo] = useState(1)
   const [state, setState] = useState<TokenUsageState>({
     applications: null,
     error: null,
@@ -108,7 +109,7 @@ export function TokenUsagePage() {
     usages: null,
   })
 
-  async function loadTokenUsage(setLoading: boolean) {
+  async function loadTokenUsage(setLoading: boolean, nextPageNo = pageNo) {
     if (setLoading) {
       setState({
         applications: null,
@@ -120,14 +121,25 @@ export function TokenUsagePage() {
       })
     }
 
-    setState(await fetchTokenUsageForFilters(applicationFilter, modelConfigFilter))
+    setState(await fetchTokenUsageForFilters(applicationFilter, modelConfigFilter, nextPageNo))
+  }
+
+  function resetPageForFilter(onChange: (value: string) => void) {
+    return (value: string) => {
+      setPageNo(1)
+      onChange(value)
+    }
+  }
+
+  function handlePageChange(nextPageNo: number) {
+    setPageNo(nextPageNo)
   }
 
   useEffect(() => {
     let isMounted = true
 
     async function initializeTokenUsage() {
-      const nextState = await fetchTokenUsageForFilters(applicationFilter, modelConfigFilter)
+      const nextState = await fetchTokenUsageForFilters(applicationFilter, modelConfigFilter, pageNo)
 
       if (isMounted) {
         setState(nextState)
@@ -139,7 +151,7 @@ export function TokenUsagePage() {
     return () => {
       isMounted = false
     }
-  }, [applicationFilter, modelConfigFilter])
+  }, [applicationFilter, modelConfigFilter, pageNo])
 
   const tokenSplit = useMemo(() => {
     return state.summary ? buildTokenSplitData(state.summary) : []
@@ -187,7 +199,7 @@ export function TokenUsagePage() {
           <div className="grid gap-4 md:grid-cols-2">
             <FilterSelect
               label="Application"
-              onChange={setApplicationFilter}
+              onChange={resetPageForFilter(setApplicationFilter)}
               options={[
                 { label: 'All applications', value: 'ALL' },
                 ...(state.applications?.records.map((application) => ({
@@ -199,7 +211,7 @@ export function TokenUsagePage() {
             />
             <FilterSelect
               label="Model config"
-              onChange={setModelConfigFilter}
+              onChange={resetPageForFilter(setModelConfigFilter)}
               options={[
                 { label: 'All models', value: 'ALL' },
                 ...(state.modelConfigs?.map((model) => ({
@@ -428,6 +440,14 @@ export function TokenUsagePage() {
               </AlertDescription>
             </Alert>
           )}
+          {state.status === 'ready' && state.usages.total > 0 ? (
+            <PaginationControls
+              onPageChange={handlePageChange}
+              pageNo={state.usages.pageNo}
+              total={state.usages.total}
+              totalPages={state.usages.totalPages}
+            />
+          ) : null}
         </CardContent>
       </Card>
     </section>
@@ -464,33 +484,6 @@ function MiniMetric({ label, value }: { label: string; value: string }) {
     <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
       <p className="text-xs text-zinc-500">{label}</p>
       <p className="mt-2 font-mono text-lg text-zinc-100">{value}</p>
-    </div>
-  )
-}
-
-type FilterSelectProps = {
-  label: string
-  onChange: (value: string) => void
-  options: Array<{ label: string; value: string }>
-  value: string
-}
-
-function FilterSelect({ label, onChange, options, value }: FilterSelectProps) {
-  return (
-    <div className="space-y-2">
-      <Label>{label}</Label>
-      <Select onValueChange={onChange} value={value}>
-        <SelectTrigger>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {options.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
     </div>
   )
 }

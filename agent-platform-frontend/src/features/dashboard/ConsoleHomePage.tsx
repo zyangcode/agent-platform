@@ -75,10 +75,18 @@ export function ConsoleHomePage() {
     setState(await fetchDashboardData())
   }
 
+  async function loadDashboard() {
+    await refreshDashboard(true)
+  }
+
   useEffect(() => {
     let isMounted = true
 
     async function initializeDashboard() {
+      if (isMounted) {
+        setState({ data: null, error: null, status: 'loading' })
+      }
+
       const nextState = await fetchDashboardData()
 
       if (isMounted) {
@@ -92,10 +100,6 @@ export function ConsoleHomePage() {
       isMounted = false
     }
   }, [])
-
-  async function loadDashboard() {
-    await refreshDashboard(true)
-  }
 
   const metrics = useMemo(() => {
     const data = state.data

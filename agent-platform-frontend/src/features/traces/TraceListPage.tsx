@@ -4,8 +4,8 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { FilterSelect } from '@/components/ui/filter-select'
+import { PaginationControls } from '@/components/ui/pagination-controls'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { listApplications } from '@/features/applications/api'
@@ -65,6 +65,7 @@ async function fetchTraceListForFilters(
   applicationFilter: string,
   entrypointFilter: TraceEntrypointFilter | 'ALL',
   statusFilter: TraceStatusFilter | 'ALL',
+  pageNo: number,
 ) {
   try {
     const applicationId = applicationFilter === 'ALL' ? null : Number(applicationFilter)
@@ -73,7 +74,7 @@ async function fetchTraceListForFilters(
       listTraces({
         applicationId,
         entrypoint: normalizeAllFilter(entrypointFilter) as TraceEntrypointFilter,
-        pageNo: 1,
+        pageNo,
         pageSize: 20,
         status: normalizeAllFilter(statusFilter) as TraceStatusFilter,
       }),
@@ -95,6 +96,7 @@ export function TraceListPage() {
   const [entrypointFilter, setEntrypointFilter] = useState<TraceEntrypointFilter | 'ALL'>('ALL')
   const [selectedSpan, setSelectedSpan] = useState<TraceSpan | null>(null)
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null)
+  const [pageNo, setPageNo] = useState(1)
   const [state, setState] = useState<TraceListState>({
     applications: null,
     error: null,
@@ -112,19 +114,19 @@ export function TraceListPage() {
     return state.traces?.records.find((trace) => trace.traceId === selectedTraceId) ?? null
   }, [selectedTraceId, state.traces])
 
-  async function fetchTraceList() {
-    return fetchTraceListForFilters(applicationFilter, entrypointFilter, statusFilter)
+  async function fetchTraceList(nextPageNo = pageNo) {
+    return fetchTraceListForFilters(applicationFilter, entrypointFilter, statusFilter, nextPageNo)
   }
 
-  async function loadTraceList(setLoading: boolean) {
+  async function loadTraceList(setLoading: boolean, nextPageNo = pageNo) {
     if (setLoading) {
       setState({ applications: null, error: null, status: 'loading', traces: null })
     }
-    const nextState = await fetchTraceList()
+    const nextState = await fetchTraceList(nextPageNo)
     setState(nextState)
 
     if (nextState.status === 'ready') {
-      const nextTraceId = selectedTraceId ?? nextState.traces.records[0]?.traceId ?? null
+      const nextTraceId = nextState.traces.records[0]?.traceId ?? null
       setSelectedTraceId(nextTraceId)
 
       if (nextTraceId) {
@@ -156,11 +158,22 @@ export function TraceListPage() {
     void loadTraceDetail(traceId)
   }
 
+  function resetPageForFilter(onChange: (value: string) => void) {
+    return (value: string) => {
+      setPageNo(1)
+      onChange(value)
+    }
+  }
+
+  function handlePageChange(nextPageNo: number) {
+    setPageNo(nextPageNo)
+  }
+
   useEffect(() => {
     let isMounted = true
 
     async function initializeTraces() {
-      const nextState = await fetchTraceListForFilters(applicationFilter, entrypointFilter, statusFilter)
+      const nextState = await fetchTraceListForFilters(applicationFilter, entrypointFilter, statusFilter, pageNo)
 
       if (!isMounted) {
         return
@@ -193,7 +206,7 @@ export function TraceListPage() {
     return () => {
       isMounted = false
     }
-  }, [applicationFilter, entrypointFilter, statusFilter])
+  }, [applicationFilter, entrypointFilter, pageNo, statusFilter])
 
   return (
     <section className="space-y-6">
@@ -228,7 +241,7 @@ export function TraceListPage() {
           <div className="grid gap-4 md:grid-cols-3">
             <FilterSelect
               label="Application"
-              onChange={setApplicationFilter}
+              onChange={resetPageForFilter(setApplicationFilter)}
               options={[
                 { label: 'All applications', value: 'ALL' },
                 ...(state.applications?.records.map((application) => ({
@@ -240,13 +253,13 @@ export function TraceListPage() {
             />
             <FilterSelect
               label="Status"
-              onChange={(value) => setStatusFilter(value as TraceStatusFilter | 'ALL')}
+              onChange={resetPageForFilter((value) => setStatusFilter(value as TraceStatusFilter | 'ALL'))}
               options={STATUS_OPTIONS}
               value={statusFilter}
             />
             <FilterSelect
               label="Entrypoint"
-              onChange={(value) => setEntrypointFilter(value as TraceEntrypointFilter | 'ALL')}
+              onChange={resetPageForFilter((value) => setEntrypointFilter(value as TraceEntrypointFilter | 'ALL'))}
               options={ENTRYPOINT_OPTIONS}
               value={entrypointFilter}
             />
@@ -317,6 +330,14 @@ export function TraceListPage() {
                 </AlertDescription>
               </Alert>
             )}
+            {state.status === 'ready' && state.traces.total > 0 ? (
+              <PaginationControls
+                onPageChange={handlePageChange}
+                pageNo={state.traces.pageNo}
+                total={state.traces.total}
+                totalPages={state.traces.totalPages}
+              />
+            ) : null}
           </CardContent>
         </Card>
 
@@ -485,33 +506,6 @@ function Metric({ label, value }: { label: string; value: string }) {
     <div className="rounded-xl border border-white/10 bg-white/[0.035] p-3">
       <p className="text-xs text-zinc-500">{label}</p>
       <p className="mt-2 truncate font-mono text-sm text-white">{value}</p>
-    </div>
-  )
-}
-
-type FilterSelectProps = {
-  label: string
-  onChange: (value: string) => void
-  options: Array<{ label: string; value: string }>
-  value: string
-}
-
-function FilterSelect({ label, onChange, options, value }: FilterSelectProps) {
-  return (
-    <div className="space-y-2">
-      <Label>{label}</Label>
-      <Select onValueChange={onChange} value={value}>
-        <SelectTrigger>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {options.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
     </div>
   )
 }
