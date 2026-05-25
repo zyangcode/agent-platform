@@ -1,5 +1,5 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom'
-import { Activity, Boxes, Settings, Shield, UserCog } from 'lucide-react'
+import { Boxes, Settings, Shield, UserCog } from 'lucide-react'
 import { ConsoleLayout } from '@/components/layout/ConsoleLayout'
 import { RouteErrorBoundary } from '@/app/ErrorBoundary'
 import { ProtectedRoute } from '@/app/protected-route'
@@ -10,6 +10,7 @@ import { ConsoleHomePage } from '@/features/dashboard/ConsoleHomePage'
 import { PlaceholderPage } from '@/features/dashboard/PlaceholderPage'
 import { ProfilesPage } from '@/features/profiles/ProfilesPage'
 import { ToolsPage } from '@/features/tools/ToolsPage'
+import { TraceListPage } from '@/features/traces/TraceListPage'
 
 export const router = createBrowserRouter([
   {
@@ -47,13 +48,7 @@ export const router = createBrowserRouter([
           },
           {
             path: '/traces',
-            element: (
-              <PlaceholderPage
-                description="Inspect trace roots and span timelines from the Gateway governance chain."
-                icon={Activity}
-                title="Traces"
-              />
-            ),
+            element: <TraceListPage />,
           },
           {
             path: '/token-usage',
