@@ -1,5 +1,17 @@
 @import "tailwindcss";
 
+@theme {
+  --font-sans: "Geist", "Plus Jakarta Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+  --color-background: #09090b;
+  --color-foreground: #f4f4f5;
+  --color-surface: #111318;
+  --color-surface-raised: #161922;
+  --color-border-subtle: rgba(255, 255, 255, 0.1);
+  --color-accent: #22d3ee;
+  --color-accent-strong: #34d399;
+}
+
 :root {
   font-family:
     "Geist",
@@ -13,6 +25,17 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  --radius: 0.75rem;
+  --console-bg: #09090b;
+  --console-panel: rgba(255, 255, 255, 0.035);
+  --console-panel-strong: rgba(24, 24, 27, 0.72);
+  --console-border: rgba(255, 255, 255, 0.1);
+  --console-border-strong: rgba(255, 255, 255, 0.16);
+  --console-muted: #a1a1aa;
+  --console-accent: #22d3ee;
+  --console-success: #34d399;
+  --console-danger: #fb7185;
+  --console-warning: #fbbf24;
 }
 
 * {
@@ -23,6 +46,7 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100dvh;
+  overflow-x: hidden;
 }
 
 button,
@@ -30,4 +54,14 @@ input,
 textarea,
 select {
   font: inherit;
+}
+
+::selection {
+  color: #052e2b;
+  background: rgba(103, 232, 249, 0.86);
+}
+
+:focus-visible {
+  outline: 2px solid rgba(103, 232, 249, 0.75);
+  outline-offset: 2px;
 }

@@ -1,4 +1,16 @@
 import { Activity, Database, KeyRound, ShieldCheck } from 'lucide-react'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 
 const navigationItems = [
   'Dashboard',
@@ -30,13 +42,11 @@ function App() {
               Console scaffold
             </h1>
           </div>
-          <div className="rounded-full border border-emerald-300/20 bg-emerald-300/10 px-4 py-2 text-sm text-emerald-100">
-            Frontend ready
-          </div>
+          <Badge variant="success">Frontend ready</Badge>
         </header>
 
         <section className="grid flex-1 gap-6 py-8 lg:grid-cols-[280px_1fr]">
-          <aside className="rounded-2xl border border-white/10 bg-white/[0.035] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+          <Card className="p-4">
             <nav className="space-y-2 text-sm text-zinc-300">
               {navigationItems.map((item) => (
                 <div
@@ -47,7 +57,7 @@ function App() {
                 </div>
               ))}
             </nav>
-          </aside>
+          </Card>
 
           <section className="space-y-6">
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -55,29 +65,75 @@ function App() {
                 const Icon = metric.icon
 
                 return (
-                  <article
-                    className="rounded-2xl border border-white/10 bg-zinc-950/45 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
-                    key={metric.label}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-zinc-400">{metric.label}</span>
-                      <Icon className="h-4 w-4 text-cyan-200/80" strokeWidth={1.75} />
-                    </div>
-                    <p className="mt-5 font-mono text-3xl text-white">{metric.value}</p>
-                  </article>
+                  <Card className="bg-zinc-950/45" key={metric.label}>
+                    <CardContent className="p-5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-zinc-400">{metric.label}</span>
+                        <Icon className="h-4 w-4 text-cyan-200/80" strokeWidth={1.75} />
+                      </div>
+                      <p className="mt-5 font-mono text-3xl text-white">{metric.value}</p>
+                    </CardContent>
+                  </Card>
                 )
               })}
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
-              <h2 className="text-xl font-medium tracking-tight text-white">
-                Stage 3 frontend foundation
-              </h2>
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-400">
-                React, Vite, TypeScript, Tailwind CSS, routing dependencies, charting,
-                icons, path aliases, and the local API proxy are ready for the console MVP.
-              </p>
-            </div>
+            <Card>
+              <CardHeader>
+                <CardTitle>Stage 3 frontend foundation</CardTitle>
+                <CardDescription>
+                  React, Vite, TypeScript, Tailwind CSS, routing dependencies, charting,
+                  icons, path aliases, and the local API proxy are ready for the console MVP.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                <Alert>
+                  <AlertTitle>Theme baseline</AlertTitle>
+                  <AlertDescription>
+                    The console uses charcoal surfaces, restrained cyan and emerald accents,
+                    subtle inner borders, and tactile component states.
+                  </AlertDescription>
+                </Alert>
+
+                <div className="flex flex-wrap gap-3">
+                  <Button>Primary action</Button>
+                  <Button variant="secondary">Secondary</Button>
+                  <Button variant="ghost">Ghost</Button>
+                </div>
+
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Layer</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Signal</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    <TableRow>
+                      <TableCell>UI primitives</TableCell>
+                      <TableCell>
+                        <Badge variant="success">Ready</Badge>
+                      </TableCell>
+                      <TableCell className="font-mono text-zinc-300">10 components</TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell>Backend proxy</TableCell>
+                      <TableCell>
+                        <Badge variant="default">Configured</Badge>
+                      </TableCell>
+                      <TableCell className="font-mono text-zinc-300">/api</TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+
+                <div className="grid gap-3 md:grid-cols-3">
+                  <Skeleton className="h-3" />
+                  <Skeleton className="h-3" />
+                  <Skeleton className="h-3" />
+                </div>
+              </CardContent>
+            </Card>
           </section>
         </section>
       </div>
