@@ -27,7 +27,7 @@ export type CurrentUser = {
 export type LoginResponse = {
   accessToken: string
   tokenType: string
-  expiresInSeconds: number
+  expiresIn: number
   user: CurrentUser
 }
 
