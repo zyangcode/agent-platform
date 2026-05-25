@@ -1,13 +1,5 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom'
-import {
-  Activity,
-  Bot,
-  Boxes,
-  Settings,
-  Shield,
-  UserCog,
-  Wrench,
-} from 'lucide-react'
+import { Activity, Boxes, Settings, Shield, UserCog, Wrench } from 'lucide-react'
 import { ConsoleLayout } from '@/components/layout/ConsoleLayout'
 import { RouteErrorBoundary } from '@/app/ErrorBoundary'
 import { ProtectedRoute } from '@/app/protected-route'
@@ -16,6 +8,7 @@ import { LoginPage } from '@/features/auth/LoginPage'
 import { ChatPage } from '@/features/chat/ChatPage'
 import { ConsoleHomePage } from '@/features/dashboard/ConsoleHomePage'
 import { PlaceholderPage } from '@/features/dashboard/PlaceholderPage'
+import { ProfilesPage } from '@/features/profiles/ProfilesPage'
 
 export const router = createBrowserRouter([
   {
@@ -41,13 +34,7 @@ export const router = createBrowserRouter([
           },
           {
             path: '/profiles',
-            element: (
-              <PlaceholderPage
-                description="Create agent profiles and bind existing Skills and MCP tools."
-                icon={Bot}
-                title="Profiles"
-              />
-            ),
+            element: <ProfilesPage />,
           },
           {
             path: '/chat',
