@@ -30,14 +30,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setStatus('authenticated')
     } catch (error) {
       if (error instanceof ApiError && error.kind === 'unauthorized') {
-        logout()
+        clearAccessToken()
+        setUser(null)
+        setStatus('anonymous')
         return
       }
 
       setStatus('anonymous')
       throw error
     }
-  }, [logout])
+  }, [])
 
   const login = useCallback(
     async (request: LoginRequest) => {

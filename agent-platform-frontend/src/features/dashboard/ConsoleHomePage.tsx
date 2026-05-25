@@ -59,31 +59,28 @@ export function ConsoleHomePage() {
     status: 'loading',
   })
 
-  async function loadDashboard() {
-    setState({ data: null, error: null, status: 'loading' })
-
+  async function fetchDashboardData() {
     try {
       const data = await getDashboardData()
-      setState({ data, error: null, status: 'ready' })
+      return { data, error: null, status: 'ready' } satisfies DashboardState
     } catch (error) {
-      setState({ data: null, error: getErrorMessage(error), status: 'error' })
+      return { data: null, error: getErrorMessage(error), status: 'error' } satisfies DashboardState
     }
+  }
+
+  async function loadDashboard() {
+    setState({ data: null, error: null, status: 'loading' })
+    setState(await fetchDashboardData())
   }
 
   useEffect(() => {
     let isMounted = true
 
     async function initializeDashboard() {
-      try {
-        const data = await getDashboardData()
+      const nextState = await fetchDashboardData()
 
-        if (isMounted) {
-          setState({ data, error: null, status: 'ready' })
-        }
-      } catch (error) {
-        if (isMounted) {
-          setState({ data: null, error: getErrorMessage(error), status: 'error' })
-        }
+      if (isMounted) {
+        setState(nextState)
       }
     }
 

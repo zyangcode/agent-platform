@@ -11,6 +11,7 @@ import {
   Wrench,
 } from 'lucide-react'
 import { ConsoleLayout } from '@/components/layout/ConsoleLayout'
+import { RouteErrorBoundary } from '@/app/ErrorBoundary'
 import { ProtectedRoute } from '@/app/protected-route'
 import { LoginPage } from '@/features/auth/LoginPage'
 import { ConsoleHomePage } from '@/features/dashboard/ConsoleHomePage'
@@ -20,12 +21,15 @@ export const router = createBrowserRouter([
   {
     path: '/login',
     element: <LoginPage />,
+    errorElement: <RouteErrorBoundary />,
   },
   {
     element: <ProtectedRoute />,
+    errorElement: <RouteErrorBoundary />,
     children: [
       {
         element: <ConsoleLayout />,
+        errorElement: <RouteErrorBoundary />,
         children: [
           {
             path: '/',
