@@ -1,5 +1,7 @@
 package com.ls.agent.core.persistence;
 
+import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
+import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerInterceptor;
 import com.ls.agent.core.profile.mapper.AgentProfileMapper;
 import com.ls.agent.core.alert.mapper.AlertEventMapper;
 import com.ls.agent.core.quota.mapper.QuotaConfigMapper;
@@ -47,6 +49,17 @@ class MybatisPlusConfigurationTest {
             assertThat(context).hasSingleBean(TokenUsageLogMapper.class);
             assertThat(context).hasSingleBean(SecurityEventMapper.class);
             assertThat(context).hasSingleBean(AlertEventMapper.class);
+        });
+    }
+
+    @Test
+    void registersPaginationInterceptorWhenDataSourceExists() {
+        contextRunner.run(context -> {
+            assertThat(context).hasSingleBean(MybatisPlusInterceptor.class);
+            MybatisPlusInterceptor interceptor = context.getBean(MybatisPlusInterceptor.class);
+            assertThat(interceptor.getInterceptors())
+                    .anySatisfy(innerInterceptor ->
+                            assertThat(innerInterceptor).isInstanceOf(PaginationInnerInterceptor.class));
         });
     }
 }
