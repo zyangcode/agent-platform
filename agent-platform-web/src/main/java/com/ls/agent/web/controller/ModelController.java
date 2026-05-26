@@ -51,6 +51,11 @@ public class ModelController {
         )));
     }
 
+    @GetMapping("/api/admin/model-providers")
+    public ApiResponse<List<ModelProviderDTO>> listProviders() {
+        return ApiResponse.success(modelConfigService.listActiveProviders());
+    }
+
     /**
      * [管理员接口] 创建模型配置。
      *

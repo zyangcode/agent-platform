@@ -11,6 +11,8 @@ public interface ModelConfigService {
 
     ModelProviderDTO createProvider(CreateModelProviderCommand command);
 
+    List<ModelProviderDTO> listActiveProviders();
+
     ModelConfigDTO createModelConfig(CreateModelConfigCommand command);
 
     ModelConfigDTO getActiveModelConfig(Long modelConfigId);

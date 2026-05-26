@@ -141,6 +141,24 @@ class ModelControllerTest {
                 .andExpect(jsonPath("$.data[0].modelName").value("mock-chat"));
     }
 
+    @Test
+    void adminCanListModelProviders() throws Exception {
+        when(modelConfigService.listActiveProviders())
+                .thenReturn(List.of(new ModelProviderDTO(
+                        1L,
+                        "OpenAI",
+                        "OPENAI_COMPATIBLE",
+                        "https://api.openai.com/v1",
+                        "ACTIVE"
+                )));
+
+        mockMvc.perform(get("/api/admin/model-providers")
+                        .header("Authorization", bearerToken("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].providerId").value(1))
+                .andExpect(jsonPath("$.data[0].providerType").value("OPENAI_COMPATIBLE"));
+    }
+
     private String bearerToken(String role) {
         CurrentUserDTO user = new CurrentUserDTO(10001L, 1L, "alice", "Alice", List.of(role));
         return "Bearer " + jwtTokenService.generate(user);

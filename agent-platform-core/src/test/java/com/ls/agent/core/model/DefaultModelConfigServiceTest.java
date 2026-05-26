@@ -5,6 +5,7 @@ import com.ls.agent.core.model.application.DefaultModelConfigService;
 import com.ls.agent.core.model.command.CreateModelConfigCommand;
 import com.ls.agent.core.model.command.CreateModelProviderCommand;
 import com.ls.agent.core.model.dto.ModelConfigDTO;
+import com.ls.agent.core.model.dto.ModelProviderDTO;
 import com.ls.agent.core.model.entity.ModelConfigEntity;
 import com.ls.agent.core.model.entity.ModelProviderEntity;
 import com.ls.agent.core.model.mapper.ModelConfigMapper;
@@ -90,6 +91,18 @@ class DefaultModelConfigServiceTest {
         assertThat(results).hasSize(1);
         assertThat(results.get(0).modelConfigId()).isEqualTo(10L);
         assertThat(results.get(0).modelName()).isEqualTo("mock-chat");
+    }
+
+    @Test
+    void listActiveProvidersReturnsActiveProviders() {
+        ModelProviderEntity provider = activeProvider();
+        when(providerMapper.selectList(any())).thenReturn(List.of(provider));
+
+        List<ModelProviderDTO> results = service.listActiveProviders();
+
+        assertThat(results).hasSize(1);
+        assertThat(results.get(0).providerId()).isEqualTo(1L);
+        assertThat(results.get(0).providerType()).isEqualTo("OPENAI_COMPATIBLE");
     }
 
     private static ModelProviderEntity activeProvider() {

@@ -80,6 +80,16 @@ public class DefaultModelConfigService implements ModelConfigService {
         return toProviderDTO(provider);
     }
 
+    @Override
+    public List<ModelProviderDTO> listActiveProviders() {
+        return providerMapper.selectList(new LambdaQueryWrapper<ModelProviderEntity>()
+                        .eq(ModelProviderEntity::getStatus, ModelConstants.STATUS_ACTIVE)
+                        .orderByDesc(ModelProviderEntity::getCreatedAt))
+                .stream()
+                .map(this::toProviderDTO)
+                .toList();
+    }
+
     /**
      * 在指定供应商下创建模型配置。
      *

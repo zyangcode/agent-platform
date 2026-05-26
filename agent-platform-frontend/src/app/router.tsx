@@ -1,5 +1,5 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom'
-import { Settings, Shield, UserCog } from 'lucide-react'
+import { Shield, UserCog } from 'lucide-react'
 import { ConsoleLayout } from '@/components/layout/ConsoleLayout'
 import { RouteErrorBoundary } from '@/app/ErrorBoundary'
 import { ProtectedRoute } from '@/app/protected-route'
@@ -8,6 +8,7 @@ import { LoginPage } from '@/features/auth/LoginPage'
 import { ChatPage } from '@/features/chat/ChatPage'
 import { ConsoleHomePage } from '@/features/dashboard/ConsoleHomePage'
 import { PlaceholderPage } from '@/features/dashboard/PlaceholderPage'
+import { ModelManagementPage } from '@/features/models/ModelManagementPage'
 import { ProfilesPage } from '@/features/profiles/ProfilesPage'
 import { ToolsPage } from '@/features/tools/ToolsPage'
 import { TraceListPage } from '@/features/traces/TraceListPage'
@@ -57,13 +58,7 @@ export const router = createBrowserRouter([
           },
           {
             path: '/admin/models',
-            element: (
-              <PlaceholderPage
-                description="Reserved Admin route for model provider and model config management."
-                icon={Settings}
-                title="Model Configs"
-              />
-            ),
+            element: <ModelManagementPage />,
           },
           {
             path: '/admin/security',

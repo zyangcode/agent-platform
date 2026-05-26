@@ -85,6 +85,14 @@ export type ModelConfig = {
   status: string
 }
 
+export type ModelProvider = {
+  providerId: number
+  name: string
+  providerType: string
+  baseUrl: string
+  status: string
+}
+
 export type ProfileSkillBinding = {
   skillId: number
   code?: string
