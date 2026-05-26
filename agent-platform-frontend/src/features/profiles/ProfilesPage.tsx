@@ -10,6 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { listApplications } from '@/features/applications/api'
 import { ApiError } from '@/lib/api/errors'
+import { loadLastSelectedApplicationId, saveLastSelectedApplicationId } from '@/lib/application-selection-storage'
 import { listModelConfigs } from '@/lib/api/model-configs'
 import { listProfiles } from '@/lib/api/profiles'
 import type { Application, ModelConfig, PageResult, Profile } from '@/lib/api/types'
@@ -123,23 +124,47 @@ export function ProfilesPage() {
 
   async function handleApplicationChange(value: string) {
     const applicationId = Number(value)
+    saveLastSelectedApplicationId(applicationId)
     setSelectedApplicationId(applicationId)
     setSelectedProfile(null)
     await loadProfiles(applicationId)
+  }
+
+  async function handleProfileSelect(profile: Profile) {
+    try {
+      setSelectedProfile(await getProfile(profile.profileId))
+    } catch {
+      setSelectedProfile(profile)
+    }
   }
 
   useEffect(() => {
     let isMounted = true
 
     async function initialize() {
-      const nextState = await fetchProfiles()
+      const preferredApplicationId = loadLastSelectedApplicationId()
+      const nextState = await fetchProfiles(preferredApplicationId)
 
       if (isMounted) {
         setState(nextState)
 
         if (nextState.status === 'ready') {
-          setSelectedApplicationId(nextState.applications.records[0]?.applicationId ?? null)
-          setSelectedProfile(nextState.profiles.records[0] ?? null)
+          const nextApplicationId =
+            preferredApplicationId &&
+            nextState.applications.records.some((application) => application.applicationId === preferredApplicationId)
+              ? preferredApplicationId
+              : nextState.applications.records[0]?.applicationId ?? null
+          setSelectedApplicationId(nextApplicationId)
+          const firstProfile = nextState.profiles.records[0] ?? null
+          if (firstProfile) {
+            try {
+              setSelectedProfile(await getProfile(firstProfile.profileId))
+            } catch {
+              setSelectedProfile(firstProfile)
+            }
+          } else {
+            setSelectedProfile(null)
+          }
         }
       }
     }
@@ -263,7 +288,7 @@ export function ProfilesPage() {
                       <TableRow
                         data-state={isSelected ? 'selected' : undefined}
                         key={profile.profileId}
-                        onClick={() => setSelectedProfile(profile)}
+                        onClick={() => void handleProfileSelect(profile)}
                       >
                         <TableCell>
                           <p className="font-medium text-white">{profile.name}</p>

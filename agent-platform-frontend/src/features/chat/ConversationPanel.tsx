@@ -32,7 +32,7 @@ export function ConversationPanel({
   }
 
   return (
-    <div className="flex min-h-[640px] flex-col rounded-2xl border border-white/10 bg-zinc-950/45 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+    <div className="flex min-h-[760px] flex-col rounded-2xl border border-white/10 bg-zinc-950/45 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
       <div className="border-b border-white/10 px-5 py-4">
         <p className="text-sm font-medium text-white">Conversation</p>
         <p className="mt-1 text-xs text-zinc-500">SSE messages render as soon as Web forwards them.</p>
@@ -68,7 +68,7 @@ export function ConversationPanel({
               ) : null}
               <div
                 className={cn(
-                  'max-w-[78%] whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-6',
+                  'max-w-[88%] whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-6',
                   message.role === 'user'
                     ? 'bg-cyan-200 text-zinc-950'
                     : 'border border-white/10 bg-white/[0.055] text-zinc-100',
@@ -90,7 +90,7 @@ export function ConversationPanel({
         {disabledReason ? <p className="mb-3 text-xs text-amber-200">{disabledReason}</p> : null}
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
           <Textarea
-            className="min-h-24 resize-none"
+            className="min-h-32 resize-none"
             disabled={isStreaming}
             onChange={(event) => onInputChange(event.target.value)}
             onKeyDown={(event) => {

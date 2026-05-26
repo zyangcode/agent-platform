@@ -9,6 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import type { Application, ModelConfig, PageResult, Profile } from '@/lib/api/types'
 import { listApplications } from '@/features/applications/api'
 import { ApiError } from '@/lib/api/errors'
+import { loadLastSelectedApplicationId, saveLastSelectedApplicationId } from '@/lib/application-selection-storage'
 import { listModelConfigs } from '@/lib/api/model-configs'
 import { listProfiles } from '@/lib/api/profiles'
 import type { ConversationSummary } from '@/lib/api/types'
@@ -151,7 +152,11 @@ export function ChatPage() {
         listApplications(1, 50),
         listModelConfigs(),
       ])
-      const effectiveApplicationId = applicationId ?? applications.records[0]?.applicationId ?? null
+      const applicationExists = applications.records.some(
+        (application) => application.applicationId === applicationId,
+      )
+      const effectiveApplicationId =
+        applicationId && applicationExists ? applicationId : applications.records[0]?.applicationId ?? null
       const profiles = effectiveApplicationId
         ? (await listProfiles(effectiveApplicationId, 1, 50)).records
         : []
@@ -211,6 +216,7 @@ export function ChatPage() {
   async function handleApplicationChange(value: string) {
     const applicationId = Number(value)
     clearStoredChatSession()
+    saveLastSelectedApplicationId(applicationId)
     setSelectedApplicationId(applicationId)
     setSelectedProfileId(null)
     setConversationId(null)
@@ -347,7 +353,9 @@ export function ChatPage() {
 
     async function initialize() {
       const storedSession = loadStoredChatSession()
-      const nextState = await fetchResources(storedSession?.applicationId)
+      const preferredApplicationId = loadLastSelectedApplicationId() ?? storedSession?.applicationId ?? null
+      const shouldRestoreStoredSession = storedSession?.applicationId === preferredApplicationId
+      const nextState = await fetchResources(preferredApplicationId)
 
       if (isMounted) {
         setState(nextState)
@@ -363,30 +371,33 @@ export function ChatPage() {
             (modelConfig) => modelConfig.modelConfigId === storedSession?.modelConfigId,
           )
           const nextApplicationId =
-            storedApplicationExists && storedSession
+            shouldRestoreStoredSession && storedApplicationExists && storedSession
               ? storedSession.applicationId
+              : preferredApplicationId &&
+                  nextState.applications.records.some((application) => application.applicationId === preferredApplicationId)
+                ? preferredApplicationId
               : nextState.applications.records[0]?.applicationId ?? null
           const nextProfileId =
-            storedProfileExists && storedSession
+            shouldRestoreStoredSession && storedProfileExists && storedSession
               ? storedSession.profileId
               : nextState.profiles[0]?.profileId ?? null
 
-          setAgentMode(storedSession?.agentMode ?? 'agent')
+          setAgentMode(shouldRestoreStoredSession ? storedSession?.agentMode ?? 'agent' : 'agent')
           setSelectedApplicationId(nextApplicationId)
           setSelectedModelConfigId(
-            storedModelConfigExists && storedSession
+            shouldRestoreStoredSession && storedModelConfigExists && storedSession
               ? storedSession.modelConfigId
               : nextState.modelConfigs[0]?.modelConfigId ?? null,
           )
           setSelectedProfileId(nextProfileId)
-          setConversationId(storedSession?.conversationId ?? null)
-          setMessages(storedSession?.messages ?? [])
+          setConversationId(shouldRestoreStoredSession ? storedSession?.conversationId ?? null : null)
+          setMessages(shouldRestoreStoredSession ? storedSession?.messages ?? [] : [])
           try {
             setConversationHistory(
               await fetchConversationHistory(
                 nextApplicationId,
-                storedSession?.agentMode === 'none' ? null : nextProfileId,
-                storedSession?.agentMode ?? 'agent',
+                shouldRestoreStoredSession && storedSession?.agentMode === 'none' ? null : nextProfileId,
+                shouldRestoreStoredSession ? storedSession?.agentMode ?? 'agent' : 'agent',
               ),
             )
           } catch (error) {
@@ -572,7 +583,7 @@ export function ChatPage() {
         </Alert>
       ) : null}
 
-      <div className="grid gap-6 2xl:grid-cols-[280px_minmax(0,1fr)_380px]">
+      <div className="grid gap-6 2xl:grid-cols-[240px_minmax(720px,1fr)_320px]">
         <ChatHistoryPanel
           conversations={conversationHistory}
           disabled={!selectedApplicationId || !selectedProfileId || agentMode === 'none'}
