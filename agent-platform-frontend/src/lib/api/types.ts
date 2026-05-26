@@ -153,6 +153,25 @@ export type ChatStreamRequest = {
   stream?: boolean
 }
 
+export type ConversationSummary = {
+  conversationId: number
+  applicationId: number
+  profileId: number
+  title?: string | null
+  channel?: string | null
+  status: string
+  createdAt?: string | null
+  updatedAt?: string | null
+}
+
+export type ConversationMessage = {
+  messageId?: number | null
+  role: string
+  content: string
+  tokenCount?: number | null
+  traceId?: string | null
+}
+
 export type TraceSummary = {
   traceId: string
   applicationId?: number | null

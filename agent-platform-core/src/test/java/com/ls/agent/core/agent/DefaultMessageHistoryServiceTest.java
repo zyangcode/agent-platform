@@ -4,6 +4,7 @@ import com.ls.agent.common.error.BizException;
 import com.ls.agent.core.agent.api.ConversationRepository;
 import com.ls.agent.core.agent.application.DefaultMessageHistoryService;
 import com.ls.agent.core.agent.dto.ConversationMessageDTO;
+import com.ls.agent.core.agent.dto.ConversationSummaryDTO;
 import com.ls.agent.core.agent.entity.ConversationEntity;
 import com.ls.agent.core.agent.entity.ConversationMessageEntity;
 import org.junit.jupiter.api.Test;
@@ -22,6 +23,26 @@ class DefaultMessageHistoryServiceTest {
 
     private final ConversationRepository conversationRepository = mock(ConversationRepository.class);
     private final DefaultMessageHistoryService service = new DefaultMessageHistoryService(conversationRepository);
+
+    @Test
+    void listConversationsReturnsScopedConversationSummaries() {
+        ConversationEntity conversation = conversation();
+        conversation.setTitle("New conversation");
+        conversation.setChannel("WEB");
+        conversation.setStatus("ACTIVE");
+        conversation.setCreatedAt(LocalDateTime.of(2026, 5, 26, 10, 0));
+        conversation.setUpdatedAt(LocalDateTime.of(2026, 5, 26, 10, 5));
+        when(conversationRepository.listConversations(1L, 20001L, 10001L, 50001L, 20))
+                .thenReturn(List.of(conversation));
+
+        List<ConversationSummaryDTO> result = service.listConversations(1L, 20001L, 10001L, 50001L, 20);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).conversationId()).isEqualTo(90001L);
+        assertThat(result.get(0).title()).isEqualTo("New conversation");
+        assertThat(result.get(0).applicationId()).isEqualTo(20001L);
+        assertThat(result.get(0).profileId()).isEqualTo(50001L);
+    }
 
     @Test
     void listRecentMessagesReturnsMessagesInChronologicalOrderWithIdFallback() {

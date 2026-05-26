@@ -8,6 +8,7 @@ import com.ls.agent.core.agent.mapper.ConversationMapper;
 import com.ls.agent.core.agent.mapper.ConversationMessageMapper;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
@@ -37,6 +38,36 @@ public class DefaultConversationRepository implements ConversationRepository {
     @Override
     public void insertMessage(ConversationMessageEntity message) {
         messageMapper.insert(message);
+    }
+
+    @Override
+    public void touchConversation(Long conversationId) {
+        if (conversationId == null) {
+            return;
+        }
+        ConversationEntity entity = new ConversationEntity();
+        entity.setId(conversationId);
+        entity.setUpdatedAt(LocalDateTime.now());
+        conversationMapper.updateById(entity);
+    }
+
+    @Override
+    public List<ConversationEntity> listConversations(
+            Long tenantId,
+            Long applicationId,
+            Long userId,
+            Long profileId,
+            int limit
+    ) {
+        LambdaQueryWrapper<ConversationEntity> wrapper = new LambdaQueryWrapper<ConversationEntity>()
+                .eq(ConversationEntity::getTenantId, tenantId)
+                .eq(ConversationEntity::getUserId, userId)
+                .eq(applicationId != null, ConversationEntity::getApplicationId, applicationId)
+                .eq(profileId != null, ConversationEntity::getProfileId, profileId)
+                .orderByDesc(ConversationEntity::getUpdatedAt)
+                .orderByDesc(ConversationEntity::getId)
+                .last("limit " + Math.max(1, limit));
+        return conversationMapper.selectList(wrapper);
     }
 
     @Override

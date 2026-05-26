@@ -7,6 +7,8 @@ import com.ls.agent.core.agent.mapper.ConversationMapper;
 import com.ls.agent.core.agent.mapper.ConversationMessageMapper;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -36,5 +38,19 @@ class DefaultConversationRepositoryTest {
 
         verify(conversationMapper).insert(newConversation);
         verify(messageMapper).insert(any(ConversationMessageEntity.class));
+    }
+
+    @Test
+    void repositoryListsAndTouchesConversations() {
+        ConversationEntity conversation = new ConversationEntity();
+        conversation.setId(90001L);
+        when(conversationMapper.selectList(any())).thenReturn(List.of(conversation));
+
+        assertThat(repository.listConversations(1L, 20001L, 10001L, 50001L, 20)).containsExactly(conversation);
+
+        repository.touchConversation(90001L);
+
+        verify(conversationMapper).selectList(any());
+        verify(conversationMapper).updateById(any(ConversationEntity.class));
     }
 }

@@ -271,6 +271,7 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
         entity.setContent(content == null ? "" : content);
         entity.setTokenCount(tokenCount);
         conversationRepository.insertMessage(entity);
+        conversationRepository.touchConversation(conversationId);
     }
 
     private void saveMemory(AgentRunCommand command, Long conversationId, String assistantMessage) {

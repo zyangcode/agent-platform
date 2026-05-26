@@ -13,5 +13,9 @@ public interface ConversationRepository {
 
     void insertMessage(ConversationMessageEntity message);
 
+    void touchConversation(Long conversationId);
+
+    List<ConversationEntity> listConversations(Long tenantId, Long applicationId, Long userId, Long profileId, int limit);
+
     List<ConversationMessageEntity> listRecentMessages(Long conversationId, int limit);
 }

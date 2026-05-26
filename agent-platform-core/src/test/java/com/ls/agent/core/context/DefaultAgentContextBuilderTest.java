@@ -274,7 +274,7 @@ class DefaultAgentContextBuilderTest {
     }
 
     private ConversationMessageDTO message(String role, String content, int tokens) {
-        return new ConversationMessageDTO(role, content, tokens);
+        return new ConversationMessageDTO(null, role, content, tokens, null);
     }
 
     private MemoryDTO memory(String content) {

@@ -11,9 +11,14 @@ import { listApplications } from '@/features/applications/api'
 import { ApiError } from '@/lib/api/errors'
 import { listModelConfigs } from '@/lib/api/model-configs'
 import { listProfiles } from '@/lib/api/profiles'
+import type { ConversationSummary } from '@/lib/api/types'
 import { streamChat } from './api'
+import { ChatHistoryPanel } from './ChatHistoryPanel'
+import { conversationMessagesToChatMessages } from './chat-history-utils'
+import { clearStoredChatSession, loadStoredChatSession, saveStoredChatSession } from './chat-session-storage'
 import { nextConversationId } from './chat-session-utils'
 import { ConversationPanel } from './ConversationPanel'
+import { listConversationMessages, listConversations } from './history-api'
 import { RuntimeDetailPanel } from './RuntimeDetailPanel'
 import type { AgentMode, ChatMessage, ChatStreamEvent, RuntimeStatus } from './types'
 
@@ -42,6 +47,14 @@ function nextId(prefix: string) {
   return `${prefix}_${crypto.randomUUID()}`
 }
 
+function clearCurrentChatSession() {
+  clearStoredChatSession()
+  return {
+    conversationId: null,
+    messages: [],
+  }
+}
+
 function getErrorMessage(error: unknown) {
   if (error instanceof ApiError) {
     if (error.kind === 'quota_exceeded') {
@@ -56,11 +69,27 @@ function getErrorMessage(error: unknown) {
   return 'Chat stream failed.'
 }
 
+async function fetchConversationHistory(
+  applicationId?: number | null,
+  profileId?: number | null,
+  mode: AgentMode = 'agent',
+) {
+  if (!applicationId || !profileId || mode === 'none') {
+    return []
+  }
+
+  return listConversations(applicationId, profileId, 20)
+}
+
 export function ChatPage() {
   const abortControllerRef = useRef<AbortController | null>(null)
+  const loadRequestRef = useRef(0)
   const [agentMode, setAgentMode] = useState<AgentMode>('agent')
   const [input, setInput] = useState('')
   const [conversationId, setConversationId] = useState<number | null>(null)
+  const [conversationHistory, setConversationHistory] = useState<ConversationSummary[]>([])
+  const [historyError, setHistoryError] = useState<string | null>(null)
+  const [historyStatus, setHistoryStatus] = useState<'idle' | 'loading'>('idle')
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [runtimeError, setRuntimeError] = useState<string | null>(null)
   const [runtimeEvents, setRuntimeEvents] = useState<ChatStreamEvent[]>([])
@@ -146,25 +175,73 @@ export function ChatPage() {
   }
 
   async function loadResources(applicationId?: number | null) {
+    const requestId = ++loadRequestRef.current
     setState((current) => ({ ...current, applications: null, error: null, status: 'loading' }))
     const nextState = await fetchResources(applicationId)
+
+    if (requestId !== loadRequestRef.current) {
+      return
+    }
+
     setState(nextState)
 
     if (nextState.status === 'ready') {
       const nextApplicationId = applicationId ?? nextState.applications.records[0]?.applicationId ?? null
+      const nextProfileId = nextState.profiles[0]?.profileId ?? null
       setSelectedApplicationId(nextApplicationId)
       setSelectedModelConfigId((current) => current ?? nextState.modelConfigs[0]?.modelConfigId ?? null)
-      setSelectedProfileId(nextState.profiles[0]?.profileId ?? null)
+      setSelectedProfileId(nextProfileId)
+      await loadConversationHistory(nextApplicationId, nextProfileId)
+    }
+  }
+
+  async function loadConversationHistory(applicationId?: number | null, profileId?: number | null) {
+    setHistoryStatus('loading')
+    setHistoryError(null)
+
+    try {
+      setConversationHistory(await fetchConversationHistory(applicationId, profileId, agentMode))
+    } catch (error) {
+      setHistoryError(getErrorMessage(error))
+    } finally {
+      setHistoryStatus('idle')
     }
   }
 
   async function handleApplicationChange(value: string) {
     const applicationId = Number(value)
+    clearStoredChatSession()
     setSelectedApplicationId(applicationId)
     setSelectedProfileId(null)
     setConversationId(null)
     setMessages([])
     await loadResources(applicationId)
+  }
+
+  async function handleConversationSelect(conversation: ConversationSummary) {
+    if (!conversation.applicationId || !conversation.profileId) {
+      return
+    }
+
+    setRuntimeError(null)
+    setRuntimeEvents([])
+    setRuntimeStatus('idle')
+    setConversationId(conversation.conversationId)
+    setSelectedApplicationId(conversation.applicationId)
+    setSelectedProfileId(conversation.profileId)
+
+    try {
+      const historyMessages = await listConversationMessages(
+        conversation.conversationId,
+        conversation.applicationId,
+        conversation.profileId,
+        50,
+      )
+      setMessages(conversationMessagesToChatMessages(historyMessages))
+    } catch (error) {
+      setRuntimeError(getErrorMessage(error))
+      setRuntimeStatus('error')
+    }
   }
 
   function handleEvent(event: ChatStreamEvent, assistantMessageId: string) {
@@ -240,6 +317,7 @@ export function ChatPage() {
       )
 
       setRuntimeStatus((current) => (current === 'streaming' ? 'done' : current))
+      await loadConversationHistory(selectedApplication.applicationId, selectedProfile?.profileId)
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') {
         setRuntimeStatus('idle')
@@ -268,15 +346,52 @@ export function ChatPage() {
     let isMounted = true
 
     async function initialize() {
-      const nextState = await fetchResources()
+      const storedSession = loadStoredChatSession()
+      const nextState = await fetchResources(storedSession?.applicationId)
 
       if (isMounted) {
         setState(nextState)
 
         if (nextState.status === 'ready') {
-          setSelectedApplicationId(nextState.applications.records[0]?.applicationId ?? null)
-          setSelectedModelConfigId(nextState.modelConfigs[0]?.modelConfigId ?? null)
-          setSelectedProfileId(nextState.profiles[0]?.profileId ?? null)
+          const storedApplicationExists = nextState.applications.records.some(
+            (application) => application.applicationId === storedSession?.applicationId,
+          )
+          const storedProfileExists = nextState.profiles.some(
+            (profile) => profile.profileId === storedSession?.profileId,
+          )
+          const storedModelConfigExists = nextState.modelConfigs.some(
+            (modelConfig) => modelConfig.modelConfigId === storedSession?.modelConfigId,
+          )
+          const nextApplicationId =
+            storedApplicationExists && storedSession
+              ? storedSession.applicationId
+              : nextState.applications.records[0]?.applicationId ?? null
+          const nextProfileId =
+            storedProfileExists && storedSession
+              ? storedSession.profileId
+              : nextState.profiles[0]?.profileId ?? null
+
+          setAgentMode(storedSession?.agentMode ?? 'agent')
+          setSelectedApplicationId(nextApplicationId)
+          setSelectedModelConfigId(
+            storedModelConfigExists && storedSession
+              ? storedSession.modelConfigId
+              : nextState.modelConfigs[0]?.modelConfigId ?? null,
+          )
+          setSelectedProfileId(nextProfileId)
+          setConversationId(storedSession?.conversationId ?? null)
+          setMessages(storedSession?.messages ?? [])
+          try {
+            setConversationHistory(
+              await fetchConversationHistory(
+                nextApplicationId,
+                storedSession?.agentMode === 'none' ? null : nextProfileId,
+                storedSession?.agentMode ?? 'agent',
+              ),
+            )
+          } catch (error) {
+            setHistoryError(getErrorMessage(error))
+          }
         }
       }
     }
@@ -289,6 +404,28 @@ export function ChatPage() {
     }
   }, [])
 
+  useEffect(() => {
+    if (state.status !== 'ready') {
+      return
+    }
+
+    saveStoredChatSession({
+      agentMode,
+      applicationId: selectedApplicationId,
+      conversationId,
+      messages,
+      modelConfigId: selectedModelConfigId,
+      profileId: selectedProfileId,
+    })
+  }, [
+    agentMode,
+    conversationId,
+    messages,
+    selectedApplicationId,
+    selectedModelConfigId,
+    selectedProfileId,
+    state.status,
+  ])
   return (
     <section className="space-y-6">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
@@ -331,7 +468,7 @@ export function ChatPage() {
                 <Label>Application</Label>
                 <Select
                   onValueChange={handleApplicationChange}
-                  value={selectedApplication?.applicationId ? String(selectedApplication.applicationId) : undefined}
+                  value={selectedApplicationId ? String(selectedApplicationId) : undefined}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select application" />
@@ -351,8 +488,10 @@ export function ChatPage() {
                 <Select
                   onValueChange={(value) => {
                     setAgentMode(value as AgentMode)
-                    setConversationId(null)
-                    setMessages([])
+                    const cleared = clearCurrentChatSession()
+                    setConversationId(cleared.conversationId)
+                    setConversationHistory([])
+                    setMessages(cleared.messages)
                   }}
                   value={agentMode}
                 >
@@ -374,9 +513,12 @@ export function ChatPage() {
                 <Select
                   disabled={state.profiles.length === 0 || agentMode === 'none'}
                   onValueChange={(value) => {
-                    setSelectedProfileId(Number(value))
-                    setConversationId(null)
-                    setMessages([])
+                    const profileId = Number(value)
+                    setSelectedProfileId(profileId)
+                    const cleared = clearCurrentChatSession()
+                    setConversationId(cleared.conversationId)
+                    setMessages(cleared.messages)
+                    void loadConversationHistory(selectedApplicationId, profileId)
                   }}
                   value={selectedProfile?.profileId ? String(selectedProfile.profileId) : undefined}
                 >
@@ -399,8 +541,9 @@ export function ChatPage() {
                   disabled={state.modelConfigs.length === 0 || agentMode === 'agent'}
                   onValueChange={(value) => {
                     setSelectedModelConfigId(Number(value))
-                    setConversationId(null)
-                    setMessages([])
+                    const cleared = clearCurrentChatSession()
+                    setConversationId(cleared.conversationId)
+                    setMessages(cleared.messages)
                   }}
                   value={selectedModelConfig?.modelConfigId ? String(selectedModelConfig.modelConfigId) : undefined}
                 >
@@ -429,7 +572,16 @@ export function ChatPage() {
         </Alert>
       ) : null}
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
+      <div className="grid gap-6 2xl:grid-cols-[280px_minmax(0,1fr)_380px]">
+        <ChatHistoryPanel
+          conversations={conversationHistory}
+          disabled={!selectedApplicationId || !selectedProfileId || agentMode === 'none'}
+          error={historyError}
+          isLoading={historyStatus === 'loading'}
+          onRefresh={() => loadConversationHistory(selectedApplicationId, selectedProfileId)}
+          onSelect={handleConversationSelect}
+          selectedConversationId={conversationId}
+        />
         <ConversationPanel
           disabledReason={disabledReason}
           input={input}

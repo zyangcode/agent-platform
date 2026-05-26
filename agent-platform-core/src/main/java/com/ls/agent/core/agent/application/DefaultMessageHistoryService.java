@@ -5,6 +5,7 @@ import com.ls.agent.common.error.ErrorCode;
 import com.ls.agent.core.agent.api.ConversationRepository;
 import com.ls.agent.core.agent.api.MessageHistoryService;
 import com.ls.agent.core.agent.dto.ConversationMessageDTO;
+import com.ls.agent.core.agent.dto.ConversationSummaryDTO;
 import com.ls.agent.core.agent.entity.ConversationEntity;
 import com.ls.agent.core.agent.entity.ConversationMessageEntity;
 import org.springframework.stereotype.Service;
@@ -19,6 +20,34 @@ public class DefaultMessageHistoryService implements MessageHistoryService {
 
     public DefaultMessageHistoryService(ConversationRepository conversationRepository) {
         this.conversationRepository = conversationRepository;
+    }
+
+    @Override
+    public List<ConversationSummaryDTO> listConversations(
+            Long tenantId,
+            Long applicationId,
+            Long userId,
+            Long profileId,
+            int limit
+    ) {
+        return conversationRepository.listConversations(
+                        tenantId,
+                        applicationId,
+                        userId,
+                        profileId,
+                        Math.max(1, Math.min(limit, 50))
+                ).stream()
+                .map(conversation -> new ConversationSummaryDTO(
+                        conversation.getId(),
+                        conversation.getApplicationId(),
+                        conversation.getProfileId(),
+                        conversation.getTitle(),
+                        conversation.getChannel(),
+                        conversation.getStatus(),
+                        conversation.getCreatedAt(),
+                        conversation.getUpdatedAt()
+                ))
+                .toList();
     }
 
     @Override
@@ -49,9 +78,11 @@ public class DefaultMessageHistoryService implements MessageHistoryService {
         return messages.stream()
                 .sorted(this::compareMessageOrder)
                 .map(message -> new ConversationMessageDTO(
+                        message.getId(),
                         message.getRole(),
                         message.getContent(),
-                        message.getTokenCount()))
+                        message.getTokenCount(),
+                        message.getTraceId()))
                 .toList();
     }
 
