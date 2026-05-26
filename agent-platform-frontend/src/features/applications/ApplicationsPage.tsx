@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ApiError } from '@/lib/api/errors'
+import { loadLastSelectedApplicationId, saveLastSelectedApplicationId } from '@/lib/application-selection-storage'
 import type { Application, CreatedApiKey, PageResult } from '@/lib/api/types'
 import { formatDateTime } from '@/lib/format/date'
 import { ApiKeyRevealDialog } from './ApiKeyRevealDialog'
@@ -39,6 +40,24 @@ function getApplicationStatusVariant(status: string) {
   return 'muted'
 }
 
+function resolveSelectedApplicationId(
+  applications: PageResult<Application>,
+  currentApplicationId: number | null,
+) {
+  if (applications.records.length === 0) {
+    return null
+  }
+
+  const storedApplicationId = loadLastSelectedApplicationId()
+  if (currentApplicationId && applications.records.some((application) => application.applicationId === currentApplicationId)) {
+    return currentApplicationId
+  }
+  if (storedApplicationId && applications.records.some((application) => application.applicationId === storedApplicationId)) {
+    return storedApplicationId
+  }
+  return applications.records[0].applicationId
+}
+
 export function ApplicationsPage() {
   const [revealedKey, setRevealedKey] = useState<CreatedApiKey | null>(null)
   const [selectedApplicationId, setSelectedApplicationId] = useState<number | null>(null)
@@ -66,9 +85,14 @@ export function ApplicationsPage() {
   }
 
   function syncSelectedApplication(applications: PageResult<Application>) {
-    if (applications.records.length > 0) {
-      setSelectedApplicationId((current) => current ?? applications.records[0].applicationId)
-    }
+    const nextApplicationId = resolveSelectedApplicationId(applications, selectedApplicationId)
+    saveLastSelectedApplicationId(nextApplicationId)
+    setSelectedApplicationId(nextApplicationId)
+  }
+
+  function handleApplicationSelect(applicationId: number) {
+    saveLastSelectedApplicationId(applicationId)
+    setSelectedApplicationId(applicationId)
   }
 
   async function loadApplications() {
@@ -91,7 +115,9 @@ export function ApplicationsPage() {
         setState(nextState)
 
         if (nextState.status === 'ready') {
-          syncSelectedApplication(nextState.applications)
+          const nextApplicationId = resolveSelectedApplicationId(nextState.applications, null)
+          saveLastSelectedApplicationId(nextApplicationId)
+          setSelectedApplicationId(nextApplicationId)
         }
       }
     }
@@ -121,7 +147,7 @@ export function ApplicationsPage() {
           <CreateApplicationDialog
             onCreated={(result) => {
               setRevealedKey(result.apiKey)
-              setSelectedApplicationId(result.applicationId)
+              handleApplicationSelect(result.applicationId)
               void loadApplications()
             }}
           />
@@ -165,7 +191,7 @@ export function ApplicationsPage() {
                       <TableRow
                         data-state={isSelected ? 'selected' : undefined}
                         key={application.applicationId}
-                        onClick={() => setSelectedApplicationId(application.applicationId)}
+                        onClick={() => handleApplicationSelect(application.applicationId)}
                       >
                         <TableCell>
                           <div className="flex items-center gap-3">
