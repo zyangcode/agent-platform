@@ -14,6 +14,7 @@ import { listModelConfigs } from '@/lib/api/model-configs'
 import { listProfiles } from '@/lib/api/profiles'
 import type { Application, ModelConfig, PageResult, Profile } from '@/lib/api/types'
 import { CreateProfileDialog } from './CreateProfileDialog'
+import { EditProfileDialog } from './EditProfileDialog'
 import { getProfile } from './api'
 import { ProfileDetailPanel } from './ProfileDetailPanel'
 import { ProfileToolBindingPanel } from './ProfileToolBindingPanel'
@@ -164,6 +165,14 @@ export function ProfilesPage() {
             <RefreshCw className="h-4 w-4" strokeWidth={1.75} />
             Refresh
           </Button>
+          <EditProfileDialog
+            modelConfigs={state.modelConfigs}
+            onUpdated={(profile) => {
+              setSelectedProfile(profile)
+              void loadProfiles(profile.applicationId, profile.profileId, profile)
+            }}
+            profile={selectedProfile}
+          />
           <CreateProfileDialog
             application={selectedApplication}
             modelConfigs={state.modelConfigs}

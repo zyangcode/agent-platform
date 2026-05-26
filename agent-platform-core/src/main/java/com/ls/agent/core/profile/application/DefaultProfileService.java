@@ -12,6 +12,7 @@ import com.ls.agent.core.profile.api.ProfileService;
 import com.ls.agent.core.profile.command.BindMcpToolsCommand;
 import com.ls.agent.core.profile.command.BindSkillsCommand;
 import com.ls.agent.core.profile.command.CreateProfileCommand;
+import com.ls.agent.core.profile.command.UpdateProfileCommand;
 import com.ls.agent.core.profile.dto.ProfileDTO;
 import com.ls.agent.core.profile.dto.ProfileMcpToolBindingDTO;
 import com.ls.agent.core.profile.dto.ProfileSkillBindingDTO;
@@ -120,6 +121,21 @@ public class DefaultProfileService implements ProfileService {
                         entity.getEnabledByDefault()))
                 .toList();
         return toProfileDTO(profile, skillBindings, mcpToolBindings);
+    }
+
+    @Override
+    @Transactional
+    public ProfileDTO updateProfile(UpdateProfileCommand command) {
+        AgentProfileEntity profile = getOwnedDraftProfile(command.tenantId(), command.ownerUserId(), command.profileId());
+        profile.setName(ProfileValidation.normalizeRequired(command.name(), "name"));
+        profile.setDescription(command.description());
+        profile.setModelConfigId(ProfileValidation.requireNonNull(command.modelConfigId(), "modelConfigId"));
+        profile.setPromptExtra(command.promptExtra());
+        profile.setMemoryStrategy(command.memoryStrategy() == null ? objectMapper.createObjectNode() : command.memoryStrategy());
+        profile.setMaxSteps(command.maxSteps() == null ? 6 : command.maxSteps());
+        profile.setVisibility(ProfileValidation.normalizeRequired(command.visibility(), "visibility"));
+        profileMapper.updateById(profile);
+        return getProfile(command.tenantId(), command.ownerUserId(), profile.getId());
     }
 
     @Override

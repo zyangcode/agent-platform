@@ -13,8 +13,22 @@ export type CreateProfileRequest = {
   visibility: string
 }
 
+export type UpdateProfileRequest = {
+  name: string
+  description?: string
+  modelConfigId: number
+  promptExtra?: string
+  memoryStrategy?: JsonValue
+  maxSteps?: number
+  visibility: string
+}
+
 export function createProfile(request: CreateProfileRequest) {
   return apiClient.post<Profile>('/profiles', request)
+}
+
+export function updateProfile(profileId: number, request: UpdateProfileRequest) {
+  return apiClient.put<Profile>(`/profiles/${profileId}`, request)
 }
 
 export function getProfile(profileId: number) {

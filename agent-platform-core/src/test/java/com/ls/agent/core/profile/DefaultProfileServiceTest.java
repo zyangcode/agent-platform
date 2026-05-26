@@ -10,6 +10,7 @@ import com.ls.agent.core.profile.application.DefaultProfileService;
 import com.ls.agent.core.profile.command.BindMcpToolsCommand;
 import com.ls.agent.core.profile.command.BindSkillsCommand;
 import com.ls.agent.core.profile.command.CreateProfileCommand;
+import com.ls.agent.core.profile.command.UpdateProfileCommand;
 import com.ls.agent.core.profile.dto.ProfileDTO;
 import com.ls.agent.core.profile.entity.AgentProfileEntity;
 import com.ls.agent.core.profile.entity.ProfileMcpToolEntity;
@@ -134,6 +135,37 @@ class DefaultProfileServiceTest {
 
         verify(profileSkillMapper).delete(any());
         verify(profileSkillMapper, times(2)).insert(any(ProfileSkillEntity.class));
+    }
+
+    @Test
+    void updateProfileUpdatesEditableDraftFields() {
+        when(profileMapper.selectById(50001L)).thenReturn(draftProfile());
+        when(profileSkillMapper.selectList(any())).thenReturn(List.of());
+        when(profileMcpToolMapper.selectList(any())).thenReturn(List.of());
+
+        ProfileDTO result = service.updateProfile(new UpdateProfileCommand(
+                1L,
+                10001L,
+                50001L,
+                "Updated Assistant",
+                "Updated description",
+                2L,
+                "Updated prompt.",
+                objectMapper.createObjectNode().put("mode", "READ_ONLY"),
+                3,
+                "PRIVATE"
+        ));
+
+        ArgumentCaptor<AgentProfileEntity> captor = ArgumentCaptor.forClass(AgentProfileEntity.class);
+        verify(profileMapper).updateById(captor.capture());
+        AgentProfileEntity entity = captor.getValue();
+        assertThat(entity.getName()).isEqualTo("Updated Assistant");
+        assertThat(entity.getDescription()).isEqualTo("Updated description");
+        assertThat(entity.getModelConfigId()).isEqualTo(2L);
+        assertThat(entity.getPromptExtra()).isEqualTo("Updated prompt.");
+        assertThat(entity.getMemoryStrategy().get("mode").asText()).isEqualTo("READ_ONLY");
+        assertThat(entity.getMaxSteps()).isEqualTo(3);
+        assertThat(result.modelConfigId()).isEqualTo(2L);
     }
 
     @Test

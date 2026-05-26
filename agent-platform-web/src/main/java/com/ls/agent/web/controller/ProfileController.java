@@ -6,10 +6,12 @@ import com.ls.agent.core.profile.api.ProfileService;
 import com.ls.agent.core.profile.command.BindMcpToolsCommand;
 import com.ls.agent.core.profile.command.BindSkillsCommand;
 import com.ls.agent.core.profile.command.CreateProfileCommand;
+import com.ls.agent.core.profile.command.UpdateProfileCommand;
 import com.ls.agent.core.profile.dto.ProfileDTO;
 import com.ls.agent.web.dto.BindMcpToolsRequest;
 import com.ls.agent.web.dto.BindSkillsRequest;
 import com.ls.agent.web.dto.CreateProfileRequest;
+import com.ls.agent.web.dto.UpdateProfileRequest;
 import com.ls.agent.web.security.CurrentUser;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -69,6 +71,26 @@ public class ProfileController {
                 currentUser.userId(),
                 profileId
         ));
+    }
+
+    @PutMapping("/api/profiles/{profileId}")
+    public ApiResponse<ProfileDTO> update(
+            CurrentUser currentUser,
+            @PathVariable("profileId") Long profileId,
+            @Valid @RequestBody UpdateProfileRequest request
+    ) {
+        return ApiResponse.success(profileService.updateProfile(new UpdateProfileCommand(
+                currentUser.tenantId(),
+                currentUser.userId(),
+                profileId,
+                request.name(),
+                request.description(),
+                request.modelConfigId(),
+                request.promptExtra(),
+                request.memoryStrategy(),
+                request.maxSteps(),
+                request.visibility()
+        )));
     }
 
     @PutMapping("/api/profiles/{profileId}/skills")

@@ -6,10 +6,12 @@ import com.ls.agent.core.identity.dto.CurrentUserDTO;
 import com.ls.agent.core.profile.api.ProfileService;
 import com.ls.agent.core.profile.command.BindSkillsCommand;
 import com.ls.agent.core.profile.command.CreateProfileCommand;
+import com.ls.agent.core.profile.command.UpdateProfileCommand;
 import com.ls.agent.core.profile.dto.ProfileDTO;
 import com.ls.agent.web.dto.BindMcpToolsRequest;
 import com.ls.agent.web.dto.BindSkillsRequest;
 import com.ls.agent.web.dto.CreateProfileRequest;
+import com.ls.agent.web.dto.UpdateProfileRequest;
 import com.ls.agent.web.security.JwtTokenService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -105,6 +107,33 @@ class ProfileControllerTest {
                         .header("Authorization", bearerToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.name").value("General Assistant"));
+    }
+
+    @Test
+    void updateProfileDelegatesWithCurrentUser() throws Exception {
+        when(profileService.updateProfile(any(UpdateProfileCommand.class))).thenReturn(profile());
+
+        mockMvc.perform(put("/api/profiles/50001")
+                        .header("Authorization", bearerToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new UpdateProfileRequest(
+                                "Updated Assistant",
+                                "Updated description",
+                                2L,
+                                "Updated prompt.",
+                                objectMapper.createObjectNode().put("mode", "READ_ONLY"),
+                                3,
+                                "PRIVATE"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.profileId").value(50001));
+
+        ArgumentCaptor<UpdateProfileCommand> captor = ArgumentCaptor.forClass(UpdateProfileCommand.class);
+        verify(profileService).updateProfile(captor.capture());
+        assertThat(captor.getValue().tenantId()).isEqualTo(1L);
+        assertThat(captor.getValue().ownerUserId()).isEqualTo(10001L);
+        assertThat(captor.getValue().profileId()).isEqualTo(50001L);
+        assertThat(captor.getValue().modelConfigId()).isEqualTo(2L);
     }
 
     @Test

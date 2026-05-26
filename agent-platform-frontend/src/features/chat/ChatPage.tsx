@@ -12,6 +12,7 @@ import { ApiError } from '@/lib/api/errors'
 import { listModelConfigs } from '@/lib/api/model-configs'
 import { listProfiles } from '@/lib/api/profiles'
 import { streamChat } from './api'
+import { nextConversationId } from './chat-session-utils'
 import { ConversationPanel } from './ConversationPanel'
 import { RuntimeDetailPanel } from './RuntimeDetailPanel'
 import type { AgentMode, ChatMessage, ChatStreamEvent, RuntimeStatus } from './types'
@@ -59,6 +60,7 @@ export function ChatPage() {
   const abortControllerRef = useRef<AbortController | null>(null)
   const [agentMode, setAgentMode] = useState<AgentMode>('agent')
   const [input, setInput] = useState('')
+  const [conversationId, setConversationId] = useState<number | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [runtimeError, setRuntimeError] = useState<string | null>(null)
   const [runtimeEvents, setRuntimeEvents] = useState<ChatStreamEvent[]>([])
@@ -160,11 +162,14 @@ export function ChatPage() {
     const applicationId = Number(value)
     setSelectedApplicationId(applicationId)
     setSelectedProfileId(null)
+    setConversationId(null)
+    setMessages([])
     await loadResources(applicationId)
   }
 
   function handleEvent(event: ChatStreamEvent, assistantMessageId: string) {
     setRuntimeEvents((current) => [...current, event])
+    setConversationId((current) => nextConversationId(current, event))
 
     if (event.type === 'message' && event.content) {
       setMessages((current) =>
@@ -213,6 +218,7 @@ export function ChatPage() {
           agentMode,
           applicationId: selectedApplication.applicationId,
           clientRequestId: nextId('web'),
+          conversationId: agentMode === 'agent' ? conversationId ?? undefined : undefined,
           message: agentMode === 'agent' ? trimmedInput : undefined,
           messages:
             agentMode === 'none'
@@ -342,7 +348,14 @@ export function ChatPage() {
 
               <div className="space-y-2">
                 <Label>Mode</Label>
-                <Select onValueChange={(value) => setAgentMode(value as AgentMode)} value={agentMode}>
+                <Select
+                  onValueChange={(value) => {
+                    setAgentMode(value as AgentMode)
+                    setConversationId(null)
+                    setMessages([])
+                  }}
+                  value={agentMode}
+                >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -360,7 +373,11 @@ export function ChatPage() {
                 <Label>Profile</Label>
                 <Select
                   disabled={state.profiles.length === 0 || agentMode === 'none'}
-                  onValueChange={(value) => setSelectedProfileId(Number(value))}
+                  onValueChange={(value) => {
+                    setSelectedProfileId(Number(value))
+                    setConversationId(null)
+                    setMessages([])
+                  }}
                   value={selectedProfile?.profileId ? String(selectedProfile.profileId) : undefined}
                 >
                   <SelectTrigger>
@@ -380,7 +397,11 @@ export function ChatPage() {
                 <Label>Model config</Label>
                 <Select
                   disabled={state.modelConfigs.length === 0 || agentMode === 'agent'}
-                  onValueChange={(value) => setSelectedModelConfigId(Number(value))}
+                  onValueChange={(value) => {
+                    setSelectedModelConfigId(Number(value))
+                    setConversationId(null)
+                    setMessages([])
+                  }}
                   value={selectedModelConfig?.modelConfigId ? String(selectedModelConfig.modelConfigId) : undefined}
                 >
                   <SelectTrigger>
