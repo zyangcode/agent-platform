@@ -88,7 +88,11 @@ export function ProfilesPage() {
     }
   }
 
-  async function loadProfiles(applicationId?: number | null, preferredProfileId?: number | null) {
+  async function loadProfiles(
+    applicationId?: number | null,
+    preferredProfileId?: number | null,
+    detailedProfile?: Profile | null,
+  ) {
     setState((current) => ({
       ...current,
       applications: null,
@@ -102,7 +106,7 @@ export function ProfilesPage() {
     if (nextState.status === 'ready') {
       const nextApplicationId = applicationId ?? nextState.applications.records[0]?.applicationId ?? null
       setSelectedApplicationId(nextApplicationId)
-      setSelectedProfile(selectProfileAfterReload(nextState.profiles.records, preferredProfileId))
+      setSelectedProfile(selectProfileAfterReload(nextState.profiles.records, preferredProfileId, detailedProfile))
     }
   }
 
@@ -110,7 +114,7 @@ export function ProfilesPage() {
     try {
       const profile = await getProfile(profileId)
       setSelectedProfile(profile)
-      await loadProfiles(profile.applicationId, profileId)
+      await loadProfiles(profile.applicationId, profileId, profile)
     } catch {
       await loadProfiles(selectedApplicationId)
     }

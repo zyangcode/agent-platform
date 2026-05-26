@@ -27,6 +27,16 @@ describe('selectProfileAfterReload', () => {
     expect(selectProfileAfterReload(profiles, 4)?.profileId).toBe(4)
   })
 
+  it('keeps detailed profile bindings instead of replacing them with list summary', () => {
+    const profiles = [profile(1), profile(4), profile(2)]
+    const detailedProfile = {
+      ...profile(4),
+      skillBindings: [{ enabledByDefault: true, required: false, skillId: 1 }],
+    }
+
+    expect(selectProfileAfterReload(profiles, 4, detailedProfile)?.skillBindings).toHaveLength(1)
+  })
+
   it('falls back to the first profile when the requested profile is missing', () => {
     const profiles = [profile(1), profile(2)]
 
