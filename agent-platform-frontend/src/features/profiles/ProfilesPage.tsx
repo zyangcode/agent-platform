@@ -17,6 +17,7 @@ import { CreateProfileDialog } from './CreateProfileDialog'
 import { getProfile } from './api'
 import { ProfileDetailPanel } from './ProfileDetailPanel'
 import { ProfileToolBindingPanel } from './ProfileToolBindingPanel'
+import { selectProfileAfterReload } from './profile-selection-utils'
 import { getStatusVariant } from './profile-utils'
 
 type ProfilesState =
@@ -87,7 +88,7 @@ export function ProfilesPage() {
     }
   }
 
-  async function loadProfiles(applicationId?: number | null) {
+  async function loadProfiles(applicationId?: number | null, preferredProfileId?: number | null) {
     setState((current) => ({
       ...current,
       applications: null,
@@ -101,7 +102,7 @@ export function ProfilesPage() {
     if (nextState.status === 'ready') {
       const nextApplicationId = applicationId ?? nextState.applications.records[0]?.applicationId ?? null
       setSelectedApplicationId(nextApplicationId)
-      setSelectedProfile(nextState.profiles.records[0] ?? null)
+      setSelectedProfile(selectProfileAfterReload(nextState.profiles.records, preferredProfileId))
     }
   }
 
@@ -109,7 +110,7 @@ export function ProfilesPage() {
     try {
       const profile = await getProfile(profileId)
       setSelectedProfile(profile)
-      await loadProfiles(profile.applicationId)
+      await loadProfiles(profile.applicationId, profileId)
     } catch {
       await loadProfiles(selectedApplicationId)
     }
