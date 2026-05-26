@@ -1,6 +1,7 @@
 package com.ls.agent.core.persistence;
 
 import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
+import com.baomidou.mybatisplus.extension.plugins.inner.OptimisticLockerInnerInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerInterceptor;
 import com.ls.agent.core.profile.mapper.AgentProfileMapper;
 import com.ls.agent.core.alert.mapper.AlertEventMapper;
@@ -60,6 +61,17 @@ class MybatisPlusConfigurationTest {
             assertThat(interceptor.getInterceptors())
                     .anySatisfy(innerInterceptor ->
                             assertThat(innerInterceptor).isInstanceOf(PaginationInnerInterceptor.class));
+        });
+    }
+
+    @Test
+    void registersOptimisticLockerInterceptorForVersionedEntities() {
+        contextRunner.run(context -> {
+            assertThat(context).hasSingleBean(MybatisPlusInterceptor.class);
+            MybatisPlusInterceptor interceptor = context.getBean(MybatisPlusInterceptor.class);
+            assertThat(interceptor.getInterceptors())
+                    .anySatisfy(innerInterceptor ->
+                            assertThat(innerInterceptor).isInstanceOf(OptimisticLockerInnerInterceptor.class));
         });
     }
 }

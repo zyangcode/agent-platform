@@ -1,6 +1,7 @@
 package com.ls.agent.web.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ls.agent.common.error.ErrorCode;
 import com.ls.agent.common.response.PageResult;
 import com.ls.agent.core.identity.dto.CurrentUserDTO;
 import com.ls.agent.core.profile.api.ProfileService;
@@ -134,6 +135,26 @@ class ProfileControllerTest {
         assertThat(captor.getValue().ownerUserId()).isEqualTo(10001L);
         assertThat(captor.getValue().profileId()).isEqualTo(50001L);
         assertThat(captor.getValue().modelConfigId()).isEqualTo(2L);
+    }
+
+    @Test
+    void updateProfileReturnsInternalErrorWhenServiceFails() throws Exception {
+        when(profileService.updateProfile(any(UpdateProfileCommand.class))).thenThrow(new IllegalStateException("boom"));
+
+        mockMvc.perform(put("/api/profiles/50001")
+                        .header("Authorization", bearerToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new UpdateProfileRequest(
+                                "Updated Assistant",
+                                "Updated description",
+                                2L,
+                                "Updated prompt.",
+                                objectMapper.createObjectNode().put("mode", "READ_ONLY"),
+                                3,
+                                "PRIVATE"
+                        ))))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value(ErrorCode.INTERNAL_ERROR.getCode()));
     }
 
     @Test
