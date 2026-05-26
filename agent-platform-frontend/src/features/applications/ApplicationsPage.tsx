@@ -12,8 +12,11 @@ import type { Application, CreatedApiKey, PageResult } from '@/lib/api/types'
 import { formatDateTime } from '@/lib/format/date'
 import { ApiKeyRevealDialog } from './ApiKeyRevealDialog'
 import { ApiKeysPanel } from './ApiKeysPanel'
+import { resolveSelectedApplicationId } from './application-selection-utils'
 import { listApplications } from './api'
 import { CreateApplicationDialog } from './CreateApplicationDialog'
+import { DisableApplicationDialog } from './DisableApplicationDialog'
+import { EditApplicationDialog } from './EditApplicationDialog'
 
 type ApplicationsState =
   | { applications: PageResult<Application>; error: null; status: 'ready' }
@@ -38,24 +41,6 @@ function getApplicationStatusVariant(status: string) {
   }
 
   return 'muted'
-}
-
-function resolveSelectedApplicationId(
-  applications: PageResult<Application>,
-  currentApplicationId: number | null,
-) {
-  if (applications.records.length === 0) {
-    return null
-  }
-
-  const storedApplicationId = loadLastSelectedApplicationId()
-  if (currentApplicationId && applications.records.some((application) => application.applicationId === currentApplicationId)) {
-    return currentApplicationId
-  }
-  if (storedApplicationId && applications.records.some((application) => application.applicationId === storedApplicationId)) {
-    return storedApplicationId
-  }
-  return applications.records[0].applicationId
 }
 
 export function ApplicationsPage() {
@@ -85,7 +70,11 @@ export function ApplicationsPage() {
   }
 
   function syncSelectedApplication(applications: PageResult<Application>) {
-    const nextApplicationId = resolveSelectedApplicationId(applications, selectedApplicationId)
+    const nextApplicationId = resolveSelectedApplicationId(
+      applications,
+      selectedApplicationId,
+      loadLastSelectedApplicationId(),
+    )
     saveLastSelectedApplicationId(nextApplicationId)
     setSelectedApplicationId(nextApplicationId)
   }
@@ -115,7 +104,11 @@ export function ApplicationsPage() {
         setState(nextState)
 
         if (nextState.status === 'ready') {
-          const nextApplicationId = resolveSelectedApplicationId(nextState.applications, null)
+          const nextApplicationId = resolveSelectedApplicationId(
+            nextState.applications,
+            null,
+            loadLastSelectedApplicationId(),
+          )
           saveLastSelectedApplicationId(nextApplicationId)
           setSelectedApplicationId(nextApplicationId)
         }
@@ -181,6 +174,7 @@ export function ApplicationsPage() {
                     <TableHead>Name</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Created</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -213,6 +207,22 @@ export function ApplicationsPage() {
                         </TableCell>
                         <TableCell className="text-zinc-400">
                           {formatDateTime(application.createdAt)}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-wrap gap-2" onClick={(event) => event.stopPropagation()}>
+                            <EditApplicationDialog
+                              application={application}
+                              onUpdated={() => {
+                                void loadApplications()
+                              }}
+                            />
+                            <DisableApplicationDialog
+                              application={application}
+                              onDisabled={() => {
+                                void loadApplications()
+                              }}
+                            />
+                          </div>
                         </TableCell>
                       </TableRow>
                     )

@@ -9,6 +9,7 @@ import com.ls.agent.core.identity.api.ApiKeyGenerator;
 import com.ls.agent.core.identity.api.ApplicationService;
 import com.ls.agent.core.identity.api.PasswordHasher;
 import com.ls.agent.core.identity.command.CreateApplicationCommand;
+import com.ls.agent.core.identity.command.UpdateApplicationCommand;
 import com.ls.agent.core.identity.dto.ApiKeyDTO;
 import com.ls.agent.core.identity.dto.ApplicationDTO;
 import com.ls.agent.core.identity.dto.CreateApplicationResult;
@@ -126,6 +127,25 @@ public class DefaultApplicationService implements ApplicationService {
         return PageResult.of(records, pageNo, pageSize, page.getTotal());
     }
 
+    @Override
+    @Transactional
+    public ApplicationDTO updateApplication(UpdateApplicationCommand command) {
+        ApplicationEntity application = getOwnedApplication(command.tenantId(), command.ownerUserId(), command.applicationId());
+        application.setName(IdentityValidation.normalizeRequired(command.name(), "name"));
+        application.setDescription(command.description());
+        applicationMapper.updateById(application);
+        return toApplicationDTO(application);
+    }
+
+    @Override
+    @Transactional
+    public ApplicationDTO disableApplication(Long tenantId, Long ownerUserId, Long applicationId) {
+        ApplicationEntity application = getOwnedApplication(tenantId, ownerUserId, applicationId);
+        application.setStatus(IdentityConstants.STATUS_DISABLED);
+        applicationMapper.updateById(application);
+        return toApplicationDTO(application);
+    }
+
     /**
      * 获取应用下的 API 密钥列表。
      *
@@ -228,4 +248,3 @@ public class DefaultApplicationService implements ApplicationService {
         );
     }
 }
-

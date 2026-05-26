@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ls.agent.common.response.PageResult;
 import com.ls.agent.core.identity.api.ApplicationService;
 import com.ls.agent.core.identity.command.CreateApplicationCommand;
+import com.ls.agent.core.identity.command.UpdateApplicationCommand;
 import com.ls.agent.core.identity.dto.ApiKeyDTO;
 import com.ls.agent.core.identity.dto.ApplicationDTO;
 import com.ls.agent.core.identity.dto.CreatedApiKeyDTO;
@@ -29,6 +30,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -106,6 +108,59 @@ class ApplicationControllerTest {
                 .andExpect(jsonPath("$.data.records[0].name").value("Demo App"));
 
         verify(applicationService).pageApplications(1L, 10001L, 2, 100);
+    }
+
+    @Test
+    void updateApplicationDelegatesWithCurrentUserAndApplicationId() throws Exception {
+        when(applicationService.updateApplication(org.mockito.ArgumentMatchers.any(UpdateApplicationCommand.class)))
+                .thenReturn(new ApplicationDTO(
+                        20001L,
+                        "Renamed App",
+                        "updated description",
+                        "ACTIVE",
+                        LocalDateTime.of(2026, 5, 21, 10, 0)
+                ));
+
+        mockMvc.perform(put("/api/applications/20001")
+                        .header("Authorization", bearerToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "Renamed App",
+                                  "description": "updated description"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.applicationId").value(20001))
+                .andExpect(jsonPath("$.data.name").value("Renamed App"))
+                .andExpect(jsonPath("$.data.description").value("updated description"));
+
+        ArgumentCaptor<UpdateApplicationCommand> captor = ArgumentCaptor.forClass(UpdateApplicationCommand.class);
+        verify(applicationService).updateApplication(captor.capture());
+        assertThat(captor.getValue().tenantId()).isEqualTo(1L);
+        assertThat(captor.getValue().ownerUserId()).isEqualTo(10001L);
+        assertThat(captor.getValue().applicationId()).isEqualTo(20001L);
+        assertThat(captor.getValue().name()).isEqualTo("Renamed App");
+    }
+
+    @Test
+    void disableApplicationDelegatesWithCurrentUserAndApplicationId() throws Exception {
+        when(applicationService.disableApplication(1L, 10001L, 20001L))
+                .thenReturn(new ApplicationDTO(
+                        20001L,
+                        "Demo App",
+                        "stage 1 test application",
+                        "DISABLED",
+                        LocalDateTime.of(2026, 5, 21, 10, 0)
+                ));
+
+        mockMvc.perform(post("/api/applications/20001/disable")
+                        .header("Authorization", bearerToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.applicationId").value(20001))
+                .andExpect(jsonPath("$.data.status").value("DISABLED"));
+
+        verify(applicationService).disableApplication(1L, 10001L, 20001L);
     }
 
     @Test

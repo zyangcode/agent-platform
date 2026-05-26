@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { resolveSelectedApplicationId } from '@/features/applications/application-selection-utils'
 import { listApplications } from '@/features/applications/api'
 import { ApiError } from '@/lib/api/errors'
 import { loadLastSelectedApplicationId, saveLastSelectedApplicationId } from '@/lib/application-selection-storage'
@@ -67,7 +68,11 @@ export function ProfilesPage() {
         listApplications(1, 50),
         listModelConfigs(),
       ])
-      const effectiveApplicationId = applicationId ?? applications.records[0]?.applicationId ?? null
+      const effectiveApplicationId = resolveSelectedApplicationId(
+        applications,
+        applicationId ?? null,
+        loadLastSelectedApplicationId(),
+      )
       const profiles = effectiveApplicationId
         ? await listProfiles(effectiveApplicationId, 1, 50)
         : { pageNo: 1, pageSize: 50, records: [], total: 0, totalPages: 0 }
@@ -106,7 +111,11 @@ export function ProfilesPage() {
     setState(nextState)
 
     if (nextState.status === 'ready') {
-      const nextApplicationId = applicationId ?? nextState.applications.records[0]?.applicationId ?? null
+      const nextApplicationId = resolveSelectedApplicationId(
+        nextState.applications,
+        applicationId ?? null,
+        loadLastSelectedApplicationId(),
+      )
       setSelectedApplicationId(nextApplicationId)
       setSelectedProfile(selectProfileAfterReload(nextState.profiles.records, preferredProfileId, detailedProfile))
     }
@@ -149,11 +158,11 @@ export function ProfilesPage() {
         setState(nextState)
 
         if (nextState.status === 'ready') {
-          const nextApplicationId =
-            preferredApplicationId &&
-            nextState.applications.records.some((application) => application.applicationId === preferredApplicationId)
-              ? preferredApplicationId
-              : nextState.applications.records[0]?.applicationId ?? null
+          const nextApplicationId = resolveSelectedApplicationId(
+            nextState.applications,
+            preferredApplicationId,
+            preferredApplicationId,
+          )
           setSelectedApplicationId(nextApplicationId)
           const firstProfile = nextState.profiles.records[0] ?? null
           if (firstProfile) {

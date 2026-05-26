@@ -42,6 +42,7 @@ function getKeyStatusVariant(status: string) {
 
 export function ApiKeysPanel({ application }: ApiKeysPanelProps) {
   const [revokeId, setRevokeId] = useState<number | null>(null)
+  const isActiveApplication = application?.status.toUpperCase() === 'ACTIVE'
   const [state, setState] = useState<ApiKeysState>({
     apiKeys: null,
     error: null,
@@ -63,7 +64,7 @@ export function ApiKeysPanel({ application }: ApiKeysPanelProps) {
   }
 
   async function handleRevoke(apiKeyId: number) {
-    if (!application) {
+    if (!application || !isActiveApplication) {
       return
     }
 
@@ -80,7 +81,7 @@ export function ApiKeysPanel({ application }: ApiKeysPanelProps) {
   useEffect(() => {
     let isMounted = true
 
-    if (!application) {
+    if (!application || !isActiveApplication) {
       return
     }
 
@@ -97,7 +98,7 @@ export function ApiKeysPanel({ application }: ApiKeysPanelProps) {
     return () => {
       isMounted = false
     }
-  }, [application])
+  }, [application, isActiveApplication])
 
   return (
     <Card>
@@ -112,7 +113,12 @@ export function ApiKeysPanel({ application }: ApiKeysPanelProps) {
             </CardDescription>
           </div>
           {application ? (
-            <Button onClick={() => loadKeys(application.applicationId)} size="sm" variant="secondary">
+            <Button
+              disabled={!isActiveApplication}
+              onClick={() => loadKeys(application.applicationId)}
+              size="sm"
+              variant="secondary"
+            >
               <RefreshCw className="h-4 w-4" strokeWidth={1.75} />
               Refresh
             </Button>
@@ -126,6 +132,13 @@ export function ApiKeysPanel({ application }: ApiKeysPanelProps) {
             <AlertTitle>No application selected</AlertTitle>
             <AlertDescription>
               Create or select an application. Keys are scoped to a single application.
+            </AlertDescription>
+          </Alert>
+        ) : !isActiveApplication ? (
+          <Alert variant="danger">
+            <AlertTitle>Application disabled</AlertTitle>
+            <AlertDescription>
+              This application is visible for audit, but API key operations are disabled.
             </AlertDescription>
           </Alert>
         ) : state.status === 'loading' ? (

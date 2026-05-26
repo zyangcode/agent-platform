@@ -4,16 +4,19 @@ import com.ls.agent.common.response.ApiResponse;
 import com.ls.agent.common.response.PageResult;
 import com.ls.agent.core.identity.api.ApplicationService;
 import com.ls.agent.core.identity.command.CreateApplicationCommand;
+import com.ls.agent.core.identity.command.UpdateApplicationCommand;
 import com.ls.agent.core.identity.dto.ApiKeyDTO;
 import com.ls.agent.core.identity.dto.ApplicationDTO;
 import com.ls.agent.core.identity.dto.CreateApplicationResult;
 import com.ls.agent.core.identity.dto.RevokeApiKeyResult;
 import com.ls.agent.web.dto.CreateApplicationRequest;
+import com.ls.agent.web.dto.UpdateApplicationRequest;
 import com.ls.agent.web.security.CurrentUser;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -87,6 +90,33 @@ public class ApplicationController {
                 currentUser.userId(),         // 用户过滤
                 pageNo,                       // 当前页码
                 Math.min(pageSize, 100)       // 限制最大每页条数为 100，防止性能问题
+        ));
+    }
+
+    @PutMapping("/{applicationId}")
+    public ApiResponse<ApplicationDTO> update(
+            CurrentUser currentUser,
+            @PathVariable("applicationId") Long applicationId,
+            @Valid @RequestBody UpdateApplicationRequest request
+    ) {
+        return ApiResponse.success(applicationService.updateApplication(new UpdateApplicationCommand(
+                currentUser.tenantId(),
+                currentUser.userId(),
+                applicationId,
+                request.name(),
+                request.description()
+        )));
+    }
+
+    @PostMapping("/{applicationId}/disable")
+    public ApiResponse<ApplicationDTO> disable(
+            CurrentUser currentUser,
+            @PathVariable("applicationId") Long applicationId
+    ) {
+        return ApiResponse.success(applicationService.disableApplication(
+                currentUser.tenantId(),
+                currentUser.userId(),
+                applicationId
         ));
     }
 

@@ -12,6 +12,11 @@ export type CreateApplicationRequest = {
   description?: string
 }
 
+export type UpdateApplicationRequest = {
+  name: string
+  description?: string
+}
+
 export function listApplications(pageNo = 1, pageSize = 20) {
   return apiClient.get<PageResult<Application>>('/applications', {
     query: { pageNo, pageSize },
@@ -20,6 +25,14 @@ export function listApplications(pageNo = 1, pageSize = 20) {
 
 export function createApplication(request: CreateApplicationRequest) {
   return apiClient.post<CreateApplicationResult>('/applications', request)
+}
+
+export function updateApplication(applicationId: number, request: UpdateApplicationRequest) {
+  return apiClient.put<Application>(`/applications/${applicationId}`, request)
+}
+
+export function disableApplication(applicationId: number) {
+  return apiClient.post<Application>(`/applications/${applicationId}/disable`)
 }
 
 export function listApiKeys(applicationId: number) {

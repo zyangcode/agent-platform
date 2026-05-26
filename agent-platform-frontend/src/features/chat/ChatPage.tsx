@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { Application, ModelConfig, PageResult, Profile } from '@/lib/api/types'
+import { resolveSelectedApplicationId } from '@/features/applications/application-selection-utils'
 import { listApplications } from '@/features/applications/api'
 import { ApiError } from '@/lib/api/errors'
 import { loadLastSelectedApplicationId, saveLastSelectedApplicationId } from '@/lib/application-selection-storage'
@@ -152,11 +153,11 @@ export function ChatPage() {
         listApplications(1, 50),
         listModelConfigs(),
       ])
-      const applicationExists = applications.records.some(
-        (application) => application.applicationId === applicationId,
+      const effectiveApplicationId = resolveSelectedApplicationId(
+        applications,
+        applicationId ?? null,
+        loadLastSelectedApplicationId(),
       )
-      const effectiveApplicationId =
-        applicationId && applicationExists ? applicationId : applications.records[0]?.applicationId ?? null
       const profiles = effectiveApplicationId
         ? (await listProfiles(effectiveApplicationId, 1, 50)).records
         : []
@@ -191,7 +192,11 @@ export function ChatPage() {
     setState(nextState)
 
     if (nextState.status === 'ready') {
-      const nextApplicationId = applicationId ?? nextState.applications.records[0]?.applicationId ?? null
+      const nextApplicationId = resolveSelectedApplicationId(
+        nextState.applications,
+        applicationId ?? null,
+        loadLastSelectedApplicationId(),
+      )
       const nextProfileId = nextState.profiles[0]?.profileId ?? null
       setSelectedApplicationId(nextApplicationId)
       setSelectedModelConfigId((current) => current ?? nextState.modelConfigs[0]?.modelConfigId ?? null)
@@ -370,13 +375,13 @@ export function ChatPage() {
           const storedModelConfigExists = nextState.modelConfigs.some(
             (modelConfig) => modelConfig.modelConfigId === storedSession?.modelConfigId,
           )
-          const nextApplicationId =
+          const nextApplicationId = resolveSelectedApplicationId(
+            nextState.applications,
             shouldRestoreStoredSession && storedApplicationExists && storedSession
               ? storedSession.applicationId
-              : preferredApplicationId &&
-                  nextState.applications.records.some((application) => application.applicationId === preferredApplicationId)
-                ? preferredApplicationId
-              : nextState.applications.records[0]?.applicationId ?? null
+              : preferredApplicationId,
+            preferredApplicationId,
+          )
           const nextProfileId =
             shouldRestoreStoredSession && storedProfileExists && storedSession
               ? storedSession.profileId
