@@ -132,6 +132,57 @@ class DefaultModelInvokeServiceTest {
     }
 
     @Test
+    void openAiCompatibleModelConvertsInternalToolMessagesToAssistantContext() throws Exception {
+        List<String> requestBodies = new ArrayList<>();
+        HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        server.createContext("/v1/chat/completions", exchange -> {
+            requestBodies.add(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            writeJson(exchange, 200, """
+                    {
+                      "choices": [
+                        {
+                          "message": {
+                            "role": "assistant",
+                            "content": "1+1 equals 2"
+                          }
+                        }
+                      ]
+                    }
+                    """);
+        });
+        server.setExecutor(executor);
+        server.start();
+        try {
+            when(configMapper.selectById(2L)).thenReturn(realConfig());
+            when(providerMapper.selectById(2L)).thenReturn(realProvider(server.getAddress().getPort()));
+            when(secretEncryptor.decrypt("encrypted-key")).thenReturn("sk-test");
+
+            service.invoke(new ModelInvokeCommand(
+                    2L,
+                    List.of(
+                            new ModelMessage("user", "1+1等于几"),
+                            new ModelMessage("assistant", "@skill:calculator {\"expression\":\"1+1\"}"),
+                            new ModelMessage("tool", "{\"result\":\"2\"}")
+                    ),
+                    BigDecimal.valueOf(0.2),
+                    false
+            ));
+
+            assertThat(requestBodies).singleElement()
+                    .satisfies(body -> {
+                        assertThat(body).doesNotContain("\"role\":\"tool\"");
+                        assertThat(body).contains("\"role\":\"assistant\"");
+                        assertThat(body).contains("Tool observation:");
+                        assertThat(body).contains("{\\\"result\\\":\\\"2\\\"}");
+                    });
+        } finally {
+            server.stop(0);
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
     void invokeDelegatesToProviderRegistry() {
         ModelProvider customProvider = new ModelProvider() {
             @Override

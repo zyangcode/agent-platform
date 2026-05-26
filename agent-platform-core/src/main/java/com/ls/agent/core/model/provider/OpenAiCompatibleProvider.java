@@ -95,6 +95,10 @@ public class OpenAiCompatibleProvider implements ModelProvider {
             }
             String role = message.role() == null || message.role().isBlank() ? "user" : message.role();
             String content = message.content() == null ? "" : message.content();
+            if ("tool".equals(role)) {
+                role = "assistant";
+                content = "Tool observation:\n" + content;
+            }
             result.add(Map.of("role", role, "content", content));
         }
         return result.isEmpty() ? List.of(Map.of("role", "user", "content", "")) : result;

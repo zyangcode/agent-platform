@@ -249,6 +249,38 @@ class DefaultAgentRuntimeServiceTest {
     }
 
     @Test
+    void runAutoExecutesCalculatorForCompactChineseArithmeticQuestion() {
+        AgentRunCommand command = new AgentRunCommand(
+                1L,
+                10001L,
+                20001L,
+                50001L,
+                90001L,
+                "1+1等于几",
+                "trace-1",
+                null,
+                null,
+                1000
+        );
+        when(conversationRepository.findConversationById(90001L)).thenReturn(conversation());
+        when(contextBuilder.build(any(BuildAgentContextCommand.class))).thenReturn(context());
+        when(skillExecutor.execute(any())).thenReturn(new SkillExecuteResult(
+                true,
+                "calculator",
+                objectMapper.createObjectNode().put("result", "2"),
+                null
+        ));
+        when(modelInvokeService.invoke(any(ModelInvokeCommand.class))).thenReturn(modelResult("1+1 等于 2。"));
+
+        AgentRunResult result = service.run(command);
+
+        assertThat(result.assistantMessage()).isEqualTo("1+1 等于 2。");
+        ArgumentCaptor<SkillExecuteCommand> skillCaptor = ArgumentCaptor.forClass(SkillExecuteCommand.class);
+        verify(skillExecutor).execute(skillCaptor.capture());
+        assertThat(skillCaptor.getValue().arguments().get("expression").asText()).isEqualTo("1+1");
+    }
+
+    @Test
     void runExecutesMcpToolCallThenAsksModelForFinalAnswer() {
         when(conversationRepository.findConversationById(90001L)).thenReturn(conversation());
         when(contextBuilder.build(any(BuildAgentContextCommand.class))).thenReturn(context());
