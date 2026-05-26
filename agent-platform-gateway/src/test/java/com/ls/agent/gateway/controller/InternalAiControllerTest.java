@@ -6,6 +6,7 @@ import com.ls.agent.common.error.ErrorCode;
 import com.ls.agent.core.agent.api.AgentRuntimeService;
 import com.ls.agent.core.agent.command.AgentRunCommand;
 import com.ls.agent.core.agent.dto.AgentRunResult;
+import com.ls.agent.core.agent.dto.AgentToolEventDTO;
 import com.ls.agent.core.alert.api.AlertEventService;
 import com.ls.agent.core.alert.command.RecordAlertEventCommand;
 import com.ls.agent.core.identity.api.ApiKeyService;
@@ -168,6 +169,31 @@ class InternalAiControllerTest {
                 ArgumentCaptor.forClass(CommitQuotaReservationCommand.class);
         verify(quotaService).commit(commitCaptor.capture());
         assertThat(commitCaptor.getValue().actualTokens()).isEqualTo(3L);
+    }
+
+    @Test
+    void internalChatStreamEmitsRuntimeToolEventsBeforeFinalMessage() throws Exception {
+        when(sensitiveDataScanner.scan("hello", "REQUEST_MESSAGE")).thenReturn(List.of());
+        when(quotaService.reserve(any(ReserveQuotaCommand.class))).thenReturn(reservation());
+        when(agentRuntimeService.run(any(AgentRunCommand.class))).thenReturn(agentResultWithToolEvents());
+
+        var result = mockMvc.perform(post("/internal/ai/chat/stream")
+                        .header("X-Internal-Token", "dev-internal-token")
+                        .accept(MediaType.TEXT_EVENT_STREAM)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(internalRequest())))
+                .andExpect(status().isOk())
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        mockMvc.perform(asyncDispatch(result))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("event: action")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("event: observation")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"toolType\":\"skill\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"toolName\":\"calculator\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("event: message")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("event: done")));
     }
 
     @Test
@@ -557,6 +583,18 @@ class InternalAiControllerTest {
                 90001L,
                 "assistant says hello",
                 new ModelUsageDTO(1, 2, 3, true)
+        );
+    }
+
+    private AgentRunResult agentResultWithToolEvents() {
+        return new AgentRunResult(
+                90001L,
+                "assistant says hello",
+                new ModelUsageDTO(1, 2, 3, true),
+                List.of(
+                        new AgentToolEventDTO("action", "skill", "calculator", "@skill:calculator {\"expression\":\"1+2\"}"),
+                        new AgentToolEventDTO("observation", "skill", "calculator", "{\"result\":\"3\"}")
+                )
         );
     }
 

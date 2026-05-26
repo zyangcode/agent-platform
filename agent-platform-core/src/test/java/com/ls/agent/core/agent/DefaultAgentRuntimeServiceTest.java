@@ -21,6 +21,7 @@ import com.ls.agent.core.model.dto.ModelMessage;
 import com.ls.agent.core.model.dto.ModelUsageDTO;
 import com.ls.agent.core.profile.dto.ProfileDTO;
 import com.ls.agent.core.skill.api.SkillExecutor;
+import com.ls.agent.core.skill.command.SkillExecuteCommand;
 import com.ls.agent.core.skill.dto.SkillDTO;
 import com.ls.agent.core.skill.dto.SkillExecuteResult;
 import com.ls.agent.core.mcp.dto.McpToolDTO;
@@ -203,6 +204,48 @@ class DefaultAgentRuntimeServiceTest {
         assertThat(result.assistantMessage()).isEqualTo("The result is 3.");
         verify(skillExecutor).execute(any());
         verify(modelInvokeService, times(2)).invoke(any(ModelInvokeCommand.class));
+    }
+
+    @Test
+    void runAutoExecutesCalculatorWhenUserAsksArithmeticAndSkillIsAvailable() {
+        AgentRunCommand command = new AgentRunCommand(
+                1L,
+                10001L,
+                20001L,
+                50001L,
+                90001L,
+                "计算 1+2 等于多少",
+                "trace-1",
+                null,
+                null,
+                1000
+        );
+        when(conversationRepository.findConversationById(90001L)).thenReturn(conversation());
+        when(contextBuilder.build(any(BuildAgentContextCommand.class))).thenReturn(context());
+        when(skillExecutor.execute(any())).thenReturn(new SkillExecuteResult(
+                true,
+                "calculator",
+                objectMapper.createObjectNode().put("result", "3"),
+                null
+        ));
+        when(modelInvokeService.invoke(any(ModelInvokeCommand.class))).thenReturn(modelResult("1+2 等于 3。"));
+
+        AgentRunResult result = service.run(command);
+
+        assertThat(result.assistantMessage()).isEqualTo("1+2 等于 3。");
+        assertThat(result.toolEvents()).extracting("type").containsExactly("action", "observation");
+        assertThat(result.toolEvents()).extracting("toolName").containsExactly("calculator", "calculator");
+        ArgumentCaptor<SkillExecuteCommand> skillCaptor = ArgumentCaptor.forClass(SkillExecuteCommand.class);
+        verify(skillExecutor).execute(skillCaptor.capture());
+        assertThat(skillCaptor.getValue().skillCode()).isEqualTo("calculator");
+        assertThat(skillCaptor.getValue().arguments().get("expression").asText()).isEqualTo("1+2");
+
+        ArgumentCaptor<ModelInvokeCommand> modelCaptor = ArgumentCaptor.forClass(ModelInvokeCommand.class);
+        verify(modelInvokeService).invoke(modelCaptor.capture());
+        assertThat(modelCaptor.getValue().messages()).anySatisfy(message -> {
+            assertThat(message.role()).isEqualTo("tool");
+            assertThat(message.content()).contains("\"result\":\"3\"");
+        });
     }
 
     @Test

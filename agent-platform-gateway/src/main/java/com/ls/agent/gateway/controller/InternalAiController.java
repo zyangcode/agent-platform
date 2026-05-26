@@ -7,6 +7,7 @@ import com.ls.agent.common.error.ErrorCode;
 import com.ls.agent.core.agent.api.AgentRuntimeService;
 import com.ls.agent.core.agent.command.AgentRunCommand;
 import com.ls.agent.core.agent.dto.AgentRunResult;
+import com.ls.agent.core.agent.dto.AgentToolEventDTO;
 import com.ls.agent.core.identity.api.ApiKeyService;
 import com.ls.agent.core.identity.dto.ApiKeyAuthResult;
 import com.ls.agent.core.model.dto.ModelInvokeResult;
@@ -159,8 +160,19 @@ public class InternalAiController {
                         null
                 ));
                 conversationId = result.conversationId();
-                writeEvent(output, "message", payload("message", traceId, result.conversationId(), 2, result.assistantMessage(), Map.of()));
-                writeEvent(output, "done", payload("done", traceId, result.conversationId(), 3, null, Map.of()));
+                int step = 2;
+                for (AgentToolEventDTO event : result.toolEvents()) {
+                    writeEvent(output, event.type(), payload(
+                            event.type(),
+                            traceId,
+                            result.conversationId(),
+                            step++,
+                            event.content(),
+                            toolEventMetadata(event)
+                    ));
+                }
+                writeEvent(output, "message", payload("message", traceId, result.conversationId(), step++, result.assistantMessage(), Map.of()));
+                writeEvent(output, "done", payload("done", traceId, result.conversationId(), step, null, Map.of()));
                 quotaFilter.commit(traceId, totalTokens(result.usage()));
                 finishTraceRoot(traceId, conversationId, "SUCCESS", null, null);
             } catch (Exception ex) {
@@ -273,6 +285,13 @@ public class InternalAiController {
 
     private SseEventPayload payload(String type, String traceId, Long conversationId, int step, String content, Map<String, Object> metadata) {
         return new SseEventPayload(type, traceId, conversationId, step, content, metadata);
+    }
+
+    private Map<String, Object> toolEventMetadata(AgentToolEventDTO event) {
+        return Map.of(
+                "toolType", event.toolType() == null ? "" : event.toolType(),
+                "toolName", event.toolName() == null ? "" : event.toolName()
+        );
     }
 
     private void writeEvent(OutputStream output, String event, SseEventPayload payload) throws IOException {

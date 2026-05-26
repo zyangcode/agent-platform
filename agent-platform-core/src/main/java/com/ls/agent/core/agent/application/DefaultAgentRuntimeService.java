@@ -8,6 +8,7 @@ import com.ls.agent.core.agent.api.ConversationRepository;
 import com.ls.agent.core.agent.api.AgentRuntimeService;
 import com.ls.agent.core.agent.command.AgentRunCommand;
 import com.ls.agent.core.agent.dto.AgentRunResult;
+import com.ls.agent.core.agent.dto.AgentToolEventDTO;
 import com.ls.agent.core.agent.entity.ConversationEntity;
 import com.ls.agent.core.agent.entity.ConversationMessageEntity;
 import com.ls.agent.core.context.api.AgentContextBuilder;
@@ -36,6 +37,9 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service
 public class DefaultAgentRuntimeService implements AgentRuntimeService {
@@ -45,6 +49,9 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
     private static final String MEMORY_TYPE_SUMMARY = "SUMMARY";
     private static final int TITLE_MAX_LENGTH = 60;
     private static final int MAX_AGENT_STEPS = 3;
+    private static final Pattern ARITHMETIC_EXPRESSION_PATTERN = Pattern.compile(
+            "(?<![\\w.])-?\\d+(?:\\.\\d+)?(?:\\s*[+\\-*/]\\s*-?\\d+(?:\\.\\d+)?)+"
+    );
 
     private final AgentContextBuilder contextBuilder;
     private final ModelInvokeService modelInvokeService;
@@ -89,7 +96,8 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
 
             AgentContextDTO context = buildContext(command, conversationId, runSpan == null ? null : runSpan.id());
 
-            ModelInvokeResult modelResult = runModelLoop(command, context, runSpan == null ? null : runSpan.id());
+            List<AgentToolEventDTO> toolEvents = new ArrayList<>();
+            ModelInvokeResult modelResult = runModelLoop(command, context, runSpan == null ? null : runSpan.id(), toolEvents);
             saveMessage(
                     conversationId,
                     command.traceId(),
@@ -99,7 +107,7 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
             );
             saveMemory(command, conversationId, modelResult.assistantMessage());
             safeFinishSpan(runSpan, "SUCCESS", null, null);
-            return new AgentRunResult(conversationId, modelResult.assistantMessage(), modelResult.usage());
+            return new AgentRunResult(conversationId, modelResult.assistantMessage(), modelResult.usage(), toolEvents);
         } catch (Exception ex) {
             safeFinishSpan(runSpan, "FAILED", errorCode(ex), errorMessage(ex));
             throw ex;
@@ -131,8 +139,20 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
         }
     }
 
-    private ModelInvokeResult runModelLoop(AgentRunCommand command, AgentContextDTO context, Long parentSpanId) {
+    private ModelInvokeResult runModelLoop(
+            AgentRunCommand command,
+            AgentContextDTO context,
+            Long parentSpanId,
+            List<AgentToolEventDTO> toolEvents
+    ) {
         List<ModelMessage> messages = new ArrayList<>(context.messages());
+        ToolCall preselectedToolCall = detectDirectToolCall(command.userInput(), context);
+        if (preselectedToolCall != null) {
+            String toolOutput = executeTool(command, context, preselectedToolCall, parentSpanId, 0);
+            recordToolEvents(toolEvents, preselectedToolCall, toolOutput);
+            messages.add(new ModelMessage("assistant", formatToolCall(preselectedToolCall)));
+            messages.add(new ModelMessage("tool", toolOutput));
+        }
         ModelInvokeResult result = null;
         for (int step = 0; step < MAX_AGENT_STEPS; step++) {
             result = invokeModel(command, context, messages, parentSpanId, step + 1);
@@ -140,7 +160,8 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
             if (toolCall == null) {
                 return result;
             }
-            String toolOutput = executeTool(command, context, toolCall);
+            String toolOutput = executeTool(command, context, toolCall, parentSpanId, step + 1);
+            recordToolEvents(toolEvents, toolCall, toolOutput);
             messages.add(new ModelMessage("assistant", result.assistantMessage()));
             messages.add(new ModelMessage("tool", toolOutput));
         }
@@ -174,6 +195,96 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
         }
     }
 
+    private ToolCall detectDirectToolCall(String userInput, AgentContextDTO context) {
+        if (userInput == null || userInput.isBlank() || context.availableSkills().isEmpty()) {
+            return null;
+        }
+
+        String normalized = userInput.toLowerCase(Locale.ROOT);
+        if (isSkillAvailable(context, "calculator")) {
+            Matcher matcher = ARITHMETIC_EXPRESSION_PATTERN.matcher(userInput);
+            if (matcher.find() && looksLikeCalculationRequest(normalized)) {
+                return new ToolCall(
+                        "skill",
+                        "calculator",
+                        objectMapper.createObjectNode().put("expression", matcher.group().replaceAll("\\s+", ""))
+                );
+            }
+        }
+        if (isSkillAvailable(context, "weather") && looksLikeWeatherRequest(normalized)) {
+            String city = extractAfterKeyword(userInput, List.of("天气", "weather in", "weather"));
+            if (!city.isBlank()) {
+                return new ToolCall("skill", "weather", objectMapper.createObjectNode().put("city", city));
+            }
+        }
+        if (isSkillAvailable(context, "search") && looksLikeSearchRequest(normalized)) {
+            return new ToolCall("skill", "search", objectMapper.createObjectNode().put("query", userInput.strip()));
+        }
+        return null;
+    }
+
+    private boolean isSkillAvailable(AgentContextDTO context, String skillCode) {
+        return context.availableSkills().stream().anyMatch(skill -> skillCode.equals(skill.code()));
+    }
+
+    private boolean looksLikeCalculationRequest(String normalized) {
+        return normalized.contains("计算")
+                || normalized.contains("算")
+                || normalized.contains("等于")
+                || normalized.contains("calculate")
+                || normalized.contains("what is");
+    }
+
+    private boolean looksLikeWeatherRequest(String normalized) {
+        return normalized.contains("天气") || normalized.contains("weather");
+    }
+
+    private boolean looksLikeSearchRequest(String normalized) {
+        return normalized.contains("搜索")
+                || normalized.contains("查询")
+                || normalized.contains("查一下")
+                || normalized.contains("search");
+    }
+
+    private String extractAfterKeyword(String text, List<String> keywords) {
+        String stripped = text == null ? "" : text.strip();
+        String normalized = stripped.toLowerCase(Locale.ROOT);
+        for (String keyword : keywords) {
+            int index = normalized.indexOf(keyword.toLowerCase(Locale.ROOT));
+            if (index >= 0) {
+                String candidate = stripped.substring(index + keyword.length())
+                        .replace("?", "")
+                        .replace("？", "")
+                        .replace("怎么样", "")
+                        .replace("如何", "")
+                        .strip();
+                if (!candidate.isBlank()) {
+                    return candidate;
+                }
+            }
+        }
+        return stripped;
+    }
+
+    private String formatToolCall(ToolCall toolCall) {
+        return "@" + toolCall.type() + ":" + toolCall.name() + " " + toolCall.arguments();
+    }
+
+    private void recordToolEvents(List<AgentToolEventDTO> toolEvents, ToolCall toolCall, String toolOutput) {
+        toolEvents.add(new AgentToolEventDTO(
+                "action",
+                toolCall.type(),
+                toolCall.name(),
+                formatToolCall(toolCall)
+        ));
+        toolEvents.add(new AgentToolEventDTO(
+                "observation",
+                toolCall.type(),
+                toolCall.name(),
+                toolOutput
+        ));
+    }
+
     private ToolCall parseToolCall(String assistantMessage) {
         if (assistantMessage == null) {
             return null;
@@ -203,7 +314,29 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
         }
     }
 
-    private String executeTool(AgentRunCommand command, AgentContextDTO context, ToolCall toolCall) {
+    private String executeTool(
+            AgentRunCommand command,
+            AgentContextDTO context,
+            ToolCall toolCall,
+            Long parentSpanId,
+            int step
+    ) {
+        TraceSpanDTO span = safeStartSpan(command.traceId(), parentSpanId, "tool.execute", "TOOL",
+                objectMapper.createObjectNode()
+                        .put("toolType", toolCall.type())
+                        .put("toolName", toolCall.name())
+                        .put("step", step));
+        try {
+            String output = doExecuteTool(command, context, toolCall);
+            safeFinishSpan(span, "SUCCESS", null, null);
+            return output;
+        } catch (Exception ex) {
+            safeFinishSpan(span, "FAILED", errorCode(ex), errorMessage(ex));
+            throw ex;
+        }
+    }
+
+    private String doExecuteTool(AgentRunCommand command, AgentContextDTO context, ToolCall toolCall) {
         if ("skill".equals(toolCall.type())) {
             if (context.availableSkills().stream().noneMatch(skill -> toolCall.name().equals(skill.code()))) {
                 throw new BizException(ErrorCode.REQUEST_INVALID, "Skill is not available in current context");
