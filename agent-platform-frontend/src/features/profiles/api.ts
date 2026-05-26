@@ -31,6 +31,10 @@ export function updateProfile(profileId: number, request: UpdateProfileRequest) 
   return apiClient.put<Profile>(`/profiles/${profileId}`, request)
 }
 
+export function disableProfile(profileId: number) {
+  return apiClient.post<Profile>(`/profiles/${profileId}/disable`)
+}
+
 export function getProfile(profileId: number) {
   return apiClient.get<Profile>(`/profiles/${profileId}`)
 }

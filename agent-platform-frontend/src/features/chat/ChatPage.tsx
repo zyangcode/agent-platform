@@ -17,6 +17,7 @@ import type { ConversationSummary } from '@/lib/api/types'
 import { streamChat } from './api'
 import { ChatHistoryPanel } from './ChatHistoryPanel'
 import { conversationMessagesToChatMessages } from './chat-history-utils'
+import { isRunnableProfile, selectRunnableProfileId } from './chat-profile-selection-utils'
 import { clearStoredChatSession, loadStoredChatSession, saveStoredChatSession } from './chat-session-storage'
 import { nextConversationId } from './chat-session-utils'
 import { ConversationPanel } from './ConversationPanel'
@@ -116,8 +117,14 @@ export function ChatPage() {
   }, [selectedApplicationId, state.applications])
 
   const selectedProfile = useMemo(() => {
-    return state.profiles.find((profile) => profile.profileId === selectedProfileId) ?? null
+    return (
+      state.profiles.find(
+        (profile) => profile.profileId === selectedProfileId && isRunnableProfile(profile),
+      ) ?? null
+    )
   }, [selectedProfileId, state.profiles])
+
+  const runnableProfiles = useMemo(() => state.profiles.filter(isRunnableProfile), [state.profiles])
 
   const selectedModelConfig = useMemo(() => {
     return (
@@ -197,7 +204,7 @@ export function ChatPage() {
         applicationId ?? null,
         loadLastSelectedApplicationId(),
       )
-      const nextProfileId = nextState.profiles[0]?.profileId ?? null
+      const nextProfileId = selectRunnableProfileId(nextState.profiles, selectedProfileId)
       setSelectedApplicationId(nextApplicationId)
       setSelectedModelConfigId((current) => current ?? nextState.modelConfigs[0]?.modelConfigId ?? null)
       setSelectedProfileId(nextProfileId)
@@ -370,7 +377,7 @@ export function ChatPage() {
             (application) => application.applicationId === storedSession?.applicationId,
           )
           const storedProfileExists = nextState.profiles.some(
-            (profile) => profile.profileId === storedSession?.profileId,
+            (profile) => profile.profileId === storedSession?.profileId && isRunnableProfile(profile),
           )
           const storedModelConfigExists = nextState.modelConfigs.some(
             (modelConfig) => modelConfig.modelConfigId === storedSession?.modelConfigId,
@@ -385,7 +392,7 @@ export function ChatPage() {
           const nextProfileId =
             shouldRestoreStoredSession && storedProfileExists && storedSession
               ? storedSession.profileId
-              : nextState.profiles[0]?.profileId ?? null
+              : selectRunnableProfileId(nextState.profiles)
 
           setAgentMode(shouldRestoreStoredSession ? storedSession?.agentMode ?? 'agent' : 'agent')
           setSelectedApplicationId(nextApplicationId)
@@ -527,7 +534,7 @@ export function ChatPage() {
               <div className="space-y-2">
                 <Label>Profile</Label>
                 <Select
-                  disabled={state.profiles.length === 0 || agentMode === 'none'}
+                  disabled={runnableProfiles.length === 0 || agentMode === 'none'}
                   onValueChange={(value) => {
                     const profileId = Number(value)
                     setSelectedProfileId(profileId)
@@ -539,10 +546,10 @@ export function ChatPage() {
                   value={selectedProfile?.profileId ? String(selectedProfile.profileId) : undefined}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder={state.profiles.length === 0 ? 'No profile' : 'Select profile'} />
+                    <SelectValue placeholder={runnableProfiles.length === 0 ? 'No runnable profile' : 'Select profile'} />
                   </SelectTrigger>
                   <SelectContent>
-                    {state.profiles.map((profile) => (
+                    {runnableProfiles.map((profile) => (
                       <SelectItem key={profile.profileId} value={String(profile.profileId)}>
                         {profile.name}
                       </SelectItem>

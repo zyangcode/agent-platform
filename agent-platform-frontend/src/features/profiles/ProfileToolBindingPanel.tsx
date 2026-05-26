@@ -35,8 +35,12 @@ export function ProfileToolBindingPanel({ onProfileChanged, profile }: ProfileTo
   })
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+  const isEditableProfile = profile?.status.toUpperCase() === 'DRAFT'
 
-  const canSave = useMemo(() => !!profile && state.status === 'ready' && !isSaving, [isSaving, profile, state.status])
+  const canSave = useMemo(
+    () => !!profile && isEditableProfile && state.status === 'ready' && !isSaving,
+    [isEditableProfile, isSaving, profile, state.status],
+  )
 
   const effectiveSelectedSkillIds =
     selectionProfileId === profile?.profileId
@@ -123,6 +127,13 @@ export function ProfileToolBindingPanel({ onProfileChanged, profile }: ProfileTo
             <AlertTitle>No profile selected</AlertTitle>
             <AlertDescription>Select a profile before binding tools.</AlertDescription>
           </Alert>
+        ) : !isEditableProfile ? (
+          <Alert variant="danger">
+            <AlertTitle>Profile disabled</AlertTitle>
+            <AlertDescription>
+              Tool bindings are read-only because this profile is not editable.
+            </AlertDescription>
+          </Alert>
         ) : null}
 
         {state.status === 'loading' ? (
@@ -143,7 +154,7 @@ export function ProfileToolBindingPanel({ onProfileChanged, profile }: ProfileTo
         {state.status === 'ready' ? (
           <div className="grid gap-5 xl:grid-cols-2">
             <ToolChecklist
-              disabled={!profile}
+              disabled={!profile || !isEditableProfile}
               emptyText="No enabled Skills."
               items={state.skills.map((skill) => ({
                 description: skill.description,
@@ -158,7 +169,7 @@ export function ProfileToolBindingPanel({ onProfileChanged, profile }: ProfileTo
               title="Skills"
             />
             <ToolChecklist
-              disabled={!profile}
+              disabled={!profile || !isEditableProfile}
               emptyText="No enabled MCP tools."
               items={state.mcpTools.map((tool) => ({
                 description: tool.description,

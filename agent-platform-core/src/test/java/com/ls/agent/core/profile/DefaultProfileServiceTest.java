@@ -169,6 +169,20 @@ class DefaultProfileServiceTest {
     }
 
     @Test
+    void disableProfileMarksOwnedDraftProfileDisabled() {
+        when(profileMapper.selectById(50001L)).thenReturn(draftProfile());
+        when(profileSkillMapper.selectList(any())).thenReturn(List.of());
+        when(profileMcpToolMapper.selectList(any())).thenReturn(List.of());
+
+        ProfileDTO result = service.disableProfile(1L, 10001L, 50001L);
+
+        assertThat(result.status()).isEqualTo("DISABLED");
+        ArgumentCaptor<AgentProfileEntity> captor = ArgumentCaptor.forClass(AgentProfileEntity.class);
+        verify(profileMapper).updateById(captor.capture());
+        assertThat(captor.getValue().getStatus()).isEqualTo("DISABLED");
+    }
+
+    @Test
     void bindMcpToolsReplacesBindingsAfterCheckingToolAvailability() {
         when(profileMapper.selectById(50001L)).thenReturn(draftProfile());
         when(mcpToolQueryService.areMcpToolsBindable(1L, List.of(1L))).thenReturn(true);

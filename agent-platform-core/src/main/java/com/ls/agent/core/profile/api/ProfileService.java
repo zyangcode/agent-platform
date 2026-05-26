@@ -13,6 +13,8 @@ public interface ProfileService {
 
     ProfileDTO updateProfile(UpdateProfileCommand command);
 
+    ProfileDTO disableProfile(Long tenantId, Long ownerUserId, Long profileId);
+
     PageResult<ProfileDTO> pageProfiles(Long tenantId, Long ownerUserId, Long applicationId, int pageNo, int pageSize);
 
     ProfileDTO getProfile(Long tenantId, Long ownerUserId, Long profileId);

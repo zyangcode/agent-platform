@@ -29,6 +29,8 @@ public class DefaultAgentContextBuilder implements AgentContextBuilder {
     private static final int DEFAULT_MAX_CONTEXT_TOKENS = 4_000;
     private static final int HISTORY_LIMIT = 20;
     private static final int MEMORY_LIMIT = 5;
+    private static final String PROFILE_STATUS_DRAFT = "DRAFT";
+    private static final String PROFILE_STATUS_PUBLISHED = "PUBLISHED";
     private static final String PLATFORM_SYSTEM_PROMPT = """
             You are AgentX, a helpful AI agent platform assistant.
             Follow the user's profile prompt and only use listed tools when needed.
@@ -63,6 +65,9 @@ public class DefaultAgentContextBuilder implements AgentContextBuilder {
         ProfileDTO profile = profileService.getProfile(command.tenantId(), command.userId(), command.profileId());
         if (!command.applicationId().equals(profile.applicationId())) {
             throw new BizException(ErrorCode.REQUEST_INVALID, "Profile does not belong to application");
+        }
+        if (!isRunnableProfile(profile)) {
+            throw new BizException(ErrorCode.REQUEST_INVALID, "Profile is unavailable");
         }
         int maxTokens = resolveMaxContextTokens(command, profile);
 
@@ -105,6 +110,10 @@ public class DefaultAgentContextBuilder implements AgentContextBuilder {
                 estimateMessagesTokens(messages),
                 truncated
         );
+    }
+
+    private boolean isRunnableProfile(ProfileDTO profile) {
+        return PROFILE_STATUS_DRAFT.equals(profile.status()) || PROFILE_STATUS_PUBLISHED.equals(profile.status());
     }
 
     private void validate(BuildAgentContextCommand command) {

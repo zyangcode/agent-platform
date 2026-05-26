@@ -93,6 +93,15 @@ public class ProfileController {
         )));
     }
 
+    @PostMapping("/api/profiles/{profileId}/disable")
+    public ApiResponse<ProfileDTO> disable(CurrentUser currentUser, @PathVariable("profileId") Long profileId) {
+        return ApiResponse.success(profileService.disableProfile(
+                currentUser.tenantId(),
+                currentUser.userId(),
+                profileId
+        ));
+    }
+
     @PutMapping("/api/profiles/{profileId}/skills")
     public ApiResponse<Boolean> bindSkills(
             CurrentUser currentUser,

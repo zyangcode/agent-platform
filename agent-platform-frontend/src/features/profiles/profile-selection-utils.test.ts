@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Profile } from '@/lib/api/types'
 import { selectProfileAfterReload } from './profile-selection-utils'
 
-function profile(profileId: number): Profile {
+function profile(profileId: number, status = 'DRAFT'): Profile {
   return {
     applicationId: 1,
     description: null,
@@ -15,7 +15,7 @@ function profile(profileId: number): Profile {
     profileType: 'GENERAL',
     promptExtra: null,
     skillBindings: [],
-    status: 'DRAFT',
+    status,
     visibility: 'PRIVATE',
   }
 }
@@ -41,5 +41,11 @@ describe('selectProfileAfterReload', () => {
     const profiles = [profile(1), profile(2)]
 
     expect(selectProfileAfterReload(profiles, 4)?.profileId).toBe(1)
+  })
+
+  it('falls back to editable profile when requested profile is disabled', () => {
+    const profiles = [profile(1, 'DISABLED'), profile(2), profile(3)]
+
+    expect(selectProfileAfterReload(profiles, 1)?.profileId).toBe(2)
   })
 })

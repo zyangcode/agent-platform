@@ -137,6 +137,19 @@ class ProfileControllerTest {
     }
 
     @Test
+    void disableProfileDelegatesWithCurrentUser() throws Exception {
+        when(profileService.disableProfile(1L, 10001L, 50001L)).thenReturn(disabledProfile());
+
+        mockMvc.perform(post("/api/profiles/50001/disable")
+                        .header("Authorization", bearerToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.profileId").value(50001))
+                .andExpect(jsonPath("$.data.status").value("DISABLED"));
+
+        verify(profileService).disableProfile(1L, 10001L, 50001L);
+    }
+
+    @Test
     void bindSkillsDelegatesWithCurrentUser() throws Exception {
         mockMvc.perform(put("/api/profiles/50001/skills")
                         .header("Authorization", bearerToken())
@@ -178,6 +191,25 @@ class ProfileControllerTest {
                 "DRAFT",
                 List.of(),
                 List.of()
+        );
+    }
+
+    private ProfileDTO disabledProfile() {
+        ProfileDTO profile = profile();
+        return new ProfileDTO(
+                profile.profileId(),
+                profile.applicationId(),
+                profile.name(),
+                profile.profileType(),
+                profile.description(),
+                profile.modelConfigId(),
+                profile.promptExtra(),
+                profile.memoryStrategy(),
+                profile.maxSteps(),
+                profile.visibility(),
+                "DISABLED",
+                profile.skillBindings(),
+                profile.mcpToolBindings()
         );
     }
 

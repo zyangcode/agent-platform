@@ -140,6 +140,15 @@ public class DefaultProfileService implements ProfileService {
 
     @Override
     @Transactional
+    public ProfileDTO disableProfile(Long tenantId, Long ownerUserId, Long profileId) {
+        AgentProfileEntity profile = getOwnedDraftProfile(tenantId, ownerUserId, profileId);
+        profile.setStatus(ProfileConstants.STATUS_DISABLED);
+        profileMapper.updateById(profile);
+        return getProfile(tenantId, ownerUserId, profileId);
+    }
+
+    @Override
+    @Transactional
     public void bindSkills(BindSkillsCommand command) {
         AgentProfileEntity profile = getOwnedDraftProfile(command.tenantId(), command.ownerUserId(), command.profileId());
         List<Long> skillIds = distinctIds(command.skillIds());

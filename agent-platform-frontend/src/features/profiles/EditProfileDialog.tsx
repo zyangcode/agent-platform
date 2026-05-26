@@ -42,6 +42,7 @@ export function EditProfileDialog({ modelConfigs, onUpdated, profile }: EditProf
   const effectiveModelConfigId = useMemo(() => {
     return form.modelConfigId || String(profile?.modelConfigId ?? modelConfigs[0]?.modelConfigId ?? '')
   }, [form.modelConfigId, modelConfigs, profile])
+  const isEditable = profile?.status.toUpperCase() === 'DRAFT'
 
   function handleOpenChange(nextOpen: boolean) {
     setOpen(nextOpen)
@@ -83,7 +84,7 @@ export function EditProfileDialog({ modelConfigs, onUpdated, profile }: EditProf
   return (
     <Dialog onOpenChange={handleOpenChange} open={open}>
       <DialogTrigger asChild>
-        <Button disabled={!profile || modelConfigs.length === 0} variant="secondary">
+        <Button disabled={!profile || !isEditable || modelConfigs.length === 0} variant="secondary">
           <Pencil className="h-4 w-4" strokeWidth={1.75} />
           Edit profile
         </Button>
@@ -170,7 +171,7 @@ export function EditProfileDialog({ modelConfigs, onUpdated, profile }: EditProf
           ) : null}
 
           <DialogFooter>
-            <Button disabled={isSubmitting || !profile || !effectiveModelConfigId} type="submit">
+            <Button disabled={isSubmitting || !profile || !isEditable || !effectiveModelConfigId} type="submit">
               {isSubmitting ? 'Saving' : 'Save changes'}
             </Button>
           </DialogFooter>

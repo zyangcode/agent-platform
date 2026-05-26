@@ -1,6 +1,7 @@
 package com.ls.agent.core.context;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ls.agent.common.error.BizException;
 import com.ls.agent.core.agent.api.MessageHistoryService;
 import com.ls.agent.core.agent.dto.ConversationMessageDTO;
 import com.ls.agent.core.context.application.DefaultAgentContextBuilder;
@@ -22,6 +23,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -140,6 +142,23 @@ class DefaultAgentContextBuilderTest {
     }
 
     @Test
+    void buildContextRejectsDisabledProfile() {
+        when(profileService.getProfile(1L, 10001L, 50001L)).thenReturn(disabledProfile());
+
+        assertThatThrownBy(() -> builder.build(new BuildAgentContextCommand(
+                1L,
+                10001L,
+                20001L,
+                50001L,
+                null,
+                "hello",
+                1_000,
+                null,
+                null
+        ))).isInstanceOf(BizException.class);
+    }
+
+    @Test
     void buildContextUsesModelConfigTokenLimitWhenCommandLimitIsMissing() {
         when(profileService.getProfile(1L, 10001L, 50001L)).thenReturn(profile());
         when(modelConfigService.getActiveModelConfig(30001L)).thenReturn(modelConfig(80));
@@ -209,6 +228,25 @@ class DefaultAgentContextBuilderTest {
                         new ProfileMcpToolBindingDTO(1L, true),
                         new ProfileMcpToolBindingDTO(2L, false)
                 )
+        );
+    }
+
+    private ProfileDTO disabledProfile() {
+        ProfileDTO profile = profile();
+        return new ProfileDTO(
+                profile.profileId(),
+                profile.applicationId(),
+                profile.name(),
+                profile.profileType(),
+                profile.description(),
+                profile.modelConfigId(),
+                profile.promptExtra(),
+                profile.memoryStrategy(),
+                profile.maxSteps(),
+                profile.visibility(),
+                "DISABLED",
+                profile.skillBindings(),
+                profile.mcpToolBindings()
         );
     }
 
