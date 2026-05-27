@@ -24,7 +24,7 @@
 - Reviewer 审查执行结果。
 - Reviewer 不通过时最多重试一次指定任务。
 - Orchestrator 汇总最终答案。
-- SSE 能展示 plan / execute / review / final 事件。
+- SSE 能阶段性实时展示 plan / execute / review / final 事件，不能等 Team 全部执行结束后一次性刷出过程。
 - Trace Detail 能看到 planner、executor、reviewer、tool call 等 span。
 - 前端 Chat 右侧能展示 Team 运行过程和 Mermaid 协作图。
 
@@ -94,6 +94,21 @@ Web / Gateway 不关心 Team 内部细节，仍然只发起 Chat SSE。
 
 ## 5. Team 角色职责
 
+Team 的主数据流固定为：
+
+```text
+用户请求
+ -> Planner 生成 TaskPlan
+ -> TaskPlanValidator 校验
+ -> Executor 执行 TOOL_TASK / MODEL_TASK
+ -> Orchestrator 基于 ExecutionResult 生成 answerDraft
+ -> Reviewer 审查 TaskPlan + ExecutionResult + answerDraft
+ -> 必要时 Orchestrator 触发一次 retry
+ -> Orchestrator 输出 finalAnswer
+```
+
+Reviewer 不直接生成最终答案，它只审查 `answerDraft` 是否满足用户目标。最终回答由 Orchestrator 根据执行结果和审查意见生成。
+
 ### 5.1 Planner
 
 Planner 负责把用户目标拆成任务计划。
@@ -116,6 +131,7 @@ Planner 负责把用户目标拆成任务计划。
       "id": "task-1",
       "name": "查询天气",
       "description": "查询重庆本周六下午天气",
+      "taskType": "TOOL_TASK",
       "suggestedTool": "weather",
       "arguments": {
         "city": "重庆",
@@ -133,7 +149,28 @@ Planner 负责把用户目标拆成任务计划。
 - 不生成最终答案。
 - 只能输出 JSON。
 - 第一次输出非法时允许修正一次。
-- 第二次仍失败时降级为预置单任务计划。
+- 第二次仍失败时降级为通用单任务 fallback plan。
+
+fallback plan 不绑定具体 Demo 或工具组合，格式固定为：
+
+```json
+{
+  "goal": "用户原始请求",
+  "tasks": [
+    {
+      "id": "task-1",
+      "name": "直接处理用户请求",
+      "description": "在不依赖工具计划的情况下，基于上下文直接回答用户问题。",
+      "taskType": "MODEL_TASK",
+      "suggestedTool": null,
+      "arguments": {},
+      "dependsOn": []
+    }
+  ]
+}
+```
+
+活动策划的 weather / search / calculator 三任务计划只能作为 Demo seed 或测试数据，不作为通用 fallback 逻辑写死到 Planner 中。
 
 ### 5.2 Executor
 
@@ -150,6 +187,7 @@ Executor 负责按 TaskPlan 执行任务。
 ```json
 {
   "taskId": "task-1",
+  "taskType": "TOOL_TASK",
   "status": "success",
   "result": "重庆本周六下午可能小雨，建议优先室内活动。",
   "usedTools": ["weather"],
@@ -165,6 +203,25 @@ Executor 负责按 TaskPlan 执行任务。
 - 依赖任务失败时，当前任务可标记 `skipped`。
 - 工具执行失败时返回 failed ExecutionResult，不直接中断整次 Team。
 
+任务类型第一版只做两种：
+
+| 类型 | 执行方式 |
+|---|---|
+| `TOOL_TASK` | 必须有 `suggestedTool`，由 AgentToolDispatcher 调用 Skill/MCP。 |
+| `MODEL_TASK` | 不调用业务工具，由模型根据用户目标、Profile Prompt、TaskPlan 和已完成 ExecutionResult 生成任务结果。 |
+
+`MODEL_TASK` 的模型输入必须包含：
+
+```text
+1. 用户原始请求
+2. 当前任务描述
+3. 已完成任务的 ExecutionResult 摘要
+4. Profile 补充 Prompt
+5. 输出要求：只输出当前任务结果，不重新规划任务
+```
+
+Executor 不负责最终汇总。最终汇总由 Orchestrator 在所有可执行任务结束后完成。
+
 ### 5.3 Reviewer
 
 Reviewer 负责审查执行结果是否满足用户目标。
@@ -174,7 +231,7 @@ Reviewer 负责审查执行结果是否满足用户目标。
 - 用户原始请求。
 - TaskPlan。
 - ExecutionResult 列表。
-- 最终答案草稿。
+- Orchestrator 生成的 answerDraft。
 
 输出：
 
@@ -264,6 +321,20 @@ team.finalize
 
 保持现有 SSE 基础事件，同时增加 Team 类型事件。
 
+阶段 4 必须做阶段性实时推送：
+
+```text
+Planner 完成后立即推 team_plan。
+每个任务开始时推 team_task_start。
+每次工具调用前推 team_tool_call。
+每次工具调用或模型任务完成后推 team_tool_result 或 team_task_result。
+Reviewer 完成后立即推 team_review。
+需要重试时立即推 team_retry。
+最终答案生成后推 team_final / message / done。
+```
+
+不接受“Team 全部执行完后一次性吐出所有 team_* 事件”的方案。阶段 4 不要求 token 级流式输出，但 Team 阶段事件必须实时。
+
 推荐事件：
 
 ```text
@@ -271,6 +342,7 @@ team_plan
 team_task_start
 team_tool_call
 team_tool_result
+team_task_result
 team_review
 team_retry
 team_final
@@ -306,10 +378,18 @@ error
 
 ```mermaid
 flowchart TD
-  P[Planner] --> T1[task-1 查询天气]
-  P --> T2[task-2 搜索活动方案]
-  P --> T3[task-3 计算预算]
-  T1 --> R[Reviewer]
+  P[Planner]
+  T1[task-1 查询天气]
+  T2[task-2 搜索活动方案]
+  T3[task-3 计算预算]
+  R[Reviewer]
+  F[Final Answer]
+
+  P -.生成计划.-> T1
+  P -.生成计划.-> T2
+  P -.生成计划.-> T3
+  T1 --> T2
+  T1 --> R
   T2 --> R
   T3 --> R
   R --> F[Final Answer]
@@ -317,9 +397,9 @@ flowchart TD
 
 生成规则：
 
-- Planner 指向所有任务。
-- dependsOn 生成任务之间的边。
-- 所有任务指向 Reviewer。
+- Planner 到任务使用虚线，表示“生成计划”，不是执行流。
+- dependsOn 生成任务之间的实线边，表示执行依赖。
+- 没有被其他任务依赖的任务指向 Reviewer。
 - Reviewer 指向 Final Answer。
 
 ## 10. 错误与降级
@@ -328,7 +408,7 @@ Planner JSON 非法：
 
 ```text
 第 1 次：要求模型修正。
-第 2 次：使用预置单任务计划。
+第 2 次：使用通用单任务 fallback plan，不写死活动策划工具组合。
 ```
 
 工具不可用：
@@ -354,7 +434,30 @@ SSE 返回 error。
 Gateway 仍按阶段 2 规则记录 trace/token/alert。
 ```
 
-## 11. 数据库取舍
+## 11. Team 上限
+
+Team 模式必须有整体上限，避免 Planner、Executor、Reviewer 或工具调用卡死。
+
+第一版默认值：
+
+| 限制项 | 默认值 | 说明 |
+|---|---:|---|
+| `maxTasks` | 8 | Planner 输出任务数量上限。 |
+| `maxRetries` | 1 | Reviewer 不通过后最多重试一次。 |
+| `maxToolCalls` | 8 | 单次 Team Run 工具调用总次数。 |
+| `maxModelCalls` | 6 | Planner、MODEL_TASK、Reviewer、Final 汇总的模型调用总次数。 |
+| `timeoutMs` | 120000 | 单次 Team Run 总超时，第一版可写成配置常量。 |
+
+`Profile.maxSteps` 在 Team 模式下不再直接等于 ReAct loop 次数，而是可映射为 Team 复杂度：
+
+```text
+maxTasks = min(maxSteps + 3, 8)
+maxModelCalls = min(maxSteps + 2, 6)
+```
+
+如果暂时不做动态映射，也必须在 `core.team` 中有固定常量，并在测试中覆盖超限场景。
+
+## 12. 数据库取舍
 
 阶段 4 不新增 `team_runs`、`team_tasks`、`team_messages`、`team_reviews` 表。
 
@@ -373,7 +476,7 @@ team_messages
 team_reviews
 ```
 
-## 12. 前端范围
+## 13. 前端范围
 
 阶段 4 前端只增强 Chat 和 Trace：
 
@@ -389,7 +492,7 @@ team_reviews
 - 拖拽流程编排。
 - 多 Team 模板管理。
 
-## 13. 验收 Demo
+## 14. 验收 Demo
 
 Demo 输入：
 
