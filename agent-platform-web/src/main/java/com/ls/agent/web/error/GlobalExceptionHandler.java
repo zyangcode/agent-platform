@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -37,6 +38,18 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(ErrorCode.REQUEST_INVALID.getHttpStatus())
                 .body(ApiResponse.failure(ErrorCode.REQUEST_INVALID.getCode(), message));
+    }
+
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMissingRequestParameter(
+            MissingServletRequestParameterException exception
+    ) {
+        return ResponseEntity
+                .status(ErrorCode.REQUEST_INVALID.getHttpStatus())
+                .body(ApiResponse.failure(
+                        ErrorCode.REQUEST_INVALID.getCode(),
+                        exception.getParameterName() + " is required"
+                ));
     }
 
     @ExceptionHandler({NoHandlerFoundException.class, NoResourceFoundException.class})

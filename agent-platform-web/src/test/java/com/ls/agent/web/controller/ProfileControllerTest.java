@@ -101,6 +101,15 @@ class ProfileControllerTest {
     }
 
     @Test
+    void listProfilesReturnsBadRequestWhenApplicationIdMissing() throws Exception {
+        mockMvc.perform(get("/api/profiles")
+                        .header("Authorization", bearerToken()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(ErrorCode.REQUEST_INVALID.getCode()))
+                .andExpect(jsonPath("$.message").value("applicationId is required"));
+    }
+
+    @Test
     void getProfileDelegatesWithCurrentUser() throws Exception {
         when(profileService.getProfile(1L, 10001L, 50001L)).thenReturn(profile());
 
