@@ -143,6 +143,12 @@ MVP 的 Developer = 配单 Agent Profile；阶段 4 的 Developer = 在 Profile 
 
 阶段 4 Agent Team 和后续 Agent Runtime 增强前，重点参考 MVP Claude Code 的 token 级流式输出、ToolDispatcher/ToolRegistry、子 Agent 工具隔离、上下文压缩和高危工具确认思路。该参考项目只作为 Agent Harness 设计来源，不引入 LangChain4j、Picocli、本地 File/Bash 裸工具能力或文件型 Memory。
 
+阶段 4 Agent Team 开发前必须阅读并按顺序对照：
+
+- `实际开发/阶段4/01-阶段4AgentTeam设计说明.md`
+- `实际开发/阶段4/02-阶段4接口设计.md`
+- `实际开发/阶段4/03-阶段4执行顺序.md`
+
 阶段 3 前端开发采用 `agent-platform-frontend` 独立工程，技术栈固定为 React + Vite + TypeScript + Tailwind CSS + shadcn/ui + ECharts。本地开发阶段不引入 nginx，先使用 Vite dev server 代理 `/api` 到 Web 后端；nginx 放到最终 Docker Compose / 交付阶段再补。
 
 阶段 3 涉及审美和页面体验选择时，必须先给用户 2-3 个明确方案并等待确认，再写页面代码。需要确认的内容包括但不限于：整体视觉风格、导航布局、Dashboard 信息密度、对话页布局、Trace 时间线表现、图表风格、动效强度、颜色主题、登录页视觉方向。接口封装、类型定义、目录搭建、API Client、路由骨架等非审美基础工程可以直接按既定技术栈推进。
@@ -246,13 +252,19 @@ Git 提交与标签约定：
 
 ## Agent Team 关键约束
 
+- 阶段 4 只做最小 Team Demo 闭环，不新增 Team 表，运行数据先写入 `trace_spans.attributes`
+- 不引入 Graph/Workflow 引擎、Flowable、LangChain4j、RabbitMQ/Redis 或拖拽编排器
+- Team SSE 必须阶段性实时推送：Planner 完成推 `team_plan`，任务开始/结束推 `team_task_start` / `team_task_result`，工具调用推 `team_tool_call` / `team_tool_result`，Reviewer 完成推 `team_review`
 - Planner：只拆任务，不调工具，不生成最终答案
 - Executor：只执行分配的子任务，调用授权 Skill/Tool，不重新规划
 - Reviewer：只审查结果，不规划不执行
 - Skill **不**分别绑给三个角色，统一绑到任务/领域/用户，仅 Executor 拿到调用权限
 - 每个角色的输出必须通过 JSON Schema 校验（TaskPlan / ExecutionResult / ReviewResult）
-- Planner 规划失败：首次要求修正，二次失败降级为单任务
-- Reviewer 不通过：先让 Executor 重试；仍失败则由 Orchestrator 仲裁，决定继续重试、降级基础 Agent、返回部分结果或失败原因
+- Planner 规划失败：首次要求修正，二次失败降级为通用单任务 `MODEL_TASK`，不能硬编码 weather/search/calculator 等 Demo 工具组合
+- Executor 任务类型第一版只做 `TOOL_TASK` / `MODEL_TASK`；最终 answerDraft 和 finalAnswer 由 Orchestrator 生成
+- Reviewer 审查的是 TaskPlan、ExecutionResult 和 Orchestrator 生成的 answerDraft，不直接生成最终答案
+- Reviewer 不通过：最多让 Executor 重试一次；仍失败则由 Orchestrator 仲裁，返回当前最优结果和风险说明
+- Team 模式必须有整体上限：maxTasks、maxRetries、maxToolCalls、maxModelCalls、timeoutMs，避免多 Agent 链路 hang 住
 
 ## 网关拦截器链（项目3）
 
