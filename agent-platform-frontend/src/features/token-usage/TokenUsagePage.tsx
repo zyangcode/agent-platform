@@ -21,6 +21,7 @@ import { ApiError } from '@/lib/api/errors'
 import type { Application, ModelConfig, PageResult, TokenUsage, TokenUsageSummary } from '@/lib/api/types'
 import { formatDateTime } from '@/lib/format/date'
 import { formatCompact, formatInteger } from '@/lib/format/number'
+import { useI18n } from '@/lib/i18n/use-i18n'
 import { getTokenUsageSummary, listTokenUsages } from './api'
 import {
   buildTokenSplitData,
@@ -97,6 +98,7 @@ async function fetchTokenUsageForFilters(applicationFilter: string, modelConfigF
 }
 
 export function TokenUsagePage() {
+  const { t } = useI18n()
   const [applicationFilter, setApplicationFilter] = useState('ALL')
   const [modelConfigFilter, setModelConfigFilter] = useState('ALL')
   const [pageNo, setPageNo] = useState(1)
@@ -168,7 +170,7 @@ export function TokenUsagePage() {
     <section className="space-y-6">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div>
-          <h2 className="text-2xl font-semibold tracking-tight text-white">Token Usage</h2>
+          <h2 className="text-2xl font-semibold tracking-tight text-white">{t('usage.title')}</h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-400">
             Review quota service records, estimated usage, and model-level token concentration.
             Summary filters follow the Stage 2 Token Usage API.
@@ -246,7 +248,8 @@ export function TokenUsagePage() {
         />
         <SummaryMetric
           icon={Gauge}
-          label="Estimated ratio"
+          description={t('usage.estimatedRatioDescription')}
+          label={t('usage.estimatedRatio')}
           loading={state.status === 'loading'}
           value={`${estimateRatio}%`}
         />
@@ -455,13 +458,14 @@ export function TokenUsagePage() {
 }
 
 type SummaryMetricProps = {
+  description?: string
   icon: typeof Sigma
   label: string
   loading: boolean
   value: string
 }
 
-function SummaryMetric({ icon: Icon, label, loading, value }: SummaryMetricProps) {
+function SummaryMetric({ description, icon: Icon, label, loading, value }: SummaryMetricProps) {
   return (
     <Card className="bg-zinc-950/45">
       <CardContent className="p-5">
@@ -474,6 +478,7 @@ function SummaryMetric({ icon: Icon, label, loading, value }: SummaryMetricProps
         ) : (
           <p className="mt-5 font-mono text-3xl text-white">{value}</p>
         )}
+        {description ? <p className="mt-3 text-xs leading-5 text-zinc-500">{description}</p> : null}
       </CardContent>
     </Card>
   )

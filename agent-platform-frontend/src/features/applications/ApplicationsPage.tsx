@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { KeyRound, RefreshCw } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -10,6 +10,7 @@ import { ApiError } from '@/lib/api/errors'
 import { loadLastSelectedApplicationId, saveLastSelectedApplicationId } from '@/lib/application-selection-storage'
 import type { Application, CreatedApiKey, PageResult } from '@/lib/api/types'
 import { formatDateTime } from '@/lib/format/date'
+import { useI18n } from '@/lib/i18n/use-i18n'
 import { ApiKeyRevealDialog } from './ApiKeyRevealDialog'
 import { ApiKeysPanel } from './ApiKeysPanel'
 import { resolveSelectedApplicationId } from './application-selection-utils'
@@ -22,12 +23,12 @@ type ApplicationsState =
   | { applications: PageResult<Application>; error: null; status: 'ready' }
   | { applications: null; error: string | null; status: 'loading' | 'error' }
 
-function getErrorMessage(error: unknown) {
+function getErrorMessage(error: unknown, fallback: string) {
   if (error instanceof ApiError) {
     return error.message
   }
 
-  return 'Applications could not be loaded.'
+  return fallback
 }
 
 function getApplicationStatusVariant(status: string) {
@@ -44,6 +45,7 @@ function getApplicationStatusVariant(status: string) {
 }
 
 export function ApplicationsPage() {
+  const { t } = useI18n()
   const [revealedKey, setRevealedKey] = useState<CreatedApiKey | null>(null)
   const [selectedApplicationId, setSelectedApplicationId] = useState<number | null>(null)
   const [state, setState] = useState<ApplicationsState>({
@@ -60,14 +62,14 @@ export function ApplicationsPage() {
     )
   }, [selectedApplicationId, state.applications])
 
-  async function fetchApplications() {
+  const fetchApplications = useCallback(async () => {
     try {
       const applications = await listApplications()
       return { applications, error: null, status: 'ready' } satisfies ApplicationsState
     } catch (error) {
-      return { applications: null, error: getErrorMessage(error), status: 'error' } satisfies ApplicationsState
+      return { applications: null, error: getErrorMessage(error, t('application.unavailable')), status: 'error' } satisfies ApplicationsState
     }
-  }
+  }, [t])
 
   function syncSelectedApplication(applications: PageResult<Application>) {
     const nextApplicationId = resolveSelectedApplicationId(
@@ -120,22 +122,19 @@ export function ApplicationsPage() {
     return () => {
       isMounted = false
     }
-  }, [])
+  }, [fetchApplications])
 
   return (
     <section className="space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>
-          <h2 className="text-2xl font-semibold tracking-tight text-white">Applications</h2>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-400">
-            Applications own API keys. Later Profile, Chat, Trace, and Token Usage views use this
-            scope for filtering and quota accounting.
-          </p>
+          <h2 className="text-2xl font-semibold tracking-tight text-white">{t('application.title')}</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-400">{t('application.intro')}</p>
         </div>
         <div className="flex flex-wrap gap-3">
           <Button onClick={loadApplications} variant="secondary">
             <RefreshCw className="h-4 w-4" strokeWidth={1.75} />
-            Refresh
+            {t('common.refresh')}
           </Button>
           <CreateApplicationDialog
             onCreated={(result) => {
@@ -149,7 +148,7 @@ export function ApplicationsPage() {
 
       {state.status === 'error' ? (
         <Alert variant="danger">
-          <AlertTitle>Applications unavailable</AlertTitle>
+          <AlertTitle>{t('application.unavailable')}</AlertTitle>
           <AlertDescription>{state.error}</AlertDescription>
         </Alert>
       ) : null}
@@ -157,8 +156,8 @@ export function ApplicationsPage() {
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <Card>
           <CardHeader>
-            <CardTitle>Application list</CardTitle>
-            <CardDescription>Current user applications returned by Web APIs.</CardDescription>
+            <CardTitle>{t('application.list')}</CardTitle>
+            <CardDescription>{t('application.listDescription')}</CardDescription>
           </CardHeader>
           <CardContent>
             {state.status === 'loading' ? (
@@ -171,10 +170,10 @@ export function ApplicationsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Created</TableHead>
-                    <TableHead>Actions</TableHead>
+                    <TableHead>{t('application.name')}</TableHead>
+                    <TableHead>{t('application.status')}</TableHead>
+                    <TableHead>{t('application.created')}</TableHead>
+                    <TableHead>{t('application.actions')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -195,7 +194,7 @@ export function ApplicationsPage() {
                             <div>
                               <p className="font-medium text-white">{application.name}</p>
                               <p className="max-w-[320px] truncate text-xs text-zinc-500">
-                                {application.description || 'No description'}
+                                {application.description || t('application.noDescription')}
                               </p>
                             </div>
                           </div>
@@ -231,10 +230,8 @@ export function ApplicationsPage() {
               </Table>
             ) : (
               <Alert>
-                <AlertTitle>No applications</AlertTitle>
-                <AlertDescription>
-                  Create the first application to receive an API key and unlock Profile setup.
-                </AlertDescription>
+                <AlertTitle>{t('application.noApplications')}</AlertTitle>
+                <AlertDescription>{t('application.createFirst')}</AlertDescription>
               </Alert>
             )}
           </CardContent>

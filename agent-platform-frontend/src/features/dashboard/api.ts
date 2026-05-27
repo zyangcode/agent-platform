@@ -5,9 +5,12 @@ import type {
   TokenUsageSummary,
   TraceSummary,
 } from '@/lib/api/types'
+import { loadLastSelectedApplicationId } from '@/lib/application-selection-storage'
+import { buildDashboardScopedQuery, resolveDashboardApplicationId } from './dashboard-selection-utils'
 
 export type DashboardData = {
   applications: PageResult<Application>
+  applicationId: number | null
   recentTraces: PageResult<TraceSummary>
   tokenSummary: TokenUsageSummary
 }
@@ -24,18 +27,24 @@ const emptyTokenSummary: TokenUsageSummary = {
 }
 
 export async function getDashboardData(): Promise<DashboardData> {
-  const [applications, recentTraces, tokenSummary] = await Promise.all([
-    apiClient.get<PageResult<Application>>('/applications', {
-      query: { pageNo: 1, pageSize: 20 },
-    }),
+  const applications = await apiClient.get<PageResult<Application>>('/applications', {
+    query: { pageNo: 1, pageSize: 20 },
+  })
+  const applicationId = resolveDashboardApplicationId(applications, loadLastSelectedApplicationId())
+  const scopedQuery = buildDashboardScopedQuery(applicationId)
+
+  const [recentTraces, tokenSummary] = await Promise.all([
     apiClient.get<PageResult<TraceSummary>>('/traces', {
-      query: { pageNo: 1, pageSize: 5 },
+      query: { ...scopedQuery, pageNo: 1, pageSize: 5 },
     }),
-    apiClient.get<TokenUsageSummary>('/token-usages/summary'),
+    apiClient.get<TokenUsageSummary>('/token-usages/summary', {
+      query: scopedQuery,
+    }),
   ])
 
   return {
     applications,
+    applicationId,
     recentTraces,
     tokenSummary: tokenSummary ?? emptyTokenSummary,
   }

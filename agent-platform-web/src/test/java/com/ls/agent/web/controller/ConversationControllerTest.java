@@ -17,6 +17,7 @@ import java.util.List;
 
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -85,6 +86,24 @@ class ConversationControllerTest {
                 50001L,
                 90001L,
                 50
+        );
+    }
+
+    @Test
+    void archiveDelegatesWithCurrentUserAndScope() throws Exception {
+        mockMvc.perform(delete("/api/conversations/90001")
+                        .header("Authorization", bearerToken())
+                        .param("applicationId", "20001")
+                        .param("profileId", "50001"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        verify(messageHistoryService).archiveConversation(
+                1L,
+                20001L,
+                10001L,
+                50001L,
+                90001L
         );
     }
 

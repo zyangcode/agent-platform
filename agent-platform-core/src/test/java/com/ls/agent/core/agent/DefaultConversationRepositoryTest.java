@@ -53,4 +53,11 @@ class DefaultConversationRepositoryTest {
         verify(conversationMapper).selectList(any());
         verify(conversationMapper).updateById(any(ConversationEntity.class));
     }
+
+    @Test
+    void repositoryArchivesConversationByUpdatingStatus() {
+        repository.archiveConversation(90001L);
+
+        verify(conversationMapper).updateById(any(ConversationEntity.class));
+    }
 }

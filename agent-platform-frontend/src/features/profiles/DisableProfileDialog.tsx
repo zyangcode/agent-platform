@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dialog'
 import { ApiError } from '@/lib/api/errors'
 import type { Profile } from '@/lib/api/types'
+import { useI18n } from '@/lib/i18n/use-i18n'
 import { disableProfile } from './api'
 
 type DisableProfileDialogProps = {
@@ -21,6 +22,7 @@ type DisableProfileDialogProps = {
 }
 
 export function DisableProfileDialog({ onDisabled, profile }: DisableProfileDialogProps) {
+  const { t } = useI18n()
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [open, setOpen] = useState(false)
@@ -39,7 +41,7 @@ export function DisableProfileDialog({ onDisabled, profile }: DisableProfileDial
       setOpen(false)
       onDisabled(disabledProfile)
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : 'Profile could not be disabled.')
+      setError(caught instanceof ApiError ? caught.message : t('profile.disableFailed'))
     } finally {
       setIsSubmitting(false)
     }
@@ -58,31 +60,30 @@ export function DisableProfileDialog({ onDisabled, profile }: DisableProfileDial
       <DialogTrigger asChild>
         <Button disabled={!profile || !isDraft} variant="danger">
           <Power className="h-4 w-4" strokeWidth={1.75} />
-          Disable profile
+          {t('profile.disableButton')}
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Disable profile</DialogTitle>
+          <DialogTitle>{t('profile.disableTitle')}</DialogTitle>
           <DialogDescription>
-            {profile?.name ?? 'This profile'} will stay visible for review, but it will no longer be
-            used for Chat or tool binding changes.
+            {t('profile.disableDescription', { name: profile?.name ?? t('profile.detail') })}
           </DialogDescription>
         </DialogHeader>
 
         {error ? (
           <Alert className="mt-5" variant="danger">
-            <AlertTitle>Disable failed</AlertTitle>
+            <AlertTitle>{t('profile.disableFailed')}</AlertTitle>
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         ) : null}
 
         <DialogFooter>
           <Button onClick={() => setOpen(false)} variant="secondary">
-            Cancel
+            {t('profile.cancel')}
           </Button>
           <Button disabled={isSubmitting || !profile || !isDraft} onClick={handleDisable} variant="danger">
-            {isSubmitting ? 'Disabling' : 'Disable profile'}
+            {isSubmitting ? t('profile.disabling') : t('profile.disableButton')}
           </Button>
         </DialogFooter>
       </DialogContent>

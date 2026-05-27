@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Activity, AlertTriangle, Database, KeyRound, RefreshCw, ShieldCheck } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -15,25 +15,26 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { ApiError } from '@/lib/api/errors'
 import { formatDateTime, formatLatency } from '@/lib/format/date'
 import { formatCompact, formatInteger } from '@/lib/format/number'
+import { useI18n } from '@/lib/i18n/use-i18n'
 import { getDashboardData, type DashboardData } from './api'
 
 type DashboardState =
   | { data: DashboardData; error: null; status: 'ready' }
   | { data: null; error: string | null; status: 'error' | 'loading' }
 
-function getErrorMessage(error: unknown) {
+function getErrorMessage(error: unknown, t: (key: string) => string) {
   if (error instanceof ApiError) {
     if (error.kind === 'unauthorized') {
-      return 'Session expired. Sign in again to continue.'
+      return t('dashboard.sessionExpired')
     }
     if (error.kind === 'quota_exceeded') {
-      return 'Quota is exhausted. Dashboard data is still protected by the gateway policy.'
+      return t('dashboard.quotaExhausted')
     }
 
     return error.message
   }
 
-  return 'Dashboard data could not be loaded.'
+  return t('dashboard.dataLoadFailed')
 }
 
 function getStatusVariant(status: string | null | undefined) {
@@ -53,20 +54,21 @@ function getStatusVariant(status: string | null | undefined) {
 }
 
 export function ConsoleHomePage() {
+  const { t } = useI18n()
   const [state, setState] = useState<DashboardState>({
     data: null,
     error: null,
     status: 'loading',
   })
 
-  async function fetchDashboardData() {
+  const fetchDashboardData = useCallback(async () => {
     try {
       const data = await getDashboardData()
       return { data, error: null, status: 'ready' } satisfies DashboardState
     } catch (error) {
-      return { data: null, error: getErrorMessage(error), status: 'error' } satisfies DashboardState
+      return { data: null, error: getErrorMessage(error, t), status: 'error' } satisfies DashboardState
     }
-  }
+  }, [t])
 
   async function refreshDashboard(setLoading: boolean) {
     if (setLoading) {
@@ -99,7 +101,7 @@ export function ConsoleHomePage() {
     return () => {
       isMounted = false
     }
-  }, [])
+  }, [fetchDashboardData])
 
   const metrics = useMemo(() => {
     const data = state.data
@@ -107,37 +109,37 @@ export function ConsoleHomePage() {
     return [
       {
         icon: KeyRound,
-        label: 'Applications',
+        label: t('dashboard.applications'),
         value: data ? formatInteger(data.applications.total) : '-',
       },
       {
         icon: ShieldCheck,
-        label: 'Profiles',
-        value: data && data.applications.records.length > 0 ? 'Ready' : '0',
+        label: t('dashboard.profiles'),
+        value: data && data.applications.records.length > 0 ? t('dashboard.ready') : '0',
       },
       {
         icon: Activity,
-        label: 'Recent traces',
+        label: t('dashboard.recentTraces'),
         value: data ? formatInteger(data.recentTraces.total) : '-',
       },
       {
         icon: Database,
-        label: 'Token usage',
+        label: t('dashboard.tokenUsage'),
         value: data ? formatCompact(data.tokenSummary.totalTokens) : '-',
       },
     ]
-  }, [state.data])
+  }, [state.data, t])
 
   return (
     <section className="space-y-6">
       {state.status === 'error' ? (
         <Alert variant="danger">
           <AlertTriangle className="mb-3 h-5 w-5 text-rose-100" strokeWidth={1.75} />
-          <AlertTitle>Dashboard unavailable</AlertTitle>
+          <AlertTitle>{t('dashboard.unavailable')}</AlertTitle>
           <AlertDescription>{state.error}</AlertDescription>
           <Button className="mt-4" onClick={loadDashboard} size="sm" variant="secondary">
             <RefreshCw className="h-4 w-4" strokeWidth={1.75} />
-            Retry
+            {t('dashboard.retry')}
           </Button>
         </Alert>
       ) : null}
@@ -166,19 +168,16 @@ export function ConsoleHomePage() {
 
       {state.status === 'ready' && state.data.applications.total === 0 ? (
         <Alert>
-          <AlertTitle>No applications yet</AlertTitle>
-          <AlertDescription>
-            Create an Application first. Profiles, Chat, Trace, and Token Usage all become more
-            useful after an application exists.
-          </AlertDescription>
+          <AlertTitle>{t('dashboard.noApplicationsYet')}</AlertTitle>
+          <AlertDescription>{t('dashboard.noApplicationsDescription')}</AlertDescription>
         </Alert>
       ) : null}
 
       <div className="grid gap-6 xl:grid-cols-[1.35fr_0.65fr]">
         <Card>
           <CardHeader>
-            <CardTitle>Recent traces</CardTitle>
-            <CardDescription>Latest gateway-governed requests visible to this user.</CardDescription>
+            <CardTitle>{t('dashboard.recentTraces')}</CardTitle>
+            <CardDescription>{t('dashboard.recentTracesDescription')}</CardDescription>
           </CardHeader>
           <CardContent>
             {state.status === 'loading' ? (
@@ -191,10 +190,10 @@ export function ConsoleHomePage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Trace</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Latency</TableHead>
-                    <TableHead>Started</TableHead>
+                    <TableHead>{t('trace.traceLabel')}</TableHead>
+                    <TableHead>{t('trace.status')}</TableHead>
+                    <TableHead>{t('trace.latency')}</TableHead>
+                    <TableHead>{t('dashboard.started')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -216,11 +215,8 @@ export function ConsoleHomePage() {
               </Table>
             ) : (
               <Alert>
-                <AlertTitle>No traces</AlertTitle>
-                <AlertDescription>
-                  Run an Agent Chat after creating an Application and Profile. Trace data will
-                  appear here when the backend writes trace roots.
-                </AlertDescription>
+                <AlertTitle>{t('dashboard.noTraces')}</AlertTitle>
+                <AlertDescription>{t('dashboard.noTracesDescription')}</AlertDescription>
               </Alert>
             )}
           </CardContent>
@@ -228,8 +224,8 @@ export function ConsoleHomePage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Token summary</CardTitle>
-            <CardDescription>Prompt and completion tokens recorded by quota services.</CardDescription>
+            <CardTitle>{t('dashboard.tokenSummary')}</CardTitle>
+            <CardDescription>{t('dashboard.tokenSummaryDescription')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {state.status === 'loading' ? (
@@ -240,20 +236,20 @@ export function ConsoleHomePage() {
             ) : state.status === 'ready' ? (
               <>
                 <div className="rounded-2xl border border-white/10 bg-zinc-950/45 p-4">
-                  <p className="text-sm text-zinc-500">Total tokens</p>
+                  <p className="text-sm text-zinc-500">{t('dashboard.totalTokens')}</p>
                   <p className="mt-2 font-mono text-3xl text-white">
                     {formatInteger(state.data.tokenSummary.totalTokens)}
                   </p>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
-                    <p className="text-xs text-zinc-500">Prompt</p>
+                    <p className="text-xs text-zinc-500">{t('dashboard.prompt')}</p>
                     <p className="mt-2 font-mono text-lg text-zinc-100">
                       {formatInteger(state.data.tokenSummary.promptTokens)}
                     </p>
                   </div>
                   <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
-                    <p className="text-xs text-zinc-500">Completion</p>
+                    <p className="text-xs text-zinc-500">{t('dashboard.completion')}</p>
                     <p className="mt-2 font-mono text-lg text-zinc-100">
                       {formatInteger(state.data.tokenSummary.completionTokens)}
                     </p>
@@ -261,14 +257,14 @@ export function ConsoleHomePage() {
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Badge variant="muted">{state.data.tokenSummary.requestCount} requests</Badge>
-                  <Badge variant="default">{state.data.tokenSummary.estimatedCount} estimated</Badge>
-                  <Badge variant="success">{state.data.tokenSummary.realUsageCount} real</Badge>
+                  <Badge variant="default">{state.data.tokenSummary.estimatedCount} {t('common.estimated')}</Badge>
+                  <Badge variant="success">{state.data.tokenSummary.realUsageCount} {t('common.real')}</Badge>
                 </div>
               </>
             ) : (
               <Alert variant="warning">
-                <AlertTitle>Token data unavailable</AlertTitle>
-                <AlertDescription>Resolve the dashboard error and retry.</AlertDescription>
+                <AlertTitle>{t('dashboard.tokenDataUnavailable')}</AlertTitle>
+                <AlertDescription>{t('dashboard.tokenDataUnavailableDescription')}</AlertDescription>
               </Alert>
             )}
           </CardContent>

@@ -16,6 +16,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { ApiError } from '@/lib/api/errors'
 import type { CreateApplicationResult } from '@/lib/api/types'
+import { useI18n } from '@/lib/i18n/use-i18n'
 import { createApplication } from './api'
 
 type CreateApplicationDialogProps = {
@@ -23,6 +24,7 @@ type CreateApplicationDialogProps = {
 }
 
 export function CreateApplicationDialog({ onCreated }: CreateApplicationDialogProps) {
+  const { t } = useI18n()
   const [description, setDescription] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -44,7 +46,7 @@ export function CreateApplicationDialog({ onCreated }: CreateApplicationDialogPr
       setOpen(false)
       onCreated(result)
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : 'Application could not be created.')
+      setError(caught instanceof ApiError ? caught.message : t('application.createFailedFallback'))
     } finally {
       setIsSubmitting(false)
     }
@@ -55,52 +57,50 @@ export function CreateApplicationDialog({ onCreated }: CreateApplicationDialogPr
       <DialogTrigger asChild>
         <Button>
           <Plus className="h-4 w-4" strokeWidth={1.75} />
-          New application
+          {t('application.createButton')}
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Create application</DialogTitle>
-          <DialogDescription>
-            Applications own API keys and provide the scope for later Profile and usage views.
-          </DialogDescription>
+          <DialogTitle>{t('application.createButton')}</DialogTitle>
+          <DialogDescription>{t('application.createDescription')}</DialogDescription>
         </DialogHeader>
 
         <form className="mt-5 space-y-5" onSubmit={handleSubmit}>
           <div className="space-y-2">
-            <Label htmlFor="application-name">Name</Label>
+            <Label htmlFor="application-name">{t('application.name')}</Label>
             <Input
               autoFocus
               id="application-name"
               maxLength={128}
               onChange={(event) => setName(event.target.value)}
-              placeholder="Research console"
+              placeholder={t('application.namePlaceholder')}
               required
               value={name}
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="application-description">Description</Label>
+            <Label htmlFor="application-description">{t('application.description')}</Label>
             <Textarea
               id="application-description"
               maxLength={1000}
               onChange={(event) => setDescription(event.target.value)}
-              placeholder="Internal application for Agent platform demos."
+              placeholder={t('application.descriptionPlaceholder')}
               value={description}
             />
           </div>
 
           {error ? (
             <Alert variant="danger">
-              <AlertTitle>Create failed</AlertTitle>
+              <AlertTitle>{t('application.createFailed')}</AlertTitle>
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           ) : null}
 
           <DialogFooter>
             <Button disabled={isSubmitting} type="submit">
-              {isSubmitting ? 'Creating' : 'Create'}
+              {isSubmitting ? t('application.creating') : t('application.create')}
             </Button>
           </DialogFooter>
         </form>

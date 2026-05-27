@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Skeleton } from '@/components/ui/skeleton'
 import { ApiError } from '@/lib/api/errors'
 import type { McpTool, Profile, Skill } from '@/lib/api/types'
+import { useI18n } from '@/lib/i18n/use-i18n'
 import { bindProfileMcpTools, bindProfileSkills, listMcpTools, listSkills } from './api'
 import { getStatusVariant, toggleNumber } from './profile-utils'
 
@@ -19,11 +20,12 @@ type ToolState =
   | { error: null; mcpTools: McpTool[]; skills: Skill[]; status: 'ready' }
   | { error: string | null; mcpTools: McpTool[]; skills: Skill[]; status: 'error' | 'loading' }
 
-function getErrorMessage(error: unknown) {
-  return error instanceof ApiError ? error.message : 'Tools could not be loaded.'
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof ApiError ? error.message : fallback
 }
 
 export function ProfileToolBindingPanel({ onProfileChanged, profile }: ProfileToolBindingPanelProps) {
+  const { t } = useI18n()
   const [selectedMcpToolIds, setSelectedMcpToolIds] = useState<number[]>([])
   const [selectedSkillIds, setSelectedSkillIds] = useState<number[]>([])
   const [selectionProfileId, setSelectionProfileId] = useState<number | null>(null)
@@ -58,7 +60,12 @@ export function ProfileToolBindingPanel({ onProfileChanged, profile }: ProfileTo
       const [skills, mcpTools] = await Promise.all([listSkills(), listMcpTools()])
       setState({ error: null, mcpTools, skills, status: 'ready' })
     } catch (error) {
-      setState({ error: getErrorMessage(error), mcpTools: [], skills: [], status: 'error' })
+      setState({
+        error: getErrorMessage(error, t('profile.toolsUnavailable')),
+        mcpTools: [],
+        skills: [],
+        status: 'error',
+      })
     }
   }
 
@@ -77,7 +84,7 @@ export function ProfileToolBindingPanel({ onProfileChanged, profile }: ProfileTo
       ])
       onProfileChanged(profile.profileId)
     } catch (error) {
-      setSubmitError(error instanceof ApiError ? error.message : 'Bindings could not be saved.')
+      setSubmitError(error instanceof ApiError ? error.message : t('profile.saveFailed'))
     } finally {
       setIsSaving(false)
     }
@@ -95,7 +102,12 @@ export function ProfileToolBindingPanel({ onProfileChanged, profile }: ProfileTo
         }
       } catch (error) {
         if (isMounted) {
-          setState({ error: getErrorMessage(error), mcpTools: [], skills: [], status: 'error' })
+          setState({
+            error: getErrorMessage(error, t('profile.toolsUnavailable')),
+            mcpTools: [],
+            skills: [],
+            status: 'error',
+          })
         }
       }
     }
@@ -105,34 +117,32 @@ export function ProfileToolBindingPanel({ onProfileChanged, profile }: ProfileTo
     return () => {
       isMounted = false
     }
-  }, [])
+  }, [t])
 
   return (
     <Card>
       <CardHeader>
         <div className="flex items-start justify-between gap-4">
           <div>
-            <CardTitle>Tool bindings</CardTitle>
-            <CardDescription>Bind existing Skills and MCP tools. Upload UI is deferred.</CardDescription>
+            <CardTitle>{t('profile.toolBindings')}</CardTitle>
+            <CardDescription>{t('profile.toolBindingsDescription')}</CardDescription>
           </div>
           <Button onClick={loadTools} size="sm" variant="secondary">
             <RefreshCw className="h-4 w-4" strokeWidth={1.75} />
-            Refresh
+            {t('common.refresh')}
           </Button>
         </div>
       </CardHeader>
       <CardContent className="space-y-5">
         {!profile ? (
           <Alert>
-            <AlertTitle>No profile selected</AlertTitle>
-            <AlertDescription>Select a profile before binding tools.</AlertDescription>
+            <AlertTitle>{t('profile.noProfileSelected')}</AlertTitle>
+            <AlertDescription>{t('profile.noProfileSelectedBindingDescription')}</AlertDescription>
           </Alert>
         ) : !isEditableProfile ? (
           <Alert variant="danger">
-            <AlertTitle>Profile disabled</AlertTitle>
-            <AlertDescription>
-              Tool bindings are read-only because this profile is not editable.
-            </AlertDescription>
+            <AlertTitle>{t('profile.profileDisabled')}</AlertTitle>
+            <AlertDescription>{t('profile.bindingsReadOnly')}</AlertDescription>
           </Alert>
         ) : null}
 
@@ -146,7 +156,7 @@ export function ProfileToolBindingPanel({ onProfileChanged, profile }: ProfileTo
 
         {state.status === 'error' ? (
           <Alert variant="danger">
-            <AlertTitle>Tools unavailable</AlertTitle>
+            <AlertTitle>{t('profile.toolsUnavailable')}</AlertTitle>
             <AlertDescription>{state.error}</AlertDescription>
           </Alert>
         ) : null}
@@ -155,9 +165,9 @@ export function ProfileToolBindingPanel({ onProfileChanged, profile }: ProfileTo
           <div className="grid gap-5 xl:grid-cols-2">
             <ToolChecklist
               disabled={!profile || !isEditableProfile}
-              emptyText="No enabled Skills."
+              emptyText={t('profile.noEnabledSkills')}
               items={state.skills.map((skill) => ({
-                description: skill.description,
+                description: skill.description || t('profile.noDescription'),
                 id: skill.skillId,
                 meta: skill.scope,
                 name: skill.name,
@@ -165,14 +175,15 @@ export function ProfileToolBindingPanel({ onProfileChanged, profile }: ProfileTo
               }))}
               onToggle={setSelectedSkillIds}
               selectedIds={effectiveSelectedSkillIds}
+              seedDataHint={t('profile.seedDataHint')}
               setSelectionProfileId={() => setSelectionProfileId(profile?.profileId ?? null)}
-              title="Skills"
+              title={t('profile.skills')}
             />
             <ToolChecklist
               disabled={!profile || !isEditableProfile}
-              emptyText="No enabled MCP tools."
+              emptyText={t('profile.noEnabledMcpTools')}
               items={state.mcpTools.map((tool) => ({
-                description: tool.description,
+                description: tool.description || t('profile.noDescription'),
                 id: tool.mcpToolId,
                 meta: `server ${tool.mcpServerId}`,
                 name: tool.name,
@@ -180,15 +191,16 @@ export function ProfileToolBindingPanel({ onProfileChanged, profile }: ProfileTo
               }))}
               onToggle={setSelectedMcpToolIds}
               selectedIds={effectiveSelectedMcpToolIds}
+              seedDataHint={t('profile.seedDataHint')}
               setSelectionProfileId={() => setSelectionProfileId(profile?.profileId ?? null)}
-              title="MCP tools"
+              title={t('profile.mcpTools')}
             />
           </div>
         ) : null}
 
         {submitError ? (
           <Alert variant="danger">
-            <AlertTitle>Save failed</AlertTitle>
+            <AlertTitle>{t('profile.saveFailed')}</AlertTitle>
             <AlertDescription>{submitError}</AlertDescription>
           </Alert>
         ) : null}
@@ -196,7 +208,7 @@ export function ProfileToolBindingPanel({ onProfileChanged, profile }: ProfileTo
         <div className="flex justify-end">
           <Button disabled={!canSave} onClick={handleSave}>
             <Save className="h-4 w-4" strokeWidth={1.75} />
-            {isSaving ? 'Saving' : 'Save bindings'}
+            {isSaving ? t('profile.saving') : t('profile.saveBindings')}
           </Button>
         </div>
       </CardContent>
@@ -205,7 +217,7 @@ export function ProfileToolBindingPanel({ onProfileChanged, profile }: ProfileTo
 }
 
 type ChecklistItem = {
-  description?: string | null
+  description: string
   id: number
   meta: string
   name: string
@@ -218,6 +230,7 @@ type ToolChecklistProps = {
   items: ChecklistItem[]
   onToggle: (ids: number[]) => void
   selectedIds: number[]
+  seedDataHint: string
   setSelectionProfileId: () => void
   title: string
 }
@@ -228,6 +241,7 @@ function ToolChecklist({
   items,
   onToggle,
   selectedIds,
+  seedDataHint,
   setSelectionProfileId,
   title,
 }: ToolChecklistProps) {
@@ -237,7 +251,7 @@ function ToolChecklist({
       {items.length === 0 ? (
         <Alert>
           <AlertTitle>{emptyText}</AlertTitle>
-          <AlertDescription>Seed data or later upload flows can populate this list.</AlertDescription>
+          <AlertDescription>{seedDataHint}</AlertDescription>
         </Alert>
       ) : (
         <div className="space-y-2">
@@ -266,7 +280,7 @@ function ToolChecklist({
                     <span className="font-mono text-xs text-zinc-500">{item.meta}</span>
                   </span>
                   <span className="mt-1 block truncate text-xs text-zinc-500">
-                    {item.description || 'No description'}
+                    {item.description}
                   </span>
                 </span>
               </label>

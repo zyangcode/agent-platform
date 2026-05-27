@@ -15,6 +15,8 @@ public interface ConversationRepository {
 
     void touchConversation(Long conversationId);
 
+    void archiveConversation(Long conversationId);
+
     List<ConversationEntity> listConversations(Long tenantId, Long applicationId, Long userId, Long profileId, int limit);
 
     List<ConversationMessageEntity> listRecentMessages(Long conversationId, int limit);

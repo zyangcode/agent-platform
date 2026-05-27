@@ -16,6 +16,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { ApiError } from '@/lib/api/errors'
 import type { Application } from '@/lib/api/types'
+import { useI18n } from '@/lib/i18n/use-i18n'
 import { updateApplication } from './api'
 
 type EditApplicationDialogProps = {
@@ -24,6 +25,7 @@ type EditApplicationDialogProps = {
 }
 
 export function EditApplicationDialog({ application, onUpdated }: EditApplicationDialogProps) {
+  const { t } = useI18n()
   const [description, setDescription] = useState(application.description ?? '')
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -53,7 +55,7 @@ export function EditApplicationDialog({ application, onUpdated }: EditApplicatio
       setOpen(false)
       onUpdated(updatedApplication)
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : 'Application could not be updated.')
+      setError(caught instanceof ApiError ? caught.message : t('application.updateFailedFallback'))
     } finally {
       setIsSubmitting(false)
     }
@@ -64,18 +66,18 @@ export function EditApplicationDialog({ application, onUpdated }: EditApplicatio
       <DialogTrigger asChild>
         <Button size="sm" variant="secondary">
           <Pencil className="h-4 w-4" strokeWidth={1.75} />
-          Edit
+          {t('application.edit')}
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Edit application</DialogTitle>
-          <DialogDescription>Rename the application or update its usage note.</DialogDescription>
+          <DialogTitle>{t('application.editTitle')}</DialogTitle>
+          <DialogDescription>{t('application.editDescription')}</DialogDescription>
         </DialogHeader>
 
         <form className="mt-5 space-y-5" onSubmit={handleSubmit}>
           <div className="space-y-2">
-            <Label htmlFor={`edit-application-name-${application.applicationId}`}>Name</Label>
+            <Label htmlFor={`edit-application-name-${application.applicationId}`}>{t('application.name')}</Label>
             <Input
               autoFocus
               id={`edit-application-name-${application.applicationId}`}
@@ -87,7 +89,7 @@ export function EditApplicationDialog({ application, onUpdated }: EditApplicatio
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor={`edit-application-description-${application.applicationId}`}>Description</Label>
+            <Label htmlFor={`edit-application-description-${application.applicationId}`}>{t('application.description')}</Label>
             <Textarea
               id={`edit-application-description-${application.applicationId}`}
               maxLength={1000}
@@ -98,14 +100,14 @@ export function EditApplicationDialog({ application, onUpdated }: EditApplicatio
 
           {error ? (
             <Alert variant="danger">
-              <AlertTitle>Update failed</AlertTitle>
+              <AlertTitle>{t('application.updateFailed')}</AlertTitle>
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           ) : null}
 
           <DialogFooter>
             <Button disabled={isSubmitting} type="submit">
-              {isSubmitting ? 'Saving' : 'Save changes'}
+              {isSubmitting ? t('profile.saving') : t('application.saveChanges')}
             </Button>
           </DialogFooter>
         </form>

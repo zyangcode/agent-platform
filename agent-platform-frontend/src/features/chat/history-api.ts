@@ -25,3 +25,12 @@ export function listConversationMessages(
     },
   })
 }
+
+export function archiveConversation(conversationId: number, applicationId: number, profileId: number) {
+  return apiClient.delete<void>(`/conversations/${conversationId}`, {
+    query: {
+      applicationId,
+      profileId,
+    },
+  })
+}

@@ -2,10 +2,12 @@ import { NavLink } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { useAuth } from '@/features/auth/use-auth'
+import { useI18n } from '@/lib/i18n/use-i18n'
 import { canAccessNavItem, navGroups } from './navigation'
 
 export function Sidebar() {
   const { user } = useAuth()
+  const { t } = useI18n()
 
   return (
     <Card className="lg:sticky lg:top-6 lg:h-[calc(100dvh-3rem)]">
@@ -31,7 +33,7 @@ export function Sidebar() {
             return (
               <div key={group.title}>
                 <p className="mb-2 px-2 text-[11px] uppercase tracking-[0.18em] text-zinc-600">
-                  {group.title}
+                  {t(group.labelKey)}
                 </p>
                 <div className="space-y-1">
                   {visibleItems.map((item) => {
@@ -52,7 +54,7 @@ export function Sidebar() {
                         to={item.path}
                       >
                         <Icon className="h-4 w-4" strokeWidth={1.75} />
-                        <span>{item.title}</span>
+                        <span>{t(item.labelKey)}</span>
                       </NavLink>
                     )
                   })}

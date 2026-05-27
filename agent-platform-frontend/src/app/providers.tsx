@@ -1,6 +1,11 @@
 import { type ReactNode } from 'react'
 import { AuthProvider } from '@/features/auth/auth-context'
+import { I18nProvider } from '@/lib/i18n/i18n-context'
 
 export function AppProviders({ children }: { children: ReactNode }) {
-  return <AuthProvider>{children}</AuthProvider>
+  return (
+    <I18nProvider>
+      <AuthProvider>{children}</AuthProvider>
+    </I18nProvider>
+  )
 }

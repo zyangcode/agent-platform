@@ -17,6 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { ApiError } from '@/lib/api/errors'
 import type { Application, ModelConfig, Profile } from '@/lib/api/types'
+import { useI18n } from '@/lib/i18n/use-i18n'
 import { createProfile } from './api'
 
 type CreateProfileDialogProps = {
@@ -26,6 +27,7 @@ type CreateProfileDialogProps = {
 }
 
 export function CreateProfileDialog({ application, modelConfigs, onCreated }: CreateProfileDialogProps) {
+  const { t } = useI18n()
   const [description, setDescription] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -68,7 +70,7 @@ export function CreateProfileDialog({ application, modelConfigs, onCreated }: Cr
       setPromptExtra('')
       onCreated(profile)
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : 'Profile could not be created.')
+      setError(caught instanceof ApiError ? caught.message : t('profile.createFailed'))
     } finally {
       setIsSubmitting(false)
     }
@@ -79,37 +81,37 @@ export function CreateProfileDialog({ application, modelConfigs, onCreated }: Cr
       <DialogTrigger asChild>
         <Button disabled={!application || modelConfigs.length === 0}>
           <Plus className="h-4 w-4" strokeWidth={1.75} />
-          New profile
+          {t('profile.createButton')}
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Create profile</DialogTitle>
+          <DialogTitle>{t('profile.createTitle')}</DialogTitle>
           <DialogDescription>
-            MVP creates a private general profile with READ_WRITE memory and a single model config.
+            {t('profile.createDescription')}
           </DialogDescription>
         </DialogHeader>
 
         <form className="mt-5 space-y-5" onSubmit={handleSubmit}>
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="profile-name">Name</Label>
+              <Label htmlFor="profile-name">{t('profile.name')}</Label>
               <Input
                 autoFocus
                 id="profile-name"
                 maxLength={128}
                 onChange={(event) => setName(event.target.value)}
-                placeholder="Research assistant"
+                placeholder={t('profile.namePlaceholder')}
                 required
                 value={name}
               />
             </div>
 
             <div className="space-y-2">
-              <Label>Model config</Label>
+              <Label>{t('profile.modelConfig')}</Label>
               <Select onValueChange={setModelConfigId} value={effectiveModelConfigId}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select model" />
+                  <SelectValue placeholder={t('profile.selectModel')} />
                 </SelectTrigger>
                 <SelectContent>
                   {modelConfigs.map((modelConfig) => (
@@ -123,30 +125,30 @@ export function CreateProfileDialog({ application, modelConfigs, onCreated }: Cr
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="profile-description">Description</Label>
+            <Label htmlFor="profile-description">{t('profile.description')}</Label>
             <Input
               id="profile-description"
               maxLength={2048}
               onChange={(event) => setDescription(event.target.value)}
-              placeholder="A focused assistant for project research and summary tasks."
+              placeholder={t('profile.descriptionPlaceholder')}
               value={description}
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="profile-prompt">Prompt extra</Label>
+            <Label htmlFor="profile-prompt">{t('profile.stylePrompt')}</Label>
             <Textarea
               className="min-h-32"
               id="profile-prompt"
               maxLength={8000}
               onChange={(event) => setPromptExtra(event.target.value)}
-              placeholder="Answer with concise reasoning and cite relevant project context when available."
+              placeholder={t('profile.stylePromptPlaceholder')}
               value={promptExtra}
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="profile-max-steps">Max steps</Label>
+            <Label htmlFor="profile-max-steps">{t('profile.maxSteps')}</Label>
             <Input
               id="profile-max-steps"
               max={50}
@@ -160,14 +162,14 @@ export function CreateProfileDialog({ application, modelConfigs, onCreated }: Cr
 
           {error ? (
             <Alert variant="danger">
-              <AlertTitle>Create failed</AlertTitle>
+              <AlertTitle>{t('profile.createFailed')}</AlertTitle>
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           ) : null}
 
           <DialogFooter>
             <Button disabled={isSubmitting || !application || !effectiveModelConfigId} type="submit">
-              {isSubmitting ? 'Creating' : 'Create'}
+              {isSubmitting ? t('profile.creating') : t('profile.create')}
             </Button>
           </DialogFooter>
         </form>

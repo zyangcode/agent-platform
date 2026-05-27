@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import type { Skill } from '@/lib/api/types'
+import { useI18n } from '@/lib/i18n/use-i18n'
 import { getToolStatusVariant } from './tool-filters'
 import { ToolSchemaPreview } from './ToolSchemaPreview'
 
@@ -13,6 +14,8 @@ type SkillTableProps = {
 }
 
 export function SkillTable({ skills, status }: SkillTableProps) {
+  const { t } = useI18n()
+
   if (status === 'loading') {
     return (
       <div className="space-y-3">
@@ -27,8 +30,8 @@ export function SkillTable({ skills, status }: SkillTableProps) {
     return (
       <Alert>
         <Boxes className="mb-3 h-5 w-5 text-cyan-100" strokeWidth={1.75} />
-        <AlertTitle>No Skills</AlertTitle>
-        <AlertDescription>No Skills match the current filters. Stage 3 does not expose upload UI.</AlertDescription>
+        <AlertTitle>{t('tools.noSkills')}</AlertTitle>
+        <AlertDescription>{t('tools.noSkillsDescription')}</AlertDescription>
       </Alert>
     )
   }
@@ -37,11 +40,11 @@ export function SkillTable({ skills, status }: SkillTableProps) {
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>Name</TableHead>
-          <TableHead>Type</TableHead>
-          <TableHead>Scope</TableHead>
-          <TableHead>Status</TableHead>
-          <TableHead>Schema</TableHead>
+          <TableHead>{t('profile.name')}</TableHead>
+          <TableHead>{t('profile.type')}</TableHead>
+          <TableHead>{t('tools.skillScope')}</TableHead>
+          <TableHead>{t('profile.status')}</TableHead>
+          <TableHead>{t('tools.schema')}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -51,7 +54,7 @@ export function SkillTable({ skills, status }: SkillTableProps) {
               <p className="font-medium text-white">{skill.name}</p>
               <p className="mt-1 font-mono text-xs text-zinc-500">{skill.code}</p>
               <p className="mt-1 max-w-[360px] truncate text-xs text-zinc-500">
-                {skill.description || 'No description'}
+                {skill.description || t('profile.noDescription')}
               </p>
             </TableCell>
             <TableCell className="text-zinc-400">{skill.skillType}</TableCell>

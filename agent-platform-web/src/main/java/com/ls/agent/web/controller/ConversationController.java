@@ -5,6 +5,7 @@ import com.ls.agent.core.agent.api.MessageHistoryService;
 import com.ls.agent.core.agent.dto.ConversationMessageDTO;
 import com.ls.agent.core.agent.dto.ConversationSummaryDTO;
 import com.ls.agent.web.security.CurrentUser;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -53,5 +54,22 @@ public class ConversationController {
                 conversationId,
                 Math.min(limit, 100)
         ));
+    }
+
+    @DeleteMapping("/api/conversations/{conversationId}")
+    public ApiResponse<Void> archive(
+            CurrentUser currentUser,
+            @PathVariable("conversationId") Long conversationId,
+            @RequestParam("applicationId") Long applicationId,
+            @RequestParam("profileId") Long profileId
+    ) {
+        messageHistoryService.archiveConversation(
+                currentUser.tenantId(),
+                applicationId,
+                currentUser.userId(),
+                profileId,
+                conversationId
+        );
+        return ApiResponse.success(null);
     }
 }

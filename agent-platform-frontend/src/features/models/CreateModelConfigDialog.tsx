@@ -18,6 +18,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { ApiError } from '@/lib/api/errors'
 import { createModelConfig } from '@/lib/api/model-configs'
 import type { ModelConfig, ModelProvider } from '@/lib/api/types'
+import { useI18n } from '@/lib/i18n/use-i18n'
 import { buildCreateModelConfigPayload } from './model-form-utils'
 
 type CreateModelConfigDialogProps = {
@@ -26,6 +27,7 @@ type CreateModelConfigDialogProps = {
 }
 
 export function CreateModelConfigDialog({ onCreated, providers }: CreateModelConfigDialogProps) {
+  const { t } = useI18n()
   const [capabilitiesJson, setCapabilitiesJson] = useState('{}')
   const [defaultTemperature, setDefaultTemperature] = useState('0.70')
   const [displayName, setDisplayName] = useState('DeepSeek Chat')
@@ -59,7 +61,7 @@ export function CreateModelConfigDialog({ onCreated, providers }: CreateModelCon
       setOpen(false)
       onCreated(config)
     } catch (caught) {
-      setError(caught instanceof ApiError || caught instanceof Error ? caught.message : 'Model config could not be created.')
+      setError(caught instanceof ApiError || caught instanceof Error ? caught.message : t('model.createFailed'))
     } finally {
       setIsSubmitting(false)
     }
@@ -78,23 +80,21 @@ export function CreateModelConfigDialog({ onCreated, providers }: CreateModelCon
       <DialogTrigger asChild>
         <Button disabled={providers.length === 0} variant="secondary">
           <Plus className="h-4 w-4" strokeWidth={1.75} />
-          New model
+          {t('model.newModel')}
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Create model config</DialogTitle>
-          <DialogDescription>
-            Bind a concrete model name to a provider. Profiles and Direct model chat can use active configs.
-          </DialogDescription>
+          <DialogTitle>{t('model.createConfigTitle')}</DialogTitle>
+          <DialogDescription>{t('model.createConfigDescription')}</DialogDescription>
         </DialogHeader>
 
         <form className="mt-5 space-y-5" onSubmit={handleSubmit}>
           <div className="space-y-2">
-            <Label>Provider</Label>
+            <Label>{t('model.provider')}</Label>
             <Select onValueChange={setProviderId} required value={effectiveProviderId}>
               <SelectTrigger>
-                <SelectValue placeholder="Select provider" />
+                <SelectValue placeholder={t('model.selectProvider')} />
               </SelectTrigger>
               <SelectContent>
                 {providers.map((provider) => (
@@ -108,7 +108,7 @@ export function CreateModelConfigDialog({ onCreated, providers }: CreateModelCon
 
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="model-name">Model name</Label>
+              <Label htmlFor="model-name">{t('model.modelName')}</Label>
               <Input
                 id="model-name"
                 maxLength={128}
@@ -119,7 +119,7 @@ export function CreateModelConfigDialog({ onCreated, providers }: CreateModelCon
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="model-display-name">Display name</Label>
+              <Label htmlFor="model-display-name">{t('model.displayName')}</Label>
               <Input
                 id="model-display-name"
                 maxLength={128}
@@ -132,7 +132,7 @@ export function CreateModelConfigDialog({ onCreated, providers }: CreateModelCon
 
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="model-temperature">Default temperature</Label>
+              <Label htmlFor="model-temperature">{t('model.defaultTemperature')}</Label>
               <Input
                 id="model-temperature"
                 max="2"
@@ -145,7 +145,7 @@ export function CreateModelConfigDialog({ onCreated, providers }: CreateModelCon
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="model-context">Max context tokens</Label>
+              <Label htmlFor="model-context">{t('model.maxContextTokens')}</Label>
               <Input
                 id="model-context"
                 max="2000000"
@@ -159,7 +159,7 @@ export function CreateModelConfigDialog({ onCreated, providers }: CreateModelCon
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="model-capabilities">Capabilities JSON</Label>
+            <Label htmlFor="model-capabilities">{t('model.capabilitiesJson')}</Label>
             <Textarea
               className="font-mono"
               id="model-capabilities"
@@ -172,7 +172,7 @@ export function CreateModelConfigDialog({ onCreated, providers }: CreateModelCon
 
           {error ? (
             <Alert variant="danger">
-              <AlertTitle>Create failed</AlertTitle>
+              <AlertTitle>{t('model.createFailed')}</AlertTitle>
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           ) : null}
@@ -180,14 +180,14 @@ export function CreateModelConfigDialog({ onCreated, providers }: CreateModelCon
           {providers.length === 0 ? (
             <Alert>
               <Cpu className="mb-3 h-5 w-5 text-cyan-100" strokeWidth={1.75} />
-              <AlertTitle>No provider</AlertTitle>
-              <AlertDescription>Create a provider before creating model configs.</AlertDescription>
+              <AlertTitle>{t('model.noProvider')}</AlertTitle>
+              <AlertDescription>{t('model.noProviderDescription')}</AlertDescription>
             </Alert>
           ) : null}
 
           <DialogFooter>
             <Button disabled={isSubmitting || providers.length === 0 || !effectiveProviderId} type="submit">
-              {isSubmitting ? 'Creating' : 'Create model'}
+              {isSubmitting ? t('application.creating') : t('model.createModel')}
             </Button>
           </DialogFooter>
         </form>

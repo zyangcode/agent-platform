@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import type { McpTool } from '@/lib/api/types'
+import { useI18n } from '@/lib/i18n/use-i18n'
 import { getToolStatusVariant } from './tool-filters'
 import { ToolSchemaPreview } from './ToolSchemaPreview'
 
@@ -13,6 +14,8 @@ type McpToolTableProps = {
 }
 
 export function McpToolTable({ status, tools }: McpToolTableProps) {
+  const { t } = useI18n()
+
   if (status === 'loading') {
     return (
       <div className="space-y-3">
@@ -27,8 +30,8 @@ export function McpToolTable({ status, tools }: McpToolTableProps) {
     return (
       <Alert>
         <PlugZap className="mb-3 h-5 w-5 text-cyan-100" strokeWidth={1.75} />
-        <AlertTitle>No MCP tools</AlertTitle>
-        <AlertDescription>No MCP tools match the current filters.</AlertDescription>
+        <AlertTitle>{t('tools.noMcpTools')}</AlertTitle>
+        <AlertDescription>{t('tools.noMcpToolsDescription')}</AlertDescription>
       </Alert>
     )
   }
@@ -37,10 +40,10 @@ export function McpToolTable({ status, tools }: McpToolTableProps) {
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>Name</TableHead>
-          <TableHead>Server</TableHead>
-          <TableHead>Status</TableHead>
-          <TableHead>Schema</TableHead>
+          <TableHead>{t('profile.name')}</TableHead>
+          <TableHead>{t('tools.server')}</TableHead>
+          <TableHead>{t('profile.status')}</TableHead>
+          <TableHead>{t('tools.schema')}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -49,7 +52,7 @@ export function McpToolTable({ status, tools }: McpToolTableProps) {
             <TableCell>
               <p className="font-medium text-white">{tool.name}</p>
               <p className="mt-1 max-w-[360px] truncate text-xs text-zinc-500">
-                {tool.description || 'No description'}
+                {tool.description || t('profile.noDescription')}
               </p>
             </TableCell>
             <TableCell className="font-mono text-xs text-zinc-400">#{tool.mcpServerId}</TableCell>

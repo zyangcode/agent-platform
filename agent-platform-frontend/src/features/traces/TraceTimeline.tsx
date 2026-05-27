@@ -3,7 +3,8 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import type { TraceSpan } from '@/lib/api/types'
 import { formatDateTime, formatLatency } from '@/lib/format/date'
-import { getTraceStatusVariant, sortTraceSpans } from './trace-utils'
+import { useI18n } from '@/lib/i18n/use-i18n'
+import { formatTraceStatus, getTraceStatusVariant, sortTraceSpans } from './trace-utils'
 
 type TraceTimelineProps = {
   onSelectSpan: (span: TraceSpan) => void
@@ -12,13 +13,14 @@ type TraceTimelineProps = {
 }
 
 export function TraceTimeline({ onSelectSpan, selectedSpanId, spans }: TraceTimelineProps) {
+  const { locale, t } = useI18n()
   const sortedSpans = sortTraceSpans(spans)
 
   if (sortedSpans.length === 0) {
     return (
       <Alert>
-        <AlertTitle>No spans</AlertTitle>
-        <AlertDescription>This trace root has no span details yet.</AlertDescription>
+        <AlertTitle>{t('trace.noSpans')}</AlertTitle>
+        <AlertDescription>{t('trace.noSpansDescription')}</AlertDescription>
       </Alert>
     )
   }
@@ -56,14 +58,16 @@ export function TraceTimeline({ onSelectSpan, selectedSpanId, spans }: TraceTime
                   : 'rounded-2xl border border-white/10 bg-white/[0.04] p-4 transition hover:bg-white/[0.065]'
               }
             >
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="font-medium text-white">{span.spanName}</p>
-                  <p className="mt-1 text-xs text-zinc-500">
+              <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <p className="break-words font-medium text-white">{span.spanName}</p>
+                  <p className="mt-1 break-words text-xs text-zinc-500">
                     {span.component} / {span.spanType}
                   </p>
                 </div>
-                <Badge variant={getTraceStatusVariant(span.status)}>{span.status}</Badge>
+                <Badge className="w-fit shrink-0" variant={getTraceStatusVariant(span.status)}>
+                  {formatTraceStatus(span.status, locale)}
+                </Badge>
               </div>
               <div className="mt-3 flex flex-wrap gap-3 text-xs text-zinc-500">
                 <span>{formatDateTime(span.startedAt)}</span>

@@ -11,8 +11,10 @@ import {
   Wrench,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import { hasAnyRequiredRole } from '@/app/role-guard-utils'
 
 export type NavItem = {
+  labelKey: string
   title: string
   path: string
   icon: LucideIcon
@@ -20,46 +22,42 @@ export type NavItem = {
 }
 
 export type NavGroup = {
+  labelKey: string
   title: string
   items: NavItem[]
 }
 
 export const navGroups: NavGroup[] = [
   {
+    labelKey: 'nav.workspace',
     title: 'Workspace',
     items: [
-      { title: 'Dashboard', path: '/', icon: Gauge },
-      { title: 'Applications', path: '/applications', icon: KeyRound },
-      { title: 'Profiles', path: '/profiles', icon: Bot },
-      { title: 'Agent Chat', path: '/chat', icon: TerminalSquare },
-      { title: 'Tools', path: '/tools', icon: Wrench },
+      { labelKey: 'nav.dashboard', title: 'Dashboard', path: '/', icon: Gauge },
+      { labelKey: 'nav.applications', title: 'Applications', path: '/applications', icon: KeyRound },
+      { labelKey: 'nav.profiles', title: 'Profiles', path: '/profiles', icon: Bot },
+      { labelKey: 'nav.agentChat', title: 'Agent Chat', path: '/chat', icon: TerminalSquare },
+      { labelKey: 'nav.tools', title: 'Tools', path: '/tools', icon: Wrench },
     ],
   },
   {
+    labelKey: 'nav.observability',
     title: 'Observability',
     items: [
-      { title: 'Traces', path: '/traces', icon: Activity },
-      { title: 'Token Usage', path: '/token-usage', icon: Boxes },
+      { labelKey: 'nav.traces', title: 'Traces', path: '/traces', icon: Activity },
+      { labelKey: 'nav.tokenUsage', title: 'Token Usage', path: '/token-usage', icon: Boxes },
     ],
   },
   {
+    labelKey: 'nav.admin',
     title: 'Admin',
     items: [
-      { title: 'Model Configs', path: '/admin/models', icon: Settings, roles: ['ADMIN'] },
-      { title: 'Security', path: '/admin/security', icon: Shield, roles: ['ADMIN'] },
-      { title: 'Users', path: '/admin/users', icon: UserCog, roles: ['ADMIN'] },
+      { labelKey: 'nav.modelConfigs', title: 'Model Configs', path: '/admin/models', icon: Settings, roles: ['ADMIN'] },
+      { labelKey: 'nav.security', title: 'Security', path: '/admin/security', icon: Shield, roles: ['ADMIN'] },
+      { labelKey: 'nav.users', title: 'Users', path: '/admin/users', icon: UserCog, roles: ['ADMIN'] },
     ],
   },
 ]
 
 export function canAccessNavItem(userRoles: string[] | undefined, item: NavItem) {
-  if (!item.roles?.length) {
-    return true
-  }
-
-  const normalizedRoles = new Set(
-    (userRoles ?? []).flatMap((role) => [role.toUpperCase(), role.replace(/^ROLE_/, '').toUpperCase()]),
-  )
-
-  return item.roles.some((role) => normalizedRoles.has(role.toUpperCase()))
+  return hasAnyRequiredRole(userRoles, item.roles)
 }

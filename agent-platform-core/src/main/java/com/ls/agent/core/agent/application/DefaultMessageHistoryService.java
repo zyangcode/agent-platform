@@ -62,14 +62,7 @@ public class DefaultMessageHistoryService implements MessageHistoryService {
         if (conversationId == null) {
             return List.of();
         }
-        ConversationEntity conversation = conversationRepository.findConversationById(conversationId);
-        if (conversation == null
-                || !tenantId.equals(conversation.getTenantId())
-                || !applicationId.equals(conversation.getApplicationId())
-                || !userId.equals(conversation.getUserId())
-                || !profileId.equals(conversation.getProfileId())) {
-            throw new BizException(ErrorCode.REQUEST_INVALID, "Conversation is unavailable");
-        }
+        requireScopedConversation(tenantId, applicationId, userId, profileId, conversationId);
 
         var messages = conversationRepository.listRecentMessages(
                 conversationId,
@@ -84,6 +77,40 @@ public class DefaultMessageHistoryService implements MessageHistoryService {
                         message.getTokenCount(),
                         message.getTraceId()))
                 .toList();
+    }
+
+    @Override
+    public void archiveConversation(
+            Long tenantId,
+            Long applicationId,
+            Long userId,
+            Long profileId,
+            Long conversationId
+    ) {
+        if (conversationId == null) {
+            throw new BizException(ErrorCode.REQUEST_INVALID, "Conversation is unavailable");
+        }
+        requireScopedConversation(tenantId, applicationId, userId, profileId, conversationId);
+        conversationRepository.archiveConversation(conversationId);
+    }
+
+    private ConversationEntity requireScopedConversation(
+            Long tenantId,
+            Long applicationId,
+            Long userId,
+            Long profileId,
+            Long conversationId
+    ) {
+        ConversationEntity conversation = conversationRepository.findConversationById(conversationId);
+        if (conversation == null
+                || !tenantId.equals(conversation.getTenantId())
+                || !applicationId.equals(conversation.getApplicationId())
+                || !userId.equals(conversation.getUserId())
+                || !profileId.equals(conversation.getProfileId())
+                || "ARCHIVED".equalsIgnoreCase(conversation.getStatus())) {
+            throw new BizException(ErrorCode.REQUEST_INVALID, "Conversation is unavailable");
+        }
+        return conversation;
     }
 
     private int compareMessageOrder(ConversationMessageEntity left, ConversationMessageEntity right) {

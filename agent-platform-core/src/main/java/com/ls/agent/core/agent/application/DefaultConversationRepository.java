@@ -52,6 +52,18 @@ public class DefaultConversationRepository implements ConversationRepository {
     }
 
     @Override
+    public void archiveConversation(Long conversationId) {
+        if (conversationId == null) {
+            return;
+        }
+        ConversationEntity entity = new ConversationEntity();
+        entity.setId(conversationId);
+        entity.setStatus("ARCHIVED");
+        entity.setUpdatedAt(LocalDateTime.now());
+        conversationMapper.updateById(entity);
+    }
+
+    @Override
     public List<ConversationEntity> listConversations(
             Long tenantId,
             Long applicationId,
@@ -64,6 +76,7 @@ public class DefaultConversationRepository implements ConversationRepository {
                 .eq(ConversationEntity::getUserId, userId)
                 .eq(applicationId != null, ConversationEntity::getApplicationId, applicationId)
                 .eq(profileId != null, ConversationEntity::getProfileId, profileId)
+                .ne(ConversationEntity::getStatus, "ARCHIVED")
                 .orderByDesc(ConversationEntity::getUpdatedAt)
                 .orderByDesc(ConversationEntity::getId)
                 .last("limit " + Math.max(1, limit));

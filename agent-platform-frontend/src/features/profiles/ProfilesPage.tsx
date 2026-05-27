@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Bot, RefreshCw } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -15,6 +15,7 @@ import { loadLastSelectedApplicationId, saveLastSelectedApplicationId } from '@/
 import { listModelConfigs } from '@/lib/api/model-configs'
 import { listProfiles } from '@/lib/api/profiles'
 import type { Application, ModelConfig, PageResult, Profile } from '@/lib/api/types'
+import { useI18n } from '@/lib/i18n/use-i18n'
 import { CreateProfileDialog } from './CreateProfileDialog'
 import { DisableProfileDialog } from './DisableProfileDialog'
 import { EditProfileDialog } from './EditProfileDialog'
@@ -40,11 +41,12 @@ type ProfilesState =
       status: 'error' | 'loading'
     }
 
-function getErrorMessage(error: unknown) {
-  return error instanceof ApiError ? error.message : 'Profiles could not be loaded.'
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof ApiError ? error.message : fallback
 }
 
 export function ProfilesPage() {
+  const { t } = useI18n()
   const [selectedApplicationId, setSelectedApplicationId] = useState<number | null>(null)
   const [selectedProfile, setSelectedProfile] = useState<Profile | null>(null)
   const [state, setState] = useState<ProfilesState>({
@@ -63,7 +65,7 @@ export function ProfilesPage() {
     )
   }, [selectedApplicationId, state.applications])
 
-  async function fetchProfiles(applicationId?: number | null) {
+  const fetchProfiles = useCallback(async (applicationId?: number | null) => {
     try {
       const [applications, modelConfigs] = await Promise.all([
         listApplications(1, 50),
@@ -88,13 +90,13 @@ export function ProfilesPage() {
     } catch (error) {
       return {
         applications: null,
-        error: getErrorMessage(error),
+        error: getErrorMessage(error, t('profile.profilesUnavailable')),
         modelConfigs: [],
         profiles: null,
         status: 'error',
       } satisfies ProfilesState
     }
-  }
+  }, [t])
 
   async function loadProfiles(
     applicationId?: number | null,
@@ -184,21 +186,21 @@ export function ProfilesPage() {
     return () => {
       isMounted = false
     }
-  }, [])
+  }, [fetchProfiles])
 
   return (
     <section className="space-y-6">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div>
-          <h2 className="text-2xl font-semibold tracking-tight text-white">Profiles</h2>
+          <h2 className="text-2xl font-semibold tracking-tight text-white">{t('profile.title')}</h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-400">
-            Configure a single Agent profile for an application, bind enabled tools, then use it in Chat.
+            {t('profile.intro')}
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
           <Button onClick={() => loadProfiles(selectedApplicationId)} variant="secondary">
             <RefreshCw className="h-4 w-4" strokeWidth={1.75} />
-            Refresh
+            {t('common.refresh')}
           </Button>
           <EditProfileDialog
             modelConfigs={state.modelConfigs}
@@ -228,28 +230,28 @@ export function ProfilesPage() {
 
       {state.status === 'error' ? (
         <Alert variant="danger">
-          <AlertTitle>Profiles unavailable</AlertTitle>
+          <AlertTitle>{t('profile.profilesUnavailable')}</AlertTitle>
           <AlertDescription>{state.error}</AlertDescription>
         </Alert>
       ) : null}
 
       <Card>
         <CardHeader>
-          <CardTitle>Application scope</CardTitle>
-          <CardDescription>Profiles are listed under a single application.</CardDescription>
+          <CardTitle>{t('profile.applicationScope')}</CardTitle>
+          <CardDescription>{t('profile.applicationScopeDescription')}</CardDescription>
         </CardHeader>
         <CardContent>
           {state.status === 'loading' ? (
             <Skeleton className="h-10 max-w-xl" />
           ) : (
             <div className="max-w-xl space-y-2">
-              <Label>Application</Label>
+              <Label>{t('profile.application')}</Label>
               <Select
                 onValueChange={handleApplicationChange}
                 value={selectedApplication?.applicationId ? String(selectedApplication.applicationId) : undefined}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select application" />
+                  <SelectValue placeholder={t('profile.selectApplication')} />
                 </SelectTrigger>
                 <SelectContent>
                   {state.applications?.records.map((application) => (
@@ -267,16 +269,16 @@ export function ProfilesPage() {
       {!selectedApplication && state.status === 'ready' ? (
         <Alert>
           <Bot className="mb-3 h-5 w-5 text-cyan-100" strokeWidth={1.75} />
-          <AlertTitle>No application</AlertTitle>
-          <AlertDescription>Create an Application before creating Profiles.</AlertDescription>
+          <AlertTitle>{t('profile.noApplication')}</AlertTitle>
+          <AlertDescription>{t('profile.noApplicationDescription')}</AlertDescription>
         </Alert>
       ) : null}
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
         <Card>
           <CardHeader>
-            <CardTitle>Profile list</CardTitle>
-            <CardDescription>Click a row to inspect and bind tools.</CardDescription>
+            <CardTitle>{t('profile.list')}</CardTitle>
+            <CardDescription>{t('profile.listDescription')}</CardDescription>
           </CardHeader>
           <CardContent>
             {state.status === 'loading' ? (
@@ -289,9 +291,9 @@ export function ProfilesPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Model</TableHead>
-                    <TableHead>Status</TableHead>
+                    <TableHead>{t('profile.name')}</TableHead>
+                    <TableHead>{t('profile.model')}</TableHead>
+                    <TableHead>{t('profile.status')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -326,8 +328,8 @@ export function ProfilesPage() {
               </Table>
             ) : (
               <Alert>
-                <AlertTitle>No profiles</AlertTitle>
-                <AlertDescription>Create a profile for this application, then bind tools.</AlertDescription>
+                <AlertTitle>{t('profile.noProfiles')}</AlertTitle>
+                <AlertDescription>{t('profile.noProfilesDescription')}</AlertDescription>
               </Alert>
             )}
           </CardContent>

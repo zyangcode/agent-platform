@@ -23,4 +23,12 @@ public interface MessageHistoryService {
             Long conversationId,
             int limit
     );
+
+    void archiveConversation(
+            Long tenantId,
+            Long applicationId,
+            Long userId,
+            Long profileId,
+            Long conversationId
+    );
 }

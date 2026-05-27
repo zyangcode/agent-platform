@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Activity, AlertTriangle, RefreshCw } from 'lucide-react'
+import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
+import { Activity, AlertTriangle, Check, Copy, RefreshCw } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -11,11 +11,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { listApplications } from '@/features/applications/api'
 import { ApiError } from '@/lib/api/errors'
 import type { Application, PageResult, TraceDetail, TraceSpan, TraceSummary } from '@/lib/api/types'
+import { copyTextToClipboard } from '@/lib/clipboard'
 import { formatDateTime, formatLatency } from '@/lib/format/date'
+import { useI18n } from '@/lib/i18n/use-i18n'
 import { getTrace, listTraces, type TraceEntrypointFilter, type TraceStatusFilter } from './api'
 import { SpanDetailPanel } from './SpanDetailPanel'
 import { TraceTimeline } from './TraceTimeline'
-import { formatTraceTokenCount, getTraceStatusVariant, sortTraceSpans } from './trace-utils'
+import { formatTraceStatus, formatTraceTokenCount, getTraceStatusVariant, sortTraceSpans } from './trace-utils'
 
 type TraceListState =
   | {
@@ -35,15 +37,15 @@ type TraceDetailState =
   | { detail: TraceDetail; error: null; status: 'ready' }
   | { detail: null; error: string | null; status: 'error' | 'idle' | 'loading' }
 
-const STATUS_OPTIONS: Array<{ label: string; value: TraceStatusFilter | 'ALL' }> = [
-  { label: 'All statuses', value: 'ALL' },
-  { label: 'Success', value: 'SUCCESS' },
-  { label: 'Failed', value: 'FAILED' },
-  { label: 'Running', value: 'RUNNING' },
+const STATUS_OPTIONS: Array<{ labelKey: string; value: TraceStatusFilter | 'ALL' }> = [
+  { labelKey: 'common.allStatuses', value: 'ALL' },
+  { labelKey: 'common.success', value: 'SUCCESS' },
+  { labelKey: 'common.failed', value: 'FAILED' },
+  { labelKey: 'common.running', value: 'RUNNING' },
 ]
 
-const ENTRYPOINT_OPTIONS: Array<{ label: string; value: TraceEntrypointFilter | 'ALL' }> = [
-  { label: 'All entrypoints', value: 'ALL' },
+const ENTRYPOINT_OPTIONS: Array<{ labelKey?: string; label?: string; value: TraceEntrypointFilter | 'ALL' }> = [
+  { labelKey: 'common.allEntrypoints', value: 'ALL' },
   { label: 'Web', value: 'WEB' },
   { label: 'Internal Web', value: 'INTERNAL_WEB' },
   { label: 'API Key', value: 'API_KEY' },
@@ -92,6 +94,7 @@ async function fetchTraceListForFilters(
 }
 
 export function TraceListPage() {
+  const { locale, t } = useI18n()
   const [applicationFilter, setApplicationFilter] = useState<string>('ALL')
   const [entrypointFilter, setEntrypointFilter] = useState<TraceEntrypointFilter | 'ALL'>('ALL')
   const [selectedSpan, setSelectedSpan] = useState<TraceSpan | null>(null)
@@ -158,10 +161,10 @@ export function TraceListPage() {
     void loadTraceDetail(traceId)
   }
 
-  function resetPageForFilter(onChange: (value: string) => void) {
+  function resetPageForFilter<TValue extends string>(onChange: Dispatch<SetStateAction<TValue>>) {
     return (value: string) => {
       setPageNo(1)
-      onChange(value)
+      onChange(value as TValue)
     }
   }
 
@@ -212,38 +215,37 @@ export function TraceListPage() {
     <section className="space-y-6">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div>
-          <h2 className="text-2xl font-semibold tracking-tight text-white">Traces</h2>
+          <h2 className="text-2xl font-semibold tracking-tight text-white">{t('trace.title')}</h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-400">
-            Inspect gateway-governed AI requests, span timelines, and token records. Missing trace
-            roots are treated as normal empty/error states while Stage 2 hardens MODEL_ERROR paths.
+            {t('trace.intro')}
           </p>
         </div>
         <Button onClick={() => loadTraceList(true)} variant="secondary">
           <RefreshCw className="h-4 w-4" strokeWidth={1.75} />
-          Refresh
+          {t('common.refresh')}
         </Button>
       </div>
 
       {state.status === 'error' ? (
         <Alert variant="danger">
           <AlertTriangle className="mb-3 h-5 w-5 text-rose-100" strokeWidth={1.75} />
-          <AlertTitle>Traces unavailable</AlertTitle>
+          <AlertTitle>{t('trace.traceUnavailable')}</AlertTitle>
           <AlertDescription>{state.error}</AlertDescription>
         </Alert>
       ) : null}
 
       <Card>
         <CardHeader>
-          <CardTitle>Trace filters</CardTitle>
-          <CardDescription>Server-side filters mapped to the Stage 2 Trace API.</CardDescription>
+          <CardTitle>{t('trace.filters')}</CardTitle>
+          <CardDescription>{t('trace.filterDescription')}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 md:grid-cols-3">
             <FilterSelect
-              label="Application"
+              label={t('nav.applications')}
               onChange={resetPageForFilter(setApplicationFilter)}
               options={[
-                { label: 'All applications', value: 'ALL' },
+                { label: t('common.allApplications'), value: 'ALL' },
                 ...(state.applications?.records.map((application) => ({
                   label: application.name,
                   value: String(application.applicationId),
@@ -252,15 +254,18 @@ export function TraceListPage() {
               value={applicationFilter}
             />
             <FilterSelect
-              label="Status"
-              onChange={resetPageForFilter((value) => setStatusFilter(value as TraceStatusFilter | 'ALL'))}
-              options={STATUS_OPTIONS}
+              label={t('trace.status')}
+              onChange={resetPageForFilter(setStatusFilter)}
+              options={STATUS_OPTIONS.map((option) => ({ label: t(option.labelKey), value: option.value }))}
               value={statusFilter}
             />
             <FilterSelect
-              label="Entrypoint"
-              onChange={resetPageForFilter((value) => setEntrypointFilter(value as TraceEntrypointFilter | 'ALL'))}
-              options={ENTRYPOINT_OPTIONS}
+              label={t('trace.entrypoint')}
+              onChange={resetPageForFilter(setEntrypointFilter)}
+              options={ENTRYPOINT_OPTIONS.map((option) => ({
+                label: option.labelKey ? t(option.labelKey) : option.label ?? option.value,
+                value: option.value,
+              }))}
               value={entrypointFilter}
             />
           </div>
@@ -268,13 +273,13 @@ export function TraceListPage() {
       </Card>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-        <Card>
+        <Card className="min-w-0">
           <CardHeader>
             <div className="flex items-start justify-between gap-4">
               <div>
-                <CardTitle>Trace list</CardTitle>
+                <CardTitle>{t('trace.list')}</CardTitle>
                 <CardDescription>
-                  {state.traces ? `${state.traces.total} traces matched` : 'Latest traces'}
+                  {state.traces ? t('trace.listMatched', { total: state.traces.total }) : t('trace.listFallback')}
                 </CardDescription>
               </div>
               <Activity className="h-5 w-5 text-cyan-100" strokeWidth={1.75} />
@@ -291,11 +296,11 @@ export function TraceListPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Trace</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Mode</TableHead>
-                    <TableHead>Latency</TableHead>
-                    <TableHead>Started</TableHead>
+                    <TableHead>{t('trace.traceLabel')}</TableHead>
+                    <TableHead>{t('trace.status')}</TableHead>
+                    <TableHead>{t('trace.mode')}</TableHead>
+                    <TableHead>{t('trace.latency')}</TableHead>
+                    <TableHead>{t('trace.started')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -310,7 +315,9 @@ export function TraceListPage() {
                         <p className="mt-1 text-xs text-zinc-500">{trace.entrypoint || '-'}</p>
                       </TableCell>
                       <TableCell>
-                        <Badge variant={getTraceStatusVariant(trace.status)}>{trace.status}</Badge>
+                        <Badge variant={getTraceStatusVariant(trace.status)}>
+                          {formatTraceStatus(trace.status, locale)}
+                        </Badge>
                       </TableCell>
                       <TableCell className="text-zinc-400">{trace.agentMode || '-'}</TableCell>
                       <TableCell className="font-mono text-zinc-300">
@@ -323,11 +330,8 @@ export function TraceListPage() {
               </Table>
             ) : (
               <Alert>
-                <AlertTitle>No traces</AlertTitle>
-                <AlertDescription>
-                  Run Chat from the browser or API Key entrypoint. Trace roots will appear here when
-                  Gateway writes them successfully.
-                </AlertDescription>
+                <AlertTitle>{t('trace.emptyTitle')}</AlertTitle>
+                <AlertDescription>{t('trace.emptyDescription')}</AlertDescription>
               </Alert>
             )}
             {state.status === 'ready' && state.traces.total > 0 ? (
@@ -365,17 +369,29 @@ function TraceDetailView({
   selectedTrace,
   setSelectedSpan,
 }: TraceDetailViewProps) {
+  const { locale, t } = useI18n()
+  const [copiedTraceId, setCopiedTraceId] = useState<string | null>(null)
+
+  async function copyTraceId(traceId: string) {
+    const copied = await copyTextToClipboard(traceId)
+
+    if (copied) {
+      setCopiedTraceId(traceId)
+      window.setTimeout(() => setCopiedTraceId(null), 1200)
+    }
+  }
+
   if (detailState.status === 'idle') {
     return (
-      <Card>
+      <Card className="min-w-0">
         <CardHeader>
-          <CardTitle>Trace detail</CardTitle>
-          <CardDescription>Select a trace to inspect spans.</CardDescription>
+          <CardTitle>{t('trace.detail')}</CardTitle>
+          <CardDescription>{t('trace.selectTraceToInspect')}</CardDescription>
         </CardHeader>
         <CardContent>
           <Alert>
-            <AlertTitle>No trace selected</AlertTitle>
-            <AlertDescription>Select a trace row from the list.</AlertDescription>
+            <AlertTitle>{t('trace.selectTraceTitle')}</AlertTitle>
+            <AlertDescription>{t('trace.selectTraceDescription')}</AlertDescription>
           </Alert>
         </CardContent>
       </Card>
@@ -384,10 +400,12 @@ function TraceDetailView({
 
   if (detailState.status === 'loading') {
     return (
-      <Card>
+      <Card className="min-w-0">
         <CardHeader>
-          <CardTitle>Trace detail</CardTitle>
-          <CardDescription>{selectedTrace?.traceId ?? 'Loading detail'}</CardDescription>
+          <CardTitle>{t('trace.detail')}</CardTitle>
+          <CardDescription className="break-all font-mono">
+            {selectedTrace?.traceId ?? t('common.loading')}
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <Skeleton className="h-20" />
@@ -400,16 +418,16 @@ function TraceDetailView({
 
   if (detailState.status === 'error') {
     return (
-      <Card>
+      <Card className="min-w-0">
         <CardHeader>
-          <CardTitle>Trace detail</CardTitle>
-          <CardDescription>{selectedTrace?.traceId ?? 'Unavailable'}</CardDescription>
+          <CardTitle>{t('trace.detail')}</CardTitle>
+          <CardDescription className="break-all font-mono">{selectedTrace?.traceId ?? '-'}</CardDescription>
         </CardHeader>
         <CardContent>
           <Alert variant="warning">
-            <AlertTitle>Trace detail unavailable</AlertTitle>
+            <AlertTitle>{t('trace.detailUnavailable')}</AlertTitle>
             <AlertDescription>
-              {detailState.error || 'This request may not have produced a trace root yet.'}
+              {detailState.error || t('trace.detailUnavailableDescription')}
             </AlertDescription>
           </Alert>
         </CardContent>
@@ -421,15 +439,15 @@ function TraceDetailView({
 
   if (!detail) {
     return (
-      <Card>
+      <Card className="min-w-0">
         <CardHeader>
-          <CardTitle>Trace detail</CardTitle>
-          <CardDescription>{selectedTrace?.traceId ?? 'Unavailable'}</CardDescription>
+          <CardTitle>{t('trace.detail')}</CardTitle>
+          <CardDescription className="break-all font-mono">{selectedTrace?.traceId ?? '-'}</CardDescription>
         </CardHeader>
         <CardContent>
           <Alert variant="warning">
-            <AlertTitle>Trace detail missing</AlertTitle>
-            <AlertDescription>This trace detail is not available yet.</AlertDescription>
+            <AlertTitle>{t('trace.detailMissing')}</AlertTitle>
+            <AlertDescription>{t('trace.detailMissingDescription')}</AlertDescription>
           </Alert>
         </CardContent>
       </Card>
@@ -437,33 +455,49 @@ function TraceDetailView({
   }
 
   return (
-    <div className="grid gap-6 2xl:grid-cols-[minmax(0,1fr)_360px]">
-      <Card>
+    <div className="grid min-w-0 gap-6 2xl:grid-cols-[minmax(0,1fr)_minmax(300px,360px)]">
+      <Card className="min-w-0">
         <CardHeader>
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <CardTitle>Trace detail</CardTitle>
-              <CardDescription className="break-all font-mono">{detail.traceId}</CardDescription>
+          <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              <CardTitle>{t('trace.detail')}</CardTitle>
+              <div className="mt-1 flex min-w-0 items-start gap-2">
+                <CardDescription className="min-w-0 break-all font-mono">{detail.traceId}</CardDescription>
+                <Button
+                  className="h-7 w-7 shrink-0"
+                  onClick={() => copyTraceId(detail.traceId)}
+                  size="icon"
+                  variant="ghost"
+                >
+                  {copiedTraceId === detail.traceId ? (
+                    <Check className="h-3.5 w-3.5 text-emerald-200" strokeWidth={1.75} />
+                  ) : (
+                    <Copy className="h-3.5 w-3.5" strokeWidth={1.75} />
+                  )}
+                </Button>
+              </div>
             </div>
-            <Badge variant={getTraceStatusVariant(detail.status)}>{detail.status}</Badge>
+            <Badge className="w-fit shrink-0" variant={getTraceStatusVariant(detail.status)}>
+              {formatTraceStatus(detail.status, locale)}
+            </Badge>
           </div>
         </CardHeader>
         <CardContent className="space-y-5">
           <div className="grid gap-3 md:grid-cols-3">
-            <Metric label="Latency" value={formatLatency(detail.latencyMs)} />
-            <Metric label="Tokens" value={formatTraceTokenCount(detail.totalTokens)} />
-            <Metric label="Mode" value={detail.agentMode || '-'} />
+            <Metric label={t('trace.latency')} value={formatLatency(detail.latencyMs)} />
+            <Metric label={t('common.tokens')} value={formatTraceTokenCount(detail.totalTokens)} />
+            <Metric label={t('trace.mode')} value={detail.agentMode || '-'} />
           </div>
 
           {detail.errorMessage ? (
             <Alert variant="danger">
-              <AlertTitle>{detail.errorCode || 'Trace failed'}</AlertTitle>
-              <AlertDescription>{detail.errorMessage}</AlertDescription>
+              <AlertTitle className="break-words">{detail.errorCode || t('trace.traceFailed')}</AlertTitle>
+              <AlertDescription className="break-words">{detail.errorMessage}</AlertDescription>
             </Alert>
           ) : null}
 
-          <div className="rounded-2xl border border-white/10 bg-zinc-950/45 p-4">
-            <p className="mb-4 text-sm font-medium text-white">Span timeline</p>
+          <div className="min-w-0 rounded-2xl border border-white/10 bg-zinc-950/45 p-4">
+            <p className="mb-4 text-sm font-medium text-white">{t('trace.spanTimeline')}</p>
             <TraceTimeline
               onSelectSpan={setSelectedSpan}
               selectedSpanId={selectedSpan?.id}
@@ -471,23 +505,23 @@ function TraceDetailView({
             />
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-zinc-950/45 p-4">
-            <p className="text-sm font-medium text-white">Token usage records</p>
+          <div className="min-w-0 rounded-2xl border border-white/10 bg-zinc-950/45 p-4">
+            <p className="text-sm font-medium text-white">{t('trace.tokenUsageRecords')}</p>
             {detail.tokenUsages.length === 0 ? (
-              <p className="mt-3 text-sm text-zinc-500">No token usage linked to this trace.</p>
+              <p className="mt-3 text-sm text-zinc-500">{t('trace.noTokenUsage')}</p>
             ) : (
               <div className="mt-3 space-y-2">
                 {detail.tokenUsages.map((usage) => (
                   <div
-                    className="grid gap-2 rounded-xl border border-white/10 bg-white/[0.035] p-3 text-xs md:grid-cols-4"
+                    className="grid min-w-0 gap-2 rounded-xl border border-white/10 bg-white/[0.035] p-3 text-xs md:grid-cols-[minmax(0,1.2fr)_minmax(0,0.9fr)_minmax(0,0.9fr)_auto]"
                     key={usage.id}
                   >
-                    <span className="font-mono text-zinc-300">{usage.modelName || '-'}</span>
-                    <span className="text-zinc-500">{usage.providerType || '-'}</span>
+                    <span className="break-all font-mono text-zinc-300">{usage.modelName || '-'}</span>
+                    <span className="break-all text-zinc-500">{usage.providerType || '-'}</span>
                     <span className="font-mono text-zinc-300">
-                      {formatTraceTokenCount(usage.totalTokens)} tokens
+                      {formatTraceTokenCount(usage.totalTokens)} {t('common.tokensUnit')}
                     </span>
-                    <span className="text-zinc-500">{usage.estimated ? 'estimated' : 'real'}</span>
+                    <span className="text-zinc-500">{usage.estimated ? t('common.estimated') : t('common.real')}</span>
                   </div>
                 ))}
               </div>
@@ -503,9 +537,9 @@ function TraceDetailView({
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.035] p-3">
+    <div className="min-w-0 rounded-xl border border-white/10 bg-white/[0.035] p-3">
       <p className="text-xs text-zinc-500">{label}</p>
-      <p className="mt-2 truncate font-mono text-sm text-white">{value}</p>
+      <p className="mt-2 break-all font-mono text-sm text-white">{value}</p>
     </div>
   )
 }

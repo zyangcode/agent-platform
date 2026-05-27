@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Bot, RefreshCw } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -14,6 +14,7 @@ import { loadLastSelectedApplicationId, saveLastSelectedApplicationId } from '@/
 import { listModelConfigs } from '@/lib/api/model-configs'
 import { listProfiles } from '@/lib/api/profiles'
 import type { ConversationSummary } from '@/lib/api/types'
+import { useI18n } from '@/lib/i18n/use-i18n'
 import { streamChat } from './api'
 import { ChatHistoryPanel } from './ChatHistoryPanel'
 import { conversationMessagesToChatMessages } from './chat-history-utils'
@@ -21,7 +22,7 @@ import { isRunnableProfile, selectRunnableProfileId } from './chat-profile-selec
 import { clearStoredChatSession, loadStoredChatSession, saveStoredChatSession } from './chat-session-storage'
 import { nextConversationId } from './chat-session-utils'
 import { ConversationPanel } from './ConversationPanel'
-import { listConversationMessages, listConversations } from './history-api'
+import { archiveConversation, listConversationMessages, listConversations } from './history-api'
 import { RuntimeDetailPanel } from './RuntimeDetailPanel'
 import type { AgentMode, ChatMessage, ChatStreamEvent, RuntimeStatus } from './types'
 
@@ -41,11 +42,6 @@ type ResourceState =
       status: 'error' | 'loading'
     }
 
-const AGENT_MODE_LABELS: Record<AgentMode, string> = {
-  agent: 'Agent',
-  none: 'Direct model',
-}
-
 function nextId(prefix: string) {
   return `${prefix}_${crypto.randomUUID()}`
 }
@@ -58,18 +54,18 @@ function clearCurrentChatSession() {
   }
 }
 
-function getErrorMessage(error: unknown) {
+function getErrorMessage(error: unknown, t: (key: string) => string) {
   if (error instanceof ApiError) {
     if (error.kind === 'quota_exceeded') {
-      return 'Token quota is not enough for this request.'
+      return t('chat.quotaNotEnough')
     }
     if (error.kind === 'forbidden') {
-      return 'The request was blocked by security policy or permission rules.'
+      return t('chat.requestBlocked')
     }
     return error.message
   }
 
-  return 'Chat stream failed.'
+  return t('chat.streamFailed')
 }
 
 async function fetchConversationHistory(
@@ -85,6 +81,7 @@ async function fetchConversationHistory(
 }
 
 export function ChatPage() {
+  const { t } = useI18n()
   const abortControllerRef = useRef<AbortController | null>(null)
   const loadRequestRef = useRef(0)
   const [agentMode, setAgentMode] = useState<AgentMode>('agent')
@@ -136,25 +133,25 @@ export function ChatPage() {
 
   const disabledReason = useMemo(() => {
     if (state.status === 'loading') {
-      return 'Loading applications.'
+      return t('chat.loadingApplications')
     }
     if (!selectedApplication) {
-      return 'Create an application before starting chat.'
+      return t('chat.applicationRequired')
     }
     if (agentMode === 'agent' && !selectedProfile) {
-      return 'Agent mode needs a profile. Switch to Direct model or create a profile first.'
+      return t('chat.disabledNoProfile')
     }
     if (agentMode === 'none' && !selectedModelConfig) {
-      return 'Direct model mode needs an active model config.'
+      return t('chat.disabledNoModel')
     }
     if (runtimeStatus === 'streaming') {
       return null
     }
 
     return null
-  }, [agentMode, runtimeStatus, selectedApplication, selectedModelConfig, selectedProfile, state.status])
+  }, [agentMode, runtimeStatus, selectedApplication, selectedModelConfig, selectedProfile, state.status, t])
 
-  async function fetchResources(applicationId?: number | null) {
+  const fetchResources = useCallback(async (applicationId?: number | null) => {
     try {
       const [applications, modelConfigs] = await Promise.all([
         listApplications(1, 50),
@@ -179,13 +176,13 @@ export function ChatPage() {
     } catch (error) {
       return {
         applications: null,
-        error: getErrorMessage(error),
+        error: getErrorMessage(error, t),
         modelConfigs: [],
         profiles: [],
         status: 'error',
       } satisfies ResourceState
     }
-  }
+  }, [t])
 
   async function loadResources(applicationId?: number | null) {
     const requestId = ++loadRequestRef.current
@@ -219,7 +216,7 @@ export function ChatPage() {
     try {
       setConversationHistory(await fetchConversationHistory(applicationId, profileId, agentMode))
     } catch (error) {
-      setHistoryError(getErrorMessage(error))
+      setHistoryError(getErrorMessage(error, t))
     } finally {
       setHistoryStatus('idle')
     }
@@ -257,8 +254,43 @@ export function ChatPage() {
       )
       setMessages(conversationMessagesToChatMessages(historyMessages))
     } catch (error) {
-      setRuntimeError(getErrorMessage(error))
+      setRuntimeError(getErrorMessage(error, t))
       setRuntimeStatus('error')
+    }
+  }
+
+  function startNewConversation() {
+    if (runtimeStatus === 'streaming') {
+      return
+    }
+    const cleared = clearCurrentChatSession()
+    setConversationId(cleared.conversationId)
+    setMessages(cleared.messages)
+    setRuntimeError(null)
+    setRuntimeEvents([])
+    setRuntimeStatus('idle')
+  }
+
+  async function handleConversationArchive(conversation: ConversationSummary) {
+    if (!conversation.applicationId || !conversation.profileId || runtimeStatus === 'streaming') {
+      return
+    }
+    const title = conversation.title || t('chat.conversationFallbackTitle', { id: conversation.conversationId })
+    const confirmed = window.confirm(t('chat.archiveConfirm', { title }))
+    if (!confirmed) {
+      return
+    }
+
+    try {
+      await archiveConversation(conversation.conversationId, conversation.applicationId, conversation.profileId)
+      setConversationHistory((current) =>
+        current.filter((item) => item.conversationId !== conversation.conversationId),
+      )
+      if (conversationId === conversation.conversationId) {
+        startNewConversation()
+      }
+    } catch (error) {
+      setHistoryError(getErrorMessage(error, t))
     }
   }
 
@@ -278,7 +310,7 @@ export function ChatPage() {
 
     if (event.type === 'error') {
       setRuntimeStatus('error')
-      setRuntimeError(event.content ?? 'Chat stream failed.')
+      setRuntimeError(event.content ?? t('chat.streamFailed'))
     }
 
     if (event.type === 'done') {
@@ -339,15 +371,15 @@ export function ChatPage() {
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') {
         setRuntimeStatus('idle')
-        setRuntimeError('Chat request was stopped.')
+        setRuntimeError(t('chat.streamStopped'))
         return
       }
       setRuntimeStatus('error')
-      setRuntimeError(getErrorMessage(error))
+      setRuntimeError(getErrorMessage(error, t))
       setMessages((current) =>
         current.map((message) =>
           message.id === assistantMessageId && message.content.length === 0
-            ? { ...message, content: 'The stream failed before an assistant message was returned.' }
+            ? { ...message, content: t('chat.streamFailedBeforeMessage') }
             : message,
         ),
       )
@@ -413,7 +445,7 @@ export function ChatPage() {
               ),
             )
           } catch (error) {
-            setHistoryError(getErrorMessage(error))
+            setHistoryError(getErrorMessage(error, t))
           }
         }
       }
@@ -425,7 +457,7 @@ export function ChatPage() {
       isMounted = false
       abortControllerRef.current?.abort()
     }
-  }, [])
+  }, [fetchResources, t])
 
   useEffect(() => {
     if (state.status !== 'ready') {
@@ -453,29 +485,28 @@ export function ChatPage() {
     <section className="space-y-6">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div>
-          <h2 className="text-2xl font-semibold tracking-tight text-white">Agent Chat</h2>
+          <h2 className="text-2xl font-semibold tracking-tight text-white">{t('chat.title')}</h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-400">
-            Browser calls enter Web first, then Gateway applies trace, token quota, sensitive data
-            checks, and forwards the run to core.
+            {t('chat.titleDescription')}
           </p>
         </div>
         <Button onClick={() => loadResources(selectedApplicationId)} variant="secondary">
           <RefreshCw className="h-4 w-4" strokeWidth={1.75} />
-          Refresh resources
+          {t('chat.refreshResources')}
         </Button>
       </div>
 
       {state.status === 'error' ? (
         <Alert variant="danger">
-          <AlertTitle>Chat resources unavailable</AlertTitle>
+          <AlertTitle>{t('chat.chatResourcesUnavailable')}</AlertTitle>
           <AlertDescription>{state.error}</AlertDescription>
         </Alert>
       ) : null}
 
       <Card>
         <CardHeader>
-          <CardTitle>Run setup</CardTitle>
-          <CardDescription>Use Direct model when no Profile exists yet.</CardDescription>
+          <CardTitle>{t('chat.runSetup')}</CardTitle>
+          <CardDescription>{t('chat.runSetupDescription')}</CardDescription>
         </CardHeader>
         <CardContent>
           {state.status === 'loading' ? (
@@ -488,13 +519,13 @@ export function ChatPage() {
           ) : (
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <div className="space-y-2">
-                <Label>Application</Label>
+                <Label>{t('nav.applications')}</Label>
                 <Select
                   onValueChange={handleApplicationChange}
                   value={selectedApplicationId ? String(selectedApplicationId) : undefined}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select application" />
+                    <SelectValue placeholder={t('chat.selectApplication')} />
                   </SelectTrigger>
                   <SelectContent>
                     {state.applications?.records.map((application) => (
@@ -507,7 +538,7 @@ export function ChatPage() {
               </div>
 
               <div className="space-y-2">
-                <Label>Mode</Label>
+                <Label>{t('chat.mode')}</Label>
                 <Select
                   onValueChange={(value) => {
                     setAgentMode(value as AgentMode)
@@ -522,7 +553,10 @@ export function ChatPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {Object.entries(AGENT_MODE_LABELS).map(([value, label]) => (
+                    {[
+                      ['agent', t('chat.agentMode')],
+                      ['none', t('chat.directModelMode')],
+                    ].map(([value, label]) => (
                       <SelectItem key={value} value={value}>
                         {label}
                       </SelectItem>
@@ -532,7 +566,7 @@ export function ChatPage() {
               </div>
 
               <div className="space-y-2">
-                <Label>Profile</Label>
+                <Label>{t('chat.profile')}</Label>
                 <Select
                   disabled={runnableProfiles.length === 0 || agentMode === 'none'}
                   onValueChange={(value) => {
@@ -546,7 +580,7 @@ export function ChatPage() {
                   value={selectedProfile?.profileId ? String(selectedProfile.profileId) : undefined}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder={runnableProfiles.length === 0 ? 'No runnable profile' : 'Select profile'} />
+                    <SelectValue placeholder={runnableProfiles.length === 0 ? t('chat.noRunnableProfile') : t('chat.selectProfile')} />
                   </SelectTrigger>
                   <SelectContent>
                     {runnableProfiles.map((profile) => (
@@ -559,7 +593,7 @@ export function ChatPage() {
               </div>
 
               <div className="space-y-2">
-                <Label>Model config</Label>
+                <Label>{t('chat.modelConfig')}</Label>
                 <Select
                   disabled={state.modelConfigs.length === 0 || agentMode === 'agent'}
                   onValueChange={(value) => {
@@ -571,7 +605,7 @@ export function ChatPage() {
                   value={selectedModelConfig?.modelConfigId ? String(selectedModelConfig.modelConfigId) : undefined}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder={state.modelConfigs.length === 0 ? 'No model' : 'Select model'} />
+                    <SelectValue placeholder={state.modelConfigs.length === 0 ? t('chat.noModel') : t('chat.selectModel')} />
                   </SelectTrigger>
                   <SelectContent>
                     {state.modelConfigs.map((modelConfig) => (
@@ -590,8 +624,8 @@ export function ChatPage() {
       {!selectedApplication && state.status === 'ready' ? (
         <Alert>
           <Bot className="mb-3 h-5 w-5 text-cyan-100" strokeWidth={1.75} />
-          <AlertTitle>No application</AlertTitle>
-          <AlertDescription>Create an Application first. Chat requests need application scope.</AlertDescription>
+          <AlertTitle>{t('chat.noApplication')}</AlertTitle>
+          <AlertDescription>{t('chat.noApplicationDescription')}</AlertDescription>
         </Alert>
       ) : null}
 
@@ -601,6 +635,8 @@ export function ChatPage() {
           disabled={!selectedApplicationId || !selectedProfileId || agentMode === 'none'}
           error={historyError}
           isLoading={historyStatus === 'loading'}
+          onArchive={handleConversationArchive}
+          onNewConversation={startNewConversation}
           onRefresh={() => loadConversationHistory(selectedApplicationId, selectedProfileId)}
           onSelect={handleConversationSelect}
           selectedConversationId={conversationId}

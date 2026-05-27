@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { ApiError } from '@/lib/api/errors'
 import { listModelConfigs, listModelProviders } from '@/lib/api/model-configs'
 import type { ModelConfig, ModelProvider } from '@/lib/api/types'
+import { useI18n } from '@/lib/i18n/use-i18n'
 import { CreateModelConfigDialog } from './CreateModelConfigDialog'
 import { CreateModelProviderDialog } from './CreateModelProviderDialog'
 
@@ -16,16 +17,16 @@ type ModelState =
   | { configs: ModelConfig[]; error: null; providers: ModelProvider[]; status: 'ready' }
   | { configs: ModelConfig[]; error: string | null; providers: ModelProvider[]; status: 'error' | 'loading' }
 
-function getErrorMessage(error: unknown) {
-  return error instanceof ApiError ? error.message : 'Model settings could not be loaded.'
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof ApiError ? error.message : fallback
 }
 
-async function fetchModels() {
+async function fetchModels(fallback: string) {
   try {
     const [providers, configs] = await Promise.all([listModelProviders(), listModelConfigs()])
     return { configs, error: null, providers, status: 'ready' } satisfies ModelState
   } catch (error) {
-    return { configs: [], error: getErrorMessage(error), providers: [], status: 'error' } satisfies ModelState
+    return { configs: [], error: getErrorMessage(error, fallback), providers: [], status: 'error' } satisfies ModelState
   }
 }
 
@@ -34,6 +35,7 @@ function getStatusVariant(status: string) {
 }
 
 export function ModelManagementPage() {
+  const { t } = useI18n()
   const [state, setState] = useState<ModelState>({
     configs: [],
     error: null,
@@ -47,14 +49,14 @@ export function ModelManagementPage() {
 
   async function loadModels() {
     setState((current) => ({ ...current, error: null, status: 'loading' }))
-    setState(await fetchModels())
+    setState(await fetchModels(t('model.settingsLoadFailed')))
   }
 
   useEffect(() => {
     let isMounted = true
 
     async function initialize() {
-      const nextState = await fetchModels()
+      const nextState = await fetchModels(t('model.settingsLoadFailed'))
       if (isMounted) {
         setState(nextState)
       }
@@ -65,21 +67,19 @@ export function ModelManagementPage() {
     return () => {
       isMounted = false
     }
-  }, [])
+  }, [t])
 
   return (
     <section className="space-y-6">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div>
-          <h2 className="text-2xl font-semibold tracking-tight text-white">Model Configs</h2>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-400">
-            Register OpenAI-compatible providers, then create model configs used by Profiles and Direct model chat.
-          </p>
+          <h2 className="text-2xl font-semibold tracking-tight text-white">{t('model.title')}</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-400">{t('model.intro')}</p>
         </div>
         <div className="flex flex-wrap gap-3">
           <Button onClick={loadModels} variant="secondary">
             <RefreshCw className="h-4 w-4" strokeWidth={1.75} />
-            Refresh
+            {t('common.refresh')}
           </Button>
           <CreateModelConfigDialog onCreated={() => void loadModels()} providers={state.providers} />
           <CreateModelProviderDialog onCreated={() => void loadModels()} />
@@ -88,7 +88,7 @@ export function ModelManagementPage() {
 
       {state.status === 'error' ? (
         <Alert variant="danger">
-          <AlertTitle>Models unavailable</AlertTitle>
+          <AlertTitle>{t('model.unavailable')}</AlertTitle>
           <AlertDescription>{state.error}</AlertDescription>
         </Alert>
       ) : null}
@@ -101,8 +101,8 @@ export function ModelManagementPage() {
                 <ServerCog className="h-5 w-5 text-cyan-100" strokeWidth={1.75} />
               </div>
               <div>
-                <CardTitle>Providers</CardTitle>
-                <CardDescription>Provider endpoints and encrypted API keys.</CardDescription>
+                <CardTitle>{t('model.providers')}</CardTitle>
+                <CardDescription>{t('model.providerEndpoints')}</CardDescription>
               </div>
             </div>
           </CardHeader>
@@ -117,9 +117,9 @@ export function ModelManagementPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Status</TableHead>
+                    <TableHead>{t('application.name')}</TableHead>
+                    <TableHead>{t('profile.type')}</TableHead>
+                    <TableHead>{t('profile.status')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -139,8 +139,8 @@ export function ModelManagementPage() {
               </Table>
             ) : (
               <Alert>
-                <AlertTitle>No providers</AlertTitle>
-                <AlertDescription>Create a provider before adding model configs.</AlertDescription>
+                <AlertTitle>{t('model.noProvider')}</AlertTitle>
+                <AlertDescription>{t('model.noProviderDescription')}</AlertDescription>
               </Alert>
             )}
           </CardContent>
@@ -153,8 +153,8 @@ export function ModelManagementPage() {
                 <Cpu className="h-5 w-5 text-emerald-100" strokeWidth={1.75} />
               </div>
               <div>
-                <CardTitle>Model configs</CardTitle>
-                <CardDescription>Concrete model names available to runtime selection.</CardDescription>
+                <CardTitle>{t('model.modelConfigs')}</CardTitle>
+                <CardDescription>{t('model.modelConfigsDescription')}</CardDescription>
               </div>
             </div>
           </CardHeader>
@@ -169,10 +169,10 @@ export function ModelManagementPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Model</TableHead>
-                    <TableHead>Provider</TableHead>
-                    <TableHead>Context</TableHead>
-                    <TableHead>Status</TableHead>
+                    <TableHead>{t('model.model')}</TableHead>
+                    <TableHead>{t('model.provider')}</TableHead>
+                    <TableHead>{t('model.context')}</TableHead>
+                    <TableHead>{t('profile.status')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -199,8 +199,8 @@ export function ModelManagementPage() {
               </Table>
             ) : (
               <Alert>
-                <AlertTitle>No model configs</AlertTitle>
-                <AlertDescription>Create a model config, then bind it to a Profile.</AlertDescription>
+                <AlertTitle>{t('model.noConfig')}</AlertTitle>
+                <AlertDescription>{t('model.noConfigDescription')}</AlertDescription>
               </Alert>
             )}
           </CardContent>

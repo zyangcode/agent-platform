@@ -17,6 +17,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class DefaultMessageHistoryServiceTest {
@@ -66,6 +67,25 @@ class DefaultMessageHistoryServiceTest {
 
         assertThatThrownBy(() -> service.listRecentMessages(1L, 20001L, 10001L, 50001L, 90001L, 20))
                 .isInstanceOf(BizException.class);
+    }
+
+    @Test
+    void archiveConversationRejectsConversationOutsideCurrentScope() {
+        ConversationEntity conversation = conversation();
+        conversation.setProfileId(99999L);
+        when(conversationRepository.findConversationById(90001L)).thenReturn(conversation);
+
+        assertThatThrownBy(() -> service.archiveConversation(1L, 20001L, 10001L, 50001L, 90001L))
+                .isInstanceOf(BizException.class);
+    }
+
+    @Test
+    void archiveConversationDelegatesScopedConversationToRepository() {
+        when(conversationRepository.findConversationById(90001L)).thenReturn(conversation());
+
+        service.archiveConversation(1L, 20001L, 10001L, 50001L, 90001L);
+
+        verify(conversationRepository).archiveConversation(90001L);
     }
 
     private ConversationEntity conversation() {

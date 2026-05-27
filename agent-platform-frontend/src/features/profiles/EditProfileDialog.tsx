@@ -17,6 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { ApiError } from '@/lib/api/errors'
 import type { ModelConfig, Profile } from '@/lib/api/types'
+import { useI18n } from '@/lib/i18n/use-i18n'
 import { updateProfile } from './api'
 
 type EditProfileForm = {
@@ -34,6 +35,7 @@ type EditProfileDialogProps = {
 }
 
 export function EditProfileDialog({ modelConfigs, onUpdated, profile }: EditProfileDialogProps) {
+  const { t } = useI18n()
   const [error, setError] = useState<string | null>(null)
   const [form, setForm] = useState<EditProfileForm>(emptyForm())
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -75,7 +77,7 @@ export function EditProfileDialog({ modelConfigs, onUpdated, profile }: EditProf
       setOpen(false)
       onUpdated(updatedProfile)
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : 'Profile could not be updated.')
+      setError(caught instanceof ApiError ? caught.message : t('profile.updateFailed'))
     } finally {
       setIsSubmitting(false)
     }
@@ -86,19 +88,19 @@ export function EditProfileDialog({ modelConfigs, onUpdated, profile }: EditProf
       <DialogTrigger asChild>
         <Button disabled={!profile || !isEditable || modelConfigs.length === 0} variant="secondary">
           <Pencil className="h-4 w-4" strokeWidth={1.75} />
-          Edit profile
+          {t('profile.editButton')}
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Edit profile</DialogTitle>
-          <DialogDescription>Update the profile model, prompt, and runtime step limit.</DialogDescription>
+          <DialogTitle>{t('profile.editTitle')}</DialogTitle>
+          <DialogDescription>{t('profile.editDescription')}</DialogDescription>
         </DialogHeader>
 
         <form className="mt-5 space-y-5" onSubmit={handleSubmit}>
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="edit-profile-name">Name</Label>
+              <Label htmlFor="edit-profile-name">{t('profile.name')}</Label>
               <Input
                 autoFocus
                 id="edit-profile-name"
@@ -110,13 +112,13 @@ export function EditProfileDialog({ modelConfigs, onUpdated, profile }: EditProf
             </div>
 
             <div className="space-y-2">
-              <Label>Model config</Label>
+              <Label>{t('profile.modelConfig')}</Label>
               <Select
                 onValueChange={(value) => setForm((current) => ({ ...current, modelConfigId: value }))}
                 value={effectiveModelConfigId}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select model" />
+                  <SelectValue placeholder={t('profile.selectModel')} />
                 </SelectTrigger>
                 <SelectContent>
                   {modelConfigs.map((modelConfig) => (
@@ -130,7 +132,7 @@ export function EditProfileDialog({ modelConfigs, onUpdated, profile }: EditProf
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="edit-profile-description">Description</Label>
+            <Label htmlFor="edit-profile-description">{t('profile.description')}</Label>
             <Input
               id="edit-profile-description"
               maxLength={2048}
@@ -140,18 +142,19 @@ export function EditProfileDialog({ modelConfigs, onUpdated, profile }: EditProf
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="edit-profile-prompt">Prompt extra</Label>
+            <Label htmlFor="edit-profile-prompt">{t('profile.stylePrompt')}</Label>
             <Textarea
               className="min-h-32"
               id="edit-profile-prompt"
               maxLength={8000}
               onChange={(event) => setForm((current) => ({ ...current, promptExtra: event.target.value }))}
+              placeholder={t('profile.stylePromptPlaceholder')}
               value={form.promptExtra}
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="edit-profile-max-steps">Max steps</Label>
+            <Label htmlFor="edit-profile-max-steps">{t('profile.maxSteps')}</Label>
             <Input
               id="edit-profile-max-steps"
               max={50}
@@ -165,14 +168,14 @@ export function EditProfileDialog({ modelConfigs, onUpdated, profile }: EditProf
 
           {error ? (
             <Alert variant="danger">
-              <AlertTitle>Update failed</AlertTitle>
+              <AlertTitle>{t('profile.updateFailed')}</AlertTitle>
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           ) : null}
 
           <DialogFooter>
             <Button disabled={isSubmitting || !profile || !isEditable || !effectiveModelConfigId} type="submit">
-              {isSubmitting ? 'Saving' : 'Save changes'}
+              {isSubmitting ? t('profile.saving') : t('profile.saveChanges')}
             </Button>
           </DialogFooter>
         </form>

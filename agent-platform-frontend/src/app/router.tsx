@@ -1,13 +1,14 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom'
-import { Shield, UserCog } from 'lucide-react'
 import { ConsoleLayout } from '@/components/layout/ConsoleLayout'
 import { RouteErrorBoundary } from '@/app/ErrorBoundary'
 import { ProtectedRoute } from '@/app/protected-route'
+import { RoleGuard } from '@/app/RoleGuard'
+import { AdminSecurityPage } from '@/features/admin/AdminSecurityPage'
+import { AdminUsersPage } from '@/features/admin/AdminUsersPage'
 import { ApplicationsPage } from '@/features/applications/ApplicationsPage'
 import { LoginPage } from '@/features/auth/LoginPage'
 import { ChatPage } from '@/features/chat/ChatPage'
 import { ConsoleHomePage } from '@/features/dashboard/ConsoleHomePage'
-import { PlaceholderPage } from '@/features/dashboard/PlaceholderPage'
 import { ModelManagementPage } from '@/features/models/ModelManagementPage'
 import { ProfilesPage } from '@/features/profiles/ProfilesPage'
 import { ToolsPage } from '@/features/tools/ToolsPage'
@@ -58,26 +59,26 @@ export const router = createBrowserRouter([
           },
           {
             path: '/admin/models',
-            element: <ModelManagementPage />,
+            element: (
+              <RoleGuard roles={['ADMIN']}>
+                <ModelManagementPage />
+              </RoleGuard>
+            ),
           },
           {
             path: '/admin/security',
             element: (
-              <PlaceholderPage
-                description="Reserved Admin route for security policy and sensitive data governance."
-                icon={Shield}
-                title="Security"
-              />
+              <RoleGuard roles={['ADMIN']}>
+                <AdminSecurityPage />
+              </RoleGuard>
             ),
           },
           {
             path: '/admin/users',
             element: (
-              <PlaceholderPage
-                description="Reserved Admin route for user and role management."
-                icon={UserCog}
-                title="Users"
-              />
+              <RoleGuard roles={['ADMIN']}>
+                <AdminUsersPage />
+              </RoleGuard>
             ),
           },
         ],

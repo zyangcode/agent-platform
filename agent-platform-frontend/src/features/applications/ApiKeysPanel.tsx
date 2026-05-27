@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Ban, KeyRound, RefreshCw } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { ApiError } from '@/lib/api/errors'
 import type { ApiKey, Application } from '@/lib/api/types'
 import { formatDateTime } from '@/lib/format/date'
+import { useI18n } from '@/lib/i18n/use-i18n'
 import { listApiKeys, revokeApiKey } from './api'
 
 type ApiKeysPanelProps = {
@@ -19,12 +20,12 @@ type ApiKeysState =
   | { apiKeys: ApiKey[]; error: null; status: 'ready' }
   | { apiKeys: null; error: string | null; status: 'idle' | 'loading' | 'error' }
 
-function getErrorMessage(error: unknown) {
+function getErrorMessage(error: unknown, fallback: string) {
   if (error instanceof ApiError) {
     return error.message
   }
 
-  return 'API keys could not be loaded.'
+  return fallback
 }
 
 function getKeyStatusVariant(status: string) {
@@ -41,6 +42,7 @@ function getKeyStatusVariant(status: string) {
 }
 
 export function ApiKeysPanel({ application }: ApiKeysPanelProps) {
+  const { t } = useI18n()
   const [revokeId, setRevokeId] = useState<number | null>(null)
   const isActiveApplication = application?.status.toUpperCase() === 'ACTIVE'
   const [state, setState] = useState<ApiKeysState>({
@@ -49,14 +51,14 @@ export function ApiKeysPanel({ application }: ApiKeysPanelProps) {
     status: 'idle',
   })
 
-  async function fetchKeys(applicationId: number) {
+  const fetchKeys = useCallback(async (applicationId: number) => {
     try {
       const apiKeys = await listApiKeys(applicationId)
       return { apiKeys, error: null, status: 'ready' } satisfies ApiKeysState
     } catch (error) {
-      return { apiKeys: null, error: getErrorMessage(error), status: 'error' } satisfies ApiKeysState
+      return { apiKeys: null, error: getErrorMessage(error, t('application.apiKeysUnavailable')), status: 'error' } satisfies ApiKeysState
     }
-  }
+  }, [t])
 
   async function loadKeys(applicationId: number) {
     setState({ apiKeys: null, error: null, status: 'loading' })
@@ -98,18 +100,18 @@ export function ApiKeysPanel({ application }: ApiKeysPanelProps) {
     return () => {
       isMounted = false
     }
-  }, [application, isActiveApplication])
+  }, [application, fetchKeys, isActiveApplication])
 
   return (
     <Card>
       <CardHeader>
         <div className="flex items-start justify-between gap-4">
           <div>
-            <CardTitle>API keys</CardTitle>
+            <CardTitle>{t('application.apiKeys')}</CardTitle>
             <CardDescription>
               {application
-                ? `Keys for ${application.name}. Plaintext secrets are only shown at creation.`
-                : 'Select an application to inspect API keys.'}
+                ? t('application.apiKeysDescription', { name: application.name })
+                : t('application.selectApiKeys')}
             </CardDescription>
           </div>
           {application ? (
@@ -120,7 +122,7 @@ export function ApiKeysPanel({ application }: ApiKeysPanelProps) {
               variant="secondary"
             >
               <RefreshCw className="h-4 w-4" strokeWidth={1.75} />
-              Refresh
+              {t('common.refresh')}
             </Button>
           ) : null}
         </div>
@@ -129,17 +131,13 @@ export function ApiKeysPanel({ application }: ApiKeysPanelProps) {
         {!application ? (
           <Alert>
             <KeyRound className="mb-3 h-5 w-5 text-cyan-100" strokeWidth={1.75} />
-            <AlertTitle>No application selected</AlertTitle>
-            <AlertDescription>
-              Create or select an application. Keys are scoped to a single application.
-            </AlertDescription>
+            <AlertTitle>{t('application.noApplicationSelected')}</AlertTitle>
+            <AlertDescription>{t('application.noApplicationSelectedDescription')}</AlertDescription>
           </Alert>
         ) : !isActiveApplication ? (
           <Alert variant="danger">
-            <AlertTitle>Application disabled</AlertTitle>
-            <AlertDescription>
-              This application is visible for audit, but API key operations are disabled.
-            </AlertDescription>
+            <AlertTitle>{t('application.applicationDisabled')}</AlertTitle>
+            <AlertDescription>{t('application.applicationDisabledDescription')}</AlertDescription>
           </Alert>
         ) : state.status === 'loading' ? (
           <div className="space-y-3">
@@ -148,18 +146,18 @@ export function ApiKeysPanel({ application }: ApiKeysPanelProps) {
           </div>
         ) : state.status === 'error' ? (
           <Alert variant="danger">
-            <AlertTitle>API keys unavailable</AlertTitle>
+            <AlertTitle>{t('application.apiKeysUnavailable')}</AlertTitle>
             <AlertDescription>{state.error}</AlertDescription>
           </Alert>
         ) : state.status === 'ready' && state.apiKeys.length > 0 ? (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Prefix</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead>Last used</TableHead>
-                <TableHead>Action</TableHead>
+                <TableHead>{t('application.prefix')}</TableHead>
+                <TableHead>{t('application.status')}</TableHead>
+                <TableHead>{t('application.created')}</TableHead>
+                <TableHead>{t('application.lastUsed')}</TableHead>
+                <TableHead>{t('application.actions')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -182,7 +180,7 @@ export function ApiKeysPanel({ application }: ApiKeysPanelProps) {
                         variant="danger"
                       >
                         <Ban className="h-4 w-4" strokeWidth={1.75} />
-                        {revokeId === apiKey.apiKeyId ? 'Revoking' : 'Revoke'}
+                        {revokeId === apiKey.apiKeyId ? t('application.revoking') : t('application.revoke')}
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -192,10 +190,8 @@ export function ApiKeysPanel({ application }: ApiKeysPanelProps) {
           </Table>
         ) : (
           <Alert>
-            <AlertTitle>No API keys</AlertTitle>
-            <AlertDescription>
-              This application has no visible keys. Create a new application to receive an initial key.
-            </AlertDescription>
+            <AlertTitle>{t('application.noApiKeys')}</AlertTitle>
+            <AlertDescription>{t('application.noApiKeysDescription')}</AlertDescription>
           </Alert>
         )}
       </CardContent>

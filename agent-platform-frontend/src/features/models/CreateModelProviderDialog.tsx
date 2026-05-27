@@ -16,12 +16,14 @@ import { Label } from '@/components/ui/label'
 import { ApiError } from '@/lib/api/errors'
 import { createModelProvider } from '@/lib/api/model-configs'
 import type { ModelProvider } from '@/lib/api/types'
+import { useI18n } from '@/lib/i18n/use-i18n'
 
 type CreateModelProviderDialogProps = {
   onCreated: (provider: ModelProvider) => void
 }
 
 export function CreateModelProviderDialog({ onCreated }: CreateModelProviderDialogProps) {
+  const { t } = useI18n()
   const [apiKey, setApiKey] = useState('')
   const [baseUrl, setBaseUrl] = useState('https://api.deepseek.com/v1')
   const [error, setError] = useState<string | null>(null)
@@ -46,7 +48,7 @@ export function CreateModelProviderDialog({ onCreated }: CreateModelProviderDial
       setOpen(false)
       onCreated(provider)
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : 'Model provider could not be created.')
+      setError(caught instanceof ApiError ? caught.message : t('model.providerCreateFailedFallback'))
     } finally {
       setIsSubmitting(false)
     }
@@ -65,20 +67,18 @@ export function CreateModelProviderDialog({ onCreated }: CreateModelProviderDial
       <DialogTrigger asChild>
         <Button>
           <Plus className="h-4 w-4" strokeWidth={1.75} />
-          New provider
+          {t('model.newProvider')}
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Create model provider</DialogTitle>
-          <DialogDescription>
-            Add an OpenAI-compatible endpoint. API keys are stored encrypted and are not shown again.
-          </DialogDescription>
+          <DialogTitle>{t('model.createProviderTitle')}</DialogTitle>
+          <DialogDescription>{t('model.createProviderDescription')}</DialogDescription>
         </DialogHeader>
 
         <form className="mt-5 space-y-5" onSubmit={handleSubmit}>
           <div className="space-y-2">
-            <Label htmlFor="provider-name">Name</Label>
+            <Label htmlFor="provider-name">{t('application.name')}</Label>
             <Input
               autoFocus
               id="provider-name"
@@ -90,7 +90,7 @@ export function CreateModelProviderDialog({ onCreated }: CreateModelProviderDial
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="provider-type">Provider type</Label>
+            <Label htmlFor="provider-type">{t('model.providerType')}</Label>
             <Input
               id="provider-type"
               maxLength={32}
@@ -101,7 +101,7 @@ export function CreateModelProviderDialog({ onCreated }: CreateModelProviderDial
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="provider-base-url">Base URL</Label>
+            <Label htmlFor="provider-base-url">{t('model.baseUrl')}</Label>
             <Input
               id="provider-base-url"
               maxLength={512}
@@ -112,7 +112,7 @@ export function CreateModelProviderDialog({ onCreated }: CreateModelProviderDial
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="provider-api-key">API key</Label>
+            <Label htmlFor="provider-api-key">API Key</Label>
             <Input
               id="provider-api-key"
               maxLength={4096}
@@ -125,14 +125,14 @@ export function CreateModelProviderDialog({ onCreated }: CreateModelProviderDial
 
           {error ? (
             <Alert variant="danger">
-              <AlertTitle>Create failed</AlertTitle>
+              <AlertTitle>{t('model.createFailed')}</AlertTitle>
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           ) : null}
 
           <DialogFooter>
             <Button disabled={isSubmitting} type="submit">
-              {isSubmitting ? 'Creating' : 'Create provider'}
+              {isSubmitting ? t('application.creating') : t('model.newProvider')}
             </Button>
           </DialogFooter>
         </form>

@@ -135,10 +135,13 @@ MVP 的 Developer = 配单 Agent Profile；阶段 4 的 Developer = 在 Profile 
 - `考核设计/参考项目分析/03-InterviewGuide设计借鉴记录.md`
 - `考核设计/参考项目分析/04-JeecgBoot设计借鉴记录.md`
 - `考核设计/参考项目分析/05-emo设计借鉴记录.md`
+- `考核设计/参考项目分析/06-MVPClaudeCode设计借鉴记录.md`
 
 阶段 2/3/4/5 设计和开发前，应按任务类型回看对应参考记录。参考项目只借鉴设计方法、工程经验和取舍边界，不直接照搬其技术栈、运行时框架或复杂产品能力。
 
 阶段 2 开发前重点参考 emo 的 LLM Provider Registry 思路；Pipeline 只作为阶段 2 后或阶段 3 前的重构方向，不作为阶段 2 前置任务。
+
+阶段 4 Agent Team 和后续 Agent Runtime 增强前，重点参考 MVP Claude Code 的 token 级流式输出、ToolDispatcher/ToolRegistry、子 Agent 工具隔离、上下文压缩和高危工具确认思路。该参考项目只作为 Agent Harness 设计来源，不引入 LangChain4j、Picocli、本地 File/Bash 裸工具能力或文件型 Memory。
 
 阶段 3 前端开发采用 `agent-platform-frontend` 独立工程，技术栈固定为 React + Vite + TypeScript + Tailwind CSS + shadcn/ui + ECharts。本地开发阶段不引入 nginx，先使用 Vite dev server 代理 `/api` 到 Web 后端；nginx 放到最终 Docker Compose / 交付阶段再补。
 
