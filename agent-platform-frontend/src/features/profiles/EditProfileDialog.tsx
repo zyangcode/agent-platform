@@ -16,7 +16,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { ApiError } from '@/lib/api/errors'
-import type { ModelConfig, Profile } from '@/lib/api/types'
+import type { ModelConfig, Profile, ProfileExecutionMode } from '@/lib/api/types'
 import { useI18n } from '@/lib/i18n/use-i18n'
 import { updateProfile } from './api'
 
@@ -26,6 +26,7 @@ type EditProfileForm = {
   modelConfigId: string
   name: string
   promptExtra: string
+  executionMode: ProfileExecutionMode
 }
 
 type EditProfileDialogProps = {
@@ -72,6 +73,7 @@ export function EditProfileDialog({ modelConfigs, onUpdated, profile }: EditProf
         modelConfigId: Number(effectiveModelConfigId),
         name: form.name.trim(),
         promptExtra: form.promptExtra.trim() || undefined,
+        executionMode: form.executionMode,
         visibility: profile.visibility || 'PRIVATE',
       })
       setOpen(false)
@@ -153,17 +155,37 @@ export function EditProfileDialog({ modelConfigs, onUpdated, profile }: EditProf
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="edit-profile-max-steps">{t('profile.maxSteps')}</Label>
-            <Input
-              id="edit-profile-max-steps"
-              max={50}
-              min={1}
-              onChange={(event) => setForm((current) => ({ ...current, maxSteps: event.target.value }))}
-              required
-              type="number"
-              value={form.maxSteps}
-            />
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="edit-profile-max-steps">{t('profile.maxSteps')}</Label>
+              <Input
+                id="edit-profile-max-steps"
+                max={50}
+                min={1}
+                onChange={(event) => setForm((current) => ({ ...current, maxSteps: event.target.value }))}
+                required
+                type="number"
+                value={form.maxSteps}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>{t('profile.executionMode')}</Label>
+              <Select
+                onValueChange={(value) =>
+                  setForm((current) => ({ ...current, executionMode: value as ProfileExecutionMode }))
+                }
+                value={form.executionMode}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={t('profile.selectExecutionMode')} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="BASIC">{t('profile.executionModeBasic')}</SelectItem>
+                  <SelectItem value="TEAM">{t('profile.executionModeTeam')}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           {error ? (
@@ -191,6 +213,7 @@ function emptyForm(): EditProfileForm {
     modelConfigId: '',
     name: '',
     promptExtra: '',
+    executionMode: 'BASIC',
   }
 }
 
@@ -201,5 +224,10 @@ function formFromProfile(profile: Profile): EditProfileForm {
     modelConfigId: String(profile.modelConfigId),
     name: profile.name,
     promptExtra: profile.promptExtra ?? '',
+    executionMode: normalizeExecutionMode(profile.executionMode),
   }
+}
+
+function normalizeExecutionMode(value: Profile['executionMode']): ProfileExecutionMode {
+  return value === 'TEAM' ? 'TEAM' : 'BASIC'
 }

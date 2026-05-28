@@ -44,6 +44,7 @@ public class ProfileController {
                 request.promptExtra(),
                 request.memoryStrategy(),
                 request.maxSteps(),
+                request.executionMode(),
                 request.visibility()
         )));
     }
@@ -89,6 +90,7 @@ public class ProfileController {
                 request.promptExtra(),
                 request.memoryStrategy(),
                 request.maxSteps(),
+                request.executionMode(),
                 request.visibility()
         )));
     }

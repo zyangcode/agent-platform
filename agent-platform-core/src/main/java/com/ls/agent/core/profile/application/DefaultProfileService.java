@@ -76,7 +76,7 @@ public class DefaultProfileService implements ProfileService {
         profile.setPromptExtra(command.promptExtra());
         profile.setMemoryStrategy(command.memoryStrategy() == null ? objectMapper.createObjectNode() : command.memoryStrategy());
         profile.setMaxSteps(command.maxSteps() == null ? 6 : command.maxSteps());
-        profile.setExecutionMode(ProfileConstants.EXECUTION_MODE_BASIC);
+        profile.setExecutionMode(ProfileValidation.normalizeExecutionMode(command.executionMode()));
         profile.setVisibility(ProfileValidation.normalizeRequired(command.visibility(), "visibility"));
         profile.setStatus(ProfileConstants.STATUS_DRAFT);
         profileMapper.insert(profile);
@@ -133,6 +133,7 @@ public class DefaultProfileService implements ProfileService {
         profile.setPromptExtra(command.promptExtra());
         profile.setMemoryStrategy(command.memoryStrategy() == null ? objectMapper.createObjectNode() : command.memoryStrategy());
         profile.setMaxSteps(command.maxSteps() == null ? 6 : command.maxSteps());
+        profile.setExecutionMode(ProfileValidation.normalizeExecutionMode(command.executionMode()));
         profile.setVisibility(ProfileValidation.normalizeRequired(command.visibility(), "visibility"));
         profileMapper.updateById(profile);
         return getProfile(command.tenantId(), command.ownerUserId(), profile.getId());
@@ -232,6 +233,7 @@ public class DefaultProfileService implements ProfileService {
                 profile.getPromptExtra(),
                 profile.getMemoryStrategy(),
                 profile.getMaxSteps(),
+                profile.getExecutionMode(),
                 profile.getVisibility(),
                 profile.getStatus(),
                 skillBindings,

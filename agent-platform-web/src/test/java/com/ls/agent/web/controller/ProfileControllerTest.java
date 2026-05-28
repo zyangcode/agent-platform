@@ -73,10 +73,12 @@ class ProfileControllerTest {
                                 "Be concise.",
                                 objectMapper.createObjectNode().put("shortTermEnabled", true),
                                 5,
+                                "TEAM",
                                 "PRIVATE"
                         ))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.profileId").value(50001))
+                .andExpect(jsonPath("$.data.executionMode").value("TEAM"))
                 .andExpect(jsonPath("$.data.status").value("DRAFT"));
 
         ArgumentCaptor<CreateProfileCommand> captor = ArgumentCaptor.forClass(CreateProfileCommand.class);
@@ -84,6 +86,7 @@ class ProfileControllerTest {
         assertThat(captor.getValue().tenantId()).isEqualTo(1L);
         assertThat(captor.getValue().ownerUserId()).isEqualTo(10001L);
         assertThat(captor.getValue().applicationId()).isEqualTo(20001L);
+        assertThat(captor.getValue().executionMode()).isEqualTo("TEAM");
     }
 
     @Test
@@ -133,10 +136,12 @@ class ProfileControllerTest {
                                 "Updated prompt.",
                                 objectMapper.createObjectNode().put("mode", "READ_ONLY"),
                                 3,
+                                "TEAM",
                                 "PRIVATE"
                         ))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.profileId").value(50001));
+                .andExpect(jsonPath("$.data.profileId").value(50001))
+                .andExpect(jsonPath("$.data.executionMode").value("TEAM"));
 
         ArgumentCaptor<UpdateProfileCommand> captor = ArgumentCaptor.forClass(UpdateProfileCommand.class);
         verify(profileService).updateProfile(captor.capture());
@@ -144,6 +149,7 @@ class ProfileControllerTest {
         assertThat(captor.getValue().ownerUserId()).isEqualTo(10001L);
         assertThat(captor.getValue().profileId()).isEqualTo(50001L);
         assertThat(captor.getValue().modelConfigId()).isEqualTo(2L);
+        assertThat(captor.getValue().executionMode()).isEqualTo("TEAM");
     }
 
     @Test
@@ -160,6 +166,7 @@ class ProfileControllerTest {
                                 "Updated prompt.",
                                 objectMapper.createObjectNode().put("mode", "READ_ONLY"),
                                 3,
+                                "BASIC",
                                 "PRIVATE"
                         ))))
                 .andExpect(status().isInternalServerError())
@@ -217,6 +224,7 @@ class ProfileControllerTest {
                 "Be concise.",
                 objectMapper.createObjectNode().put("shortTermEnabled", true),
                 5,
+                "TEAM",
                 "PRIVATE",
                 "DRAFT",
                 List.of(),
@@ -236,6 +244,7 @@ class ProfileControllerTest {
                 profile.promptExtra(),
                 profile.memoryStrategy(),
                 profile.maxSteps(),
+                profile.executionMode(),
                 profile.visibility(),
                 "DISABLED",
                 profile.skillBindings(),

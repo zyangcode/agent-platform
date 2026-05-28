@@ -16,6 +16,7 @@ public record CreateProfileRequest(
         @Size(max = 8000) String promptExtra,
         JsonNode memoryStrategy,
         @Min(1) @Max(50) Integer maxSteps,
+        @Size(max = 32) String executionMode,
         @NotBlank @Size(max = 32) String visibility
 ) {
 }

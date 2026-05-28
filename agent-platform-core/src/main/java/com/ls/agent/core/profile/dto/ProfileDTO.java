@@ -14,6 +14,7 @@ public record ProfileDTO(
         String promptExtra,
         JsonNode memoryStrategy,
         Integer maxSteps,
+        String executionMode,
         String visibility,
         String status,
         List<ProfileSkillBindingDTO> skillBindings,

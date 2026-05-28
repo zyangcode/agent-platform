@@ -21,4 +21,16 @@ final class ProfileValidation {
         }
         return value;
     }
+
+    static String normalizeExecutionMode(String value) {
+        if (value == null || value.isBlank()) {
+            return ProfileConstants.EXECUTION_MODE_BASIC;
+        }
+        String normalized = value.trim().toUpperCase();
+        if (!ProfileConstants.EXECUTION_MODE_BASIC.equals(normalized)
+                && !ProfileConstants.EXECUTION_MODE_TEAM.equals(normalized)) {
+            throw new BizException(ErrorCode.REQUEST_INVALID, "executionMode must be BASIC or TEAM");
+        }
+        return normalized;
+    }
 }

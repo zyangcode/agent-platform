@@ -13,6 +13,7 @@ public record CreateProfileCommand(
         String promptExtra,
         JsonNode memoryStrategy,
         Integer maxSteps,
+        String executionMode,
         String visibility
 ) {
 }

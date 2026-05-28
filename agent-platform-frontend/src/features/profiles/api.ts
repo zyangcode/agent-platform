@@ -1,5 +1,5 @@
 import { apiClient } from '@/lib/api/client'
-import type { JsonValue, McpTool, Profile, Skill } from '@/lib/api/types'
+import type { JsonValue, McpTool, Profile, ProfileExecutionMode, Skill } from '@/lib/api/types'
 
 export type CreateProfileRequest = {
   applicationId: number
@@ -10,6 +10,7 @@ export type CreateProfileRequest = {
   promptExtra?: string
   memoryStrategy?: JsonValue
   maxSteps?: number
+  executionMode?: ProfileExecutionMode
   visibility: string
 }
 
@@ -20,6 +21,7 @@ export type UpdateProfileRequest = {
   promptExtra?: string
   memoryStrategy?: JsonValue
   maxSteps?: number
+  executionMode?: ProfileExecutionMode
   visibility: string
 }
 

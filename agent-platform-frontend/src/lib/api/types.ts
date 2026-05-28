@@ -106,6 +106,8 @@ export type ProfileMcpToolBinding = {
   status?: string
 }
 
+export type ProfileExecutionMode = 'BASIC' | 'TEAM'
+
 export type Profile = {
   profileId: number
   applicationId: number
@@ -116,6 +118,7 @@ export type Profile = {
   promptExtra?: string | null
   memoryStrategy?: JsonValue
   maxSteps?: number | null
+  executionMode?: ProfileExecutionMode | string | null
   visibility: string
   status: string
   skillBindings: ProfileSkillBinding[]

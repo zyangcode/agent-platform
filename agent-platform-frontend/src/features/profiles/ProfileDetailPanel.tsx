@@ -1,4 +1,4 @@
-import { Bot, Boxes, BrainCircuit } from 'lucide-react'
+import { Bot, Boxes, BrainCircuit, Workflow } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -45,13 +45,22 @@ export function ProfileDetailPanel({ modelConfigs, profile }: ProfileDetailPanel
         </div>
       </CardHeader>
       <CardContent className="space-y-5">
-        <div className="grid gap-3 md:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-4">
           <div className="rounded-xl border border-white/10 bg-zinc-950/50 p-3">
             <div className="flex items-center gap-2 text-xs text-zinc-500">
               <Bot className="h-3.5 w-3.5" strokeWidth={1.75} />
               {t('profile.type')}
             </div>
             <p className="mt-2 text-sm font-medium text-white">{profile.profileType}</p>
+          </div>
+          <div className="rounded-xl border border-white/10 bg-zinc-950/50 p-3">
+            <div className="flex items-center gap-2 text-xs text-zinc-500">
+              <Workflow className="h-3.5 w-3.5" strokeWidth={1.75} />
+              {t('profile.executionMode')}
+            </div>
+            <p className="mt-2 text-sm font-medium text-white">
+              {profile.executionMode === 'TEAM' ? t('profile.executionModeTeam') : t('profile.executionModeBasic')}
+            </p>
           </div>
           <div className="rounded-xl border border-white/10 bg-zinc-950/50 p-3">
             <div className="flex items-center gap-2 text-xs text-zinc-500">

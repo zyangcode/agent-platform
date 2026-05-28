@@ -65,6 +65,7 @@ class DefaultProfileServiceTest {
                 "Be concise.",
                 objectMapper.createObjectNode().put("shortTermEnabled", true),
                 5,
+                "TEAM",
                 "PRIVATE"
         ));
 
@@ -76,7 +77,7 @@ class DefaultProfileServiceTest {
         assertThat(entity.getOwnerUserId()).isEqualTo(10001L);
         assertThat(entity.getApplicationId()).isEqualTo(20001L);
         assertThat(entity.getStatus()).isEqualTo("DRAFT");
-        assertThat(entity.getExecutionMode()).isEqualTo("BASIC");
+        assertThat(entity.getExecutionMode()).isEqualTo("TEAM");
         assertThat(entity.getMemoryStrategy().get("shortTermEnabled").asBoolean()).isTrue();
     }
 
@@ -153,6 +154,7 @@ class DefaultProfileServiceTest {
                 "Updated prompt.",
                 objectMapper.createObjectNode().put("mode", "READ_ONLY"),
                 3,
+                "TEAM",
                 "PRIVATE"
         ));
 
@@ -165,7 +167,9 @@ class DefaultProfileServiceTest {
         assertThat(entity.getPromptExtra()).isEqualTo("Updated prompt.");
         assertThat(entity.getMemoryStrategy().get("mode").asText()).isEqualTo("READ_ONLY");
         assertThat(entity.getMaxSteps()).isEqualTo(3);
+        assertThat(entity.getExecutionMode()).isEqualTo("TEAM");
         assertThat(result.modelConfigId()).isEqualTo(2L);
+        assertThat(result.executionMode()).isEqualTo("TEAM");
     }
 
     @Test

@@ -200,6 +200,7 @@ class DefaultAgentContextBuilderTest {
                 "Be concise.",
                 objectMapper.createObjectNode(),
                 6,
+                "BASIC",
                 "PRIVATE",
                 "DRAFT",
                 List.of(new ProfileSkillBindingDTO(1L, true, false)),
@@ -218,6 +219,7 @@ class DefaultAgentContextBuilderTest {
                 "Be concise.",
                 objectMapper.createObjectNode(),
                 6,
+                "BASIC",
                 "PRIVATE",
                 "DRAFT",
                 List.of(
@@ -243,6 +245,7 @@ class DefaultAgentContextBuilderTest {
                 profile.promptExtra(),
                 profile.memoryStrategy(),
                 profile.maxSteps(),
+                profile.executionMode(),
                 profile.visibility(),
                 "DISABLED",
                 profile.skillBindings(),

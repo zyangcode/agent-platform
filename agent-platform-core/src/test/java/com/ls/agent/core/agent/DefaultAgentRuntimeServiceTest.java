@@ -392,6 +392,7 @@ class DefaultAgentRuntimeServiceTest {
                 "Be concise.",
                 null,
                 6,
+                "BASIC",
                 "PRIVATE",
                 "DRAFT",
                 List.of(),

@@ -423,6 +423,9 @@ const defaultDictionary: TranslationDictionary = {
     zh: '修改模型配置、风格提示词和运行步数限制。',
   },
   'profile.editTitle': { en: 'Edit profile', zh: '编辑 Profile' },
+  'profile.executionMode': { en: 'Execution mode', zh: '运行模式' },
+  'profile.executionModeBasic': { en: 'Basic Agent', zh: '基础 Agent' },
+  'profile.executionModeTeam': { en: 'Team Agent', zh: 'Team Agent' },
   'profile.intro': {
     en: 'Configure a single Agent profile for an application, bind enabled tools, then use it in Chat.',
     zh: '为应用配置单 Agent Profile，绑定可用工具后在聊天中使用。',
@@ -472,6 +475,7 @@ const defaultDictionary: TranslationDictionary = {
     zh: '可通过种子数据或后续上传流程补充列表。',
   },
   'profile.selectApplication': { en: 'Select application', zh: '选择应用' },
+  'profile.selectExecutionMode': { en: 'Select execution mode', zh: '选择运行模式' },
   'profile.selectModel': { en: 'Select model', zh: '选择模型' },
   'profile.skillBindings': { en: 'Skill bindings', zh: 'Skill 绑定' },
   'profile.skills': { en: 'Skills', zh: 'Skills' },

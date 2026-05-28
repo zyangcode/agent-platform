@@ -12,6 +12,7 @@ public record UpdateProfileCommand(
         String promptExtra,
         JsonNode memoryStrategy,
         Integer maxSteps,
+        String executionMode,
         String visibility
 ) {
 }
