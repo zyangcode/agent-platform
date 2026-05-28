@@ -519,3 +519,39 @@ Reviewer 审查通过。
 - Trace 能看到 Planner / Executor / Reviewer span。
 - 至少调用 calculator，weather/search 可用 mock 结果。
 - 出错时返回可理解的失败原因，页面不崩溃。
+
+## 15. AgentTool 统一工具视图补充设计
+
+AgentTool 是 Agent Runtime 通用工具视图，不是 Team 私有模型。阶段 4 先由 Team Planner/Executor 使用，后续基础 Agent 的直接工具调用也可以逐步迁移到同一视图。
+
+包位置固定为：
+
+```text
+agent-platform-core/src/main/java/com/ls/agent/core/agent/tool/
+```
+
+Resolver 输入固定为 `AgentContextDTO`：
+
+```text
+AgentToolResolver.resolve(AgentContextDTO context)
+```
+
+它只从 `context.availableSkills()` 和 `context.availableMcpTools()` 转换工具列表，不重新查询 Skill/MCP 表。这样 Planner 看到的工具列表和 Executor 可调用的工具列表来自同一份上下文，避免规划与执行不一致。
+
+Dispatcher 第一版只做最小分发：
+
+```text
+sourceType=SKILL -> SkillExecutor.execute(...)
+sourceType=MCP   -> McpToolExecutor.execute(...)
+```
+
+第一版命名策略：
+
+```text
+Skill 工具名：SkillDTO.code
+MCP 工具名：McpToolDTO.name
+displayName：DTO.name
+riskLevel：LOW
+```
+
+如果后续出现 Skill/MCP 工具重名，再升级为 `skill:xxx` / `mcp:xxx` 的命名空间方案。`riskLevel` 后续接全局安全策略、高危工具确认或 Profile 工具策略后再计算，当前不凭空扩字段来源。
