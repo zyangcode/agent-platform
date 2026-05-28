@@ -12,10 +12,12 @@ import com.ls.agent.core.profile.dto.ProfileDTO;
 import com.ls.agent.core.team.api.TeamPlanner;
 import com.ls.agent.core.team.command.PlanTeamCommand;
 import com.ls.agent.core.team.dto.TaskPlanDTO;
+import com.ls.agent.core.team.dto.TeamPlanResultDTO;
 import com.ls.agent.core.team.dto.TeamTaskDTO;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -25,6 +27,7 @@ public class DefaultTeamPlanner implements TeamPlanner {
 
     private static final BigDecimal PLANNER_TEMPERATURE = BigDecimal.valueOf(0.2);
     private static final int MAX_MODEL_ATTEMPTS = 2;
+    private static final int FAILURE_PROMPT_MAX_LENGTH = 200;
 
     private final ModelInvokeService modelInvokeService;
     private final TaskPlanValidator taskPlanValidator;
@@ -41,30 +44,38 @@ public class DefaultTeamPlanner implements TeamPlanner {
     }
 
     @Override
-    public TaskPlanDTO plan(PlanTeamCommand command) {
+    public TeamPlanResultDTO plan(PlanTeamCommand command) {
         validate(command);
         String lastFailure = null;
+        List<ModelInvokeResult> modelInvocations = new ArrayList<>();
         for (int attempt = 1; attempt <= MAX_MODEL_ATTEMPTS; attempt++) {
             try {
-                TaskPlanDTO plan = invokeAndParse(command, lastFailure);
+                ModelInvokeResult modelResult = invokeModel(command, lastFailure);
+                if (modelResult != null) {
+                    modelInvocations.add(modelResult);
+                }
+                TaskPlanDTO plan = parsePlan(modelResult);
                 taskPlanValidator.validate(plan, toolNames(command.availableTools()));
-                return plan;
+                return new TeamPlanResultDTO(plan, modelInvocations);
             } catch (Exception ex) {
                 lastFailure = ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage();
             }
         }
         TaskPlanDTO fallback = fallbackPlan(command.userInput());
         taskPlanValidator.validate(fallback, toolNames(command.availableTools()));
-        return fallback;
+        return new TeamPlanResultDTO(fallback, modelInvocations);
     }
 
-    private TaskPlanDTO invokeAndParse(PlanTeamCommand command, String previousFailure) {
-        ModelInvokeResult result = modelInvokeService.invoke(new ModelInvokeCommand(
+    private ModelInvokeResult invokeModel(PlanTeamCommand command, String previousFailure) {
+        return modelInvokeService.invoke(new ModelInvokeCommand(
                 command.context().modelConfigId(),
                 messages(command, previousFailure),
                 PLANNER_TEMPERATURE,
                 false
         ));
+    }
+
+    private TaskPlanDTO parsePlan(ModelInvokeResult result) {
         String content = result == null ? null : result.assistantMessage();
         if (content == null || content.isBlank()) {
             throw new BizException(ErrorCode.REQUEST_INVALID, "planner response is empty");
@@ -108,7 +119,7 @@ public class DefaultTeamPlanner implements TeamPlanner {
                 .append("- MODEL_TASK must use suggestedTool=null.\n")
                 .append("- Every task must have a non-empty description.\n");
         if (previousFailure != null && !previousFailure.isBlank()) {
-            userPrompt.append("\nPrevious plan was invalid: ").append(previousFailure)
+            userPrompt.append("\nPrevious plan was invalid: ").append(truncateFailure(previousFailure))
                     .append("\nCorrect it and return valid JSON only.\n");
         }
 
@@ -189,5 +200,12 @@ public class DefaultTeamPlanner implements TeamPlanner {
 
     private String safe(String value) {
         return value == null ? "" : value;
+    }
+
+    private String truncateFailure(String previousFailure) {
+        if (previousFailure.length() <= FAILURE_PROMPT_MAX_LENGTH) {
+            return previousFailure;
+        }
+        return previousFailure.substring(0, FAILURE_PROMPT_MAX_LENGTH) + "...";
     }
 }

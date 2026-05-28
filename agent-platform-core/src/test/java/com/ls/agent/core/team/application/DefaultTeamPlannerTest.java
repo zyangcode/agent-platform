@@ -9,9 +9,11 @@ import com.ls.agent.core.model.api.ModelInvokeService;
 import com.ls.agent.core.model.command.ModelInvokeCommand;
 import com.ls.agent.core.model.dto.ModelInvokeResult;
 import com.ls.agent.core.model.dto.ModelMessage;
+import com.ls.agent.core.model.dto.ModelUsageDTO;
 import com.ls.agent.core.profile.dto.ProfileDTO;
 import com.ls.agent.core.team.command.PlanTeamCommand;
 import com.ls.agent.core.team.dto.TaskPlanDTO;
+import com.ls.agent.core.team.dto.TeamPlanResultDTO;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -62,11 +64,13 @@ class DefaultTeamPlannerTest {
                 }
                 """));
 
-        TaskPlanDTO result = planner.plan(command("Plan an easy team activity", tools()));
+        TeamPlanResultDTO result = planner.plan(command("Plan an easy team activity", tools()));
 
-        assertThat(result.goal()).isEqualTo("Plan a team activity");
-        assertThat(result.tasks()).hasSize(2);
-        assertThat(result.tasks().get(0).suggestedTool()).isEqualTo("weather");
+        assertThat(result.plan().goal()).isEqualTo("Plan a team activity");
+        assertThat(result.plan().tasks()).hasSize(2);
+        assertThat(result.plan().tasks().get(0).suggestedTool()).isEqualTo("weather");
+        assertThat(result.modelInvocations()).hasSize(1);
+        assertThat(result.modelInvocations().get(0).usage().totalTokens()).isEqualTo(4);
 
         ArgumentCaptor<ModelInvokeCommand> captor = ArgumentCaptor.forClass(ModelInvokeCommand.class);
         verify(modelInvokeService).invoke(captor.capture());
@@ -99,10 +103,11 @@ class DefaultTeamPlannerTest {
                         }
                         """));
 
-        TaskPlanDTO result = planner.plan(command("Explain Team mode", tools()));
+        TeamPlanResultDTO result = planner.plan(command("Explain Team mode", tools()));
 
-        assertThat(result.tasks()).hasSize(1);
-        assertThat(result.tasks().get(0).taskType()).isEqualTo("MODEL_TASK");
+        assertThat(result.plan().tasks()).hasSize(1);
+        assertThat(result.plan().tasks().get(0).taskType()).isEqualTo("MODEL_TASK");
+        assertThat(result.modelInvocations()).hasSize(2);
         verify(modelInvokeService, times(2)).invoke(any(ModelInvokeCommand.class));
     }
 
@@ -112,14 +117,15 @@ class DefaultTeamPlannerTest {
                 .thenReturn(modelResult("not json"))
                 .thenReturn(modelResult("{\"goal\":\"bad\",\"tasks\":[]}"));
 
-        TaskPlanDTO result = planner.plan(command("Any user request", List.of()));
+        TeamPlanResultDTO result = planner.plan(command("Any user request", List.of()));
 
-        assertThat(result.goal()).isEqualTo("Any user request");
-        assertThat(result.tasks()).hasSize(1);
-        assertThat(result.tasks().get(0).id()).isEqualTo("task-1");
-        assertThat(result.tasks().get(0).taskType()).isEqualTo("MODEL_TASK");
-        assertThat(result.tasks().get(0).suggestedTool()).isNull();
-        assertThat(result.tasks().get(0).description()).contains("Any user request");
+        assertThat(result.plan().goal()).isEqualTo("Any user request");
+        assertThat(result.plan().tasks()).hasSize(1);
+        assertThat(result.plan().tasks().get(0).id()).isEqualTo("task-1");
+        assertThat(result.plan().tasks().get(0).taskType()).isEqualTo("MODEL_TASK");
+        assertThat(result.plan().tasks().get(0).suggestedTool()).isNull();
+        assertThat(result.plan().tasks().get(0).description()).contains("Any user request");
+        assertThat(result.modelInvocations()).hasSize(2);
         verify(modelInvokeService, times(2)).invoke(any(ModelInvokeCommand.class));
     }
 
@@ -129,11 +135,12 @@ class DefaultTeamPlannerTest {
                 .thenReturn(modelResult(" "))
                 .thenReturn(modelResult(""));
 
-        TaskPlanDTO result = planner.plan(command("Summarize project status", tools()));
+        TeamPlanResultDTO result = planner.plan(command("Summarize project status", tools()));
 
-        assertThat(result.tasks()).hasSize(1);
-        assertThat(result.tasks().get(0).taskType()).isEqualTo("MODEL_TASK");
-        assertThat(result.tasks().get(0).suggestedTool()).isNull();
+        assertThat(result.plan().tasks()).hasSize(1);
+        assertThat(result.plan().tasks().get(0).taskType()).isEqualTo("MODEL_TASK");
+        assertThat(result.plan().tasks().get(0).suggestedTool()).isNull();
+        assertThat(result.modelInvocations()).hasSize(2);
     }
 
     @Test
@@ -142,12 +149,13 @@ class DefaultTeamPlannerTest {
                 .thenThrow(new IllegalStateException("model down"))
                 .thenThrow(new IllegalStateException("model still down"));
 
-        TaskPlanDTO result = planner.plan(command("Prepare a fallback plan", tools()));
+        TeamPlanResultDTO result = planner.plan(command("Prepare a fallback plan", tools()));
 
-        assertThat(result.goal()).isEqualTo("Prepare a fallback plan");
-        assertThat(result.tasks()).hasSize(1);
-        assertThat(result.tasks().get(0).taskType()).isEqualTo("MODEL_TASK");
-        assertThat(result.tasks().get(0).suggestedTool()).isNull();
+        assertThat(result.plan().goal()).isEqualTo("Prepare a fallback plan");
+        assertThat(result.plan().tasks()).hasSize(1);
+        assertThat(result.plan().tasks().get(0).taskType()).isEqualTo("MODEL_TASK");
+        assertThat(result.plan().tasks().get(0).suggestedTool()).isNull();
+        assertThat(result.modelInvocations()).isEmpty();
         verify(modelInvokeService, times(2)).invoke(any(ModelInvokeCommand.class));
     }
 
@@ -172,11 +180,44 @@ class DefaultTeamPlannerTest {
                         }
                         """));
 
-        TaskPlanDTO result = planner.plan(command("Create a compact plan", tools()));
+        TeamPlanResultDTO result = planner.plan(command("Create a compact plan", tools()));
 
-        assertThat(result.goal()).isEqualTo("Compact plan");
-        assertThat(result.tasks()).hasSize(1);
+        assertThat(result.plan().goal()).isEqualTo("Compact plan");
+        assertThat(result.plan().tasks()).hasSize(1);
+        assertThat(result.modelInvocations()).hasSize(2);
         verify(modelInvokeService, times(2)).invoke(any(ModelInvokeCommand.class));
+    }
+
+    @Test
+    void truncatesPreviousFailureInRetryPrompt() {
+        String longFailure = "x".repeat(500);
+        when(modelInvokeService.invoke(any(ModelInvokeCommand.class)))
+                .thenThrow(new IllegalStateException(longFailure))
+                .thenReturn(modelResult("""
+                        {
+                          "goal": "Retry plan",
+                          "tasks": [
+                            {
+                              "id": "task-1",
+                              "name": "Answer",
+                              "description": "Answer after retry.",
+                              "taskType": "MODEL_TASK",
+                              "suggestedTool": null,
+                              "arguments": {},
+                              "dependsOn": []
+                            }
+                          ]
+                        }
+                        """));
+
+        planner.plan(command("Retry with compact failure", tools()));
+
+        ArgumentCaptor<ModelInvokeCommand> captor = ArgumentCaptor.forClass(ModelInvokeCommand.class);
+        verify(modelInvokeService, times(2)).invoke(captor.capture());
+        String retryPrompt = captor.getAllValues().get(1).messages().get(1).content();
+        assertThat(retryPrompt).contains("Previous plan was invalid:");
+        assertThat(retryPrompt).contains("...");
+        assertThat(retryPrompt).doesNotContain("x".repeat(250));
     }
 
     private PlanTeamCommand command(String userInput, List<AgentToolDTO> tools) {
@@ -232,7 +273,7 @@ class DefaultTeamPlannerTest {
     }
 
     private ModelInvokeResult modelResult(String content) {
-        return new ModelInvokeResult(30001L, 1L, "mock", "mock-chat", content, null);
+        return new ModelInvokeResult(30001L, 1L, "mock", "mock-chat", content, new ModelUsageDTO(2, 2, 4, true));
     }
 
     private String planWithTooManyTasks() {
