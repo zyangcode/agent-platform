@@ -8,6 +8,11 @@ public record ReviewResultDTO(
         List<String> retryTasks,
         String summary
 ) {
+    public ReviewResultDTO {
+        issues = issues == null ? List.of() : List.copyOf(issues);
+        retryTasks = retryTasks == null ? List.of() : List.copyOf(retryTasks);
+    }
+
     public record ReviewIssueDTO(
             String taskId,
             String level,

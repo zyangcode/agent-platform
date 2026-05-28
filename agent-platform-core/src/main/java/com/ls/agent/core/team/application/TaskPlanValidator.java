@@ -76,7 +76,7 @@ public class TaskPlanValidator {
         for (TeamTaskDTO task : tasks) {
             for (String dependency : safeDependsOn(task)) {
                 if (isBlank(dependency) || !taskIds.contains(dependency.trim())) {
-                    fail("dependsOn references missing task");
+                    fail("task " + task.id().trim() + " dependsOn references missing task " + dependency);
                 }
             }
         }

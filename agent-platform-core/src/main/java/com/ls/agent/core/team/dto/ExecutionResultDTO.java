@@ -10,4 +10,7 @@ public record ExecutionResultDTO(
         List<String> usedTools,
         String errorMessage
 ) {
+    public ExecutionResultDTO {
+        usedTools = usedTools == null ? List.of() : List.copyOf(usedTools);
+    }
 }

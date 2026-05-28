@@ -13,4 +13,7 @@ public record TeamTaskDTO(
         JsonNode arguments,
         List<String> dependsOn
 ) {
+    public TeamTaskDTO {
+        dependsOn = dependsOn == null ? List.of() : List.copyOf(dependsOn);
+    }
 }
