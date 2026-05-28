@@ -210,6 +210,12 @@ Executor 负责按 TaskPlan 执行任务。
 | `TOOL_TASK` | 必须有 `suggestedTool`，由 AgentToolDispatcher 调用 Skill/MCP。 |
 | `MODEL_TASK` | 不调用业务工具，由模型根据用户目标、Profile Prompt、TaskPlan 和已完成 ExecutionResult 生成任务结果。 |
 
+任务描述规则：
+
+- `description` 必填，Executor 构建 MODEL_TASK prompt 时依赖它说明当前任务。
+- `MODEL_TASK.suggestedTool` 必须为空；如果 Planner 输出了 suggestedTool，后端校验应拒绝，避免模型任务和工具任务语义混淆。
+- `TOOL_TASK.suggestedTool` 必须存在于授权后的 AgentTool 列表。
+
 `MODEL_TASK` 的模型输入必须包含：
 
 ```text
@@ -338,6 +344,7 @@ Reviewer 完成后立即推 team_review。
 推荐事件：
 
 ```text
+team_start
 team_plan
 team_task_start
 team_tool_call
@@ -545,6 +552,13 @@ sourceType=SKILL -> SkillExecutor.execute(...)
 sourceType=MCP   -> McpToolExecutor.execute(...)
 ```
 
+Core 和 Gateway 的边界：
+
+- Core 只产生 `TeamRuntimeEventDTO` 并调用 `TeamEventSink.emit(...)`。
+- Core 不感知 `OutputStream`、`SseEmitter` 或 HTTP 写出细节。
+- Gateway 提供 `TeamEventSink` 适配实现，把 Core 事件转换成 SSE。
+- 如果 SSE 写出失败，由 Gateway 负责结束流并输出 `error` 事件。
+
 第一版命名策略：
 
 ```text
@@ -555,3 +569,12 @@ riskLevel：LOW
 ```
 
 如果后续出现 Skill/MCP 工具重名，再升级为 `skill:xxx` / `mcp:xxx` 的命名空间方案。`riskLevel` 后续接全局安全策略、高危工具确认或 Profile 工具策略后再计算，当前不凭空扩字段来源。
+
+Planner prompt 展示工具时必须带来源，例如：
+
+```text
+[SKILL] calculator - Evaluate arithmetic expressions.
+[MCP] read_file - Read a demo file.
+```
+
+即使第一版内部工具名仍使用裸 `name`，prompt 中也要保留 sourceType，减少后续同名工具扩展时的歧义。

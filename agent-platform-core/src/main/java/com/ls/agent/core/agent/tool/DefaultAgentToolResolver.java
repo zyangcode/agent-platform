@@ -17,13 +17,21 @@ public class DefaultAgentToolResolver implements AgentToolResolver {
             return List.of();
         }
         List<AgentToolDTO> tools = new ArrayList<>();
-        for (SkillDTO skill : context.availableSkills()) {
+        for (SkillDTO skill : safeSkills(context)) {
             tools.add(fromSkill(skill));
         }
-        for (McpToolDTO tool : context.availableMcpTools()) {
+        for (McpToolDTO tool : safeMcpTools(context)) {
             tools.add(fromMcpTool(tool));
         }
         return List.copyOf(tools);
+    }
+
+    private List<SkillDTO> safeSkills(AgentContextDTO context) {
+        return context.availableSkills() == null ? List.of() : context.availableSkills();
+    }
+
+    private List<McpToolDTO> safeMcpTools(AgentContextDTO context) {
+        return context.availableMcpTools() == null ? List.of() : context.availableMcpTools();
     }
 
     private AgentToolDTO fromSkill(SkillDTO skill) {

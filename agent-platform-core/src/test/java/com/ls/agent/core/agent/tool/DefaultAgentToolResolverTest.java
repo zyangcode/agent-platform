@@ -9,6 +9,8 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class DefaultAgentToolResolverTest {
 
@@ -50,6 +52,15 @@ class DefaultAgentToolResolverTest {
     @Test
     void resolvesEmptyListWhenContextIsNull() {
         assertThat(resolver.resolve(null)).isEmpty();
+    }
+
+    @Test
+    void treatsNullToolListsAsEmpty() {
+        AgentContextDTO context = mock(AgentContextDTO.class);
+        when(context.availableSkills()).thenReturn(null);
+        when(context.availableMcpTools()).thenReturn(null);
+
+        assertThat(resolver.resolve(context)).isEmpty();
     }
 
     private SkillDTO skill() {
