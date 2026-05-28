@@ -10,6 +10,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.springframework.stereotype.Component;
+
+@Component
 public class TaskPlanValidator {
 
     private static final String TASK_TYPE_TOOL = "TOOL_TASK";
