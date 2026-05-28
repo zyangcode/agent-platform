@@ -85,6 +85,16 @@ class TaskPlanValidatorTest {
     }
 
     @Test
+    void rejectsBlankTaskDescription() {
+        TaskPlanDTO plan = new TaskPlanDTO(
+                "Goal",
+                List.of(task("task-1", "Answer", " ", "MODEL_TASK", null, List.of()))
+        );
+
+        assertValidationFailure(plan, Set.of(), "task.description is required");
+    }
+
+    @Test
     void rejectsToolTaskWithoutSuggestedTool() {
         TaskPlanDTO plan = new TaskPlanDTO("Goal", List.of(task("task-1", "Tool task", "TOOL_TASK", " ", List.of())));
 
@@ -96,6 +106,16 @@ class TaskPlanValidatorTest {
         TaskPlanDTO plan = new TaskPlanDTO("Goal", List.of(task("task-1", "Search", "TOOL_TASK", "search", List.of())));
 
         assertValidationFailure(plan, Set.of("weather"), "suggestedTool is not available");
+    }
+
+    @Test
+    void rejectsModelTaskWithSuggestedTool() {
+        TaskPlanDTO plan = new TaskPlanDTO(
+                "Goal",
+                List.of(task("task-1", "Summarize", "MODEL_TASK", "weather", List.of()))
+        );
+
+        assertValidationFailure(plan, Set.of("weather"), "MODEL_TASK must not have suggestedTool");
     }
 
     @Test
@@ -176,10 +196,21 @@ class TaskPlanValidatorTest {
             String suggestedTool,
             List<String> dependsOn
     ) {
+        return task(id, name, name + " description", taskType, suggestedTool, dependsOn);
+    }
+
+    private TeamTaskDTO task(
+            String id,
+            String name,
+            String description,
+            String taskType,
+            String suggestedTool,
+            List<String> dependsOn
+    ) {
         return new TeamTaskDTO(
                 id,
                 name,
-                name + " description",
+                description,
                 taskType,
                 suggestedTool,
                 objectMapper.createObjectNode(),

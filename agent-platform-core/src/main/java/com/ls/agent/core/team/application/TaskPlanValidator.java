@@ -58,6 +58,9 @@ public class TaskPlanValidator {
             if (isBlank(task.name())) {
                 fail("task.name is required");
             }
+            if (isBlank(task.description())) {
+                fail("task.description is required");
+            }
             if (!TASK_TYPE_TOOL.equals(task.taskType()) && !TASK_TYPE_MODEL.equals(task.taskType())) {
                 fail("task.taskType must be TOOL_TASK or MODEL_TASK");
             }
@@ -68,6 +71,9 @@ public class TaskPlanValidator {
                 if (!availableToolNames.contains(task.suggestedTool().trim())) {
                     fail("suggestedTool is not available");
                 }
+            }
+            if (TASK_TYPE_MODEL.equals(task.taskType()) && !isBlank(task.suggestedTool())) {
+                fail("MODEL_TASK must not have suggestedTool");
             }
         }
     }
