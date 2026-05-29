@@ -126,6 +126,8 @@ public class DefaultTeamRuntimeService implements TeamRuntimeService {
 
             String answerDraft = answerDraftBuilder.build(command.userInput(), plan, executionResults);
             TeamReviewResultDTO reviewResult = review(command, context, plan, executionResults, answerDraft, limiter, spanId(runSpan));
+            List<TeamReviewResultDTO> reviewResults = new ArrayList<>();
+            reviewResults.add(reviewResult);
             step = emitReview(command, step, answerDraft, reviewResult.reviewResult(), activeEventSink);
 
             if (needsRetry(reviewResult.reviewResult())) {
@@ -139,12 +141,13 @@ public class DefaultTeamRuntimeService implements TeamRuntimeService {
                 taskExecutionResults.add(retriedResult);
                 answerDraft = answerDraftBuilder.build(command.userInput(), plan, executionResults);
                 reviewResult = review(command, context, plan, executionResults, answerDraft, limiter, spanId(runSpan));
+                reviewResults.add(reviewResult);
                 step = emitReview(command, step, answerDraft, reviewResult.reviewResult(), activeEventSink);
             }
 
             String finalAnswer = finalAnswerBuilder.build(answerDraft, reviewResult.reviewResult());
             emit(activeEventSink, TeamRuntimeEventDTO.finalAnswer(command.traceId(), step, "Team final answer generated", null));
-            ModelUsageDTO totalUsage = totalUsage(planResult, taskExecutionResults, reviewResult);
+            ModelUsageDTO totalUsage = totalUsage(planResult, taskExecutionResults, reviewResults);
             safeFinishSpan(runSpan, "SUCCESS", null, null);
             return new AgentRunResult(conversationId, finalAnswer, totalUsage);
         } catch (Exception ex) {
@@ -435,7 +438,7 @@ public class DefaultTeamRuntimeService implements TeamRuntimeService {
     private ModelUsageDTO totalUsage(
             TeamPlanResultDTO planResult,
             List<TeamTaskExecutionResultDTO> taskExecutionResults,
-            TeamReviewResultDTO reviewResult
+            List<TeamReviewResultDTO> reviewResults
     ) {
         int promptTokens = 0;
         int completionTokens = 0;
@@ -461,13 +464,15 @@ public class DefaultTeamRuntimeService implements TeamRuntimeService {
                 }
             }
         }
-        for (ModelInvokeResult invocation : reviewResult.modelInvocations()) {
-            ModelUsageDTO usage = invocation.usage();
-            if (usage != null) {
-                promptTokens += usage.promptTokens();
-                completionTokens += usage.completionTokens();
-                totalTokens += usage.totalTokens();
-                estimated = estimated || usage.estimated();
+        for (TeamReviewResultDTO reviewResult : reviewResults) {
+            for (ModelInvokeResult invocation : reviewResult.modelInvocations()) {
+                ModelUsageDTO usage = invocation.usage();
+                if (usage != null) {
+                    promptTokens += usage.promptTokens();
+                    completionTokens += usage.completionTokens();
+                    totalTokens += usage.totalTokens();
+                    estimated = estimated || usage.estimated();
+                }
             }
         }
         return new ModelUsageDTO(promptTokens, completionTokens, totalTokens, estimated);

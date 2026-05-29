@@ -135,16 +135,17 @@ class DefaultTeamRuntimeServiceTest {
         when(reviewer.review(any(ReviewTeamCommand.class)))
                 .thenReturn(new TeamReviewResultDTO(
                         new ReviewResultDTO(false, List.of(), List.of("task-1"), "retry task-1"),
-                        List.of()
+                        List.of(modelInvocation("review-retry", 5))
                 ))
                 .thenReturn(new TeamReviewResultDTO(
                         new ReviewResultDTO(true, List.of(), List.of(), "review passed"),
-                        List.of()
+                        List.of(modelInvocation("review-final", 7))
                 ));
 
         AgentRunResult result = service.run(command(90001L));
 
         assertThat(result.assistantMessage()).contains("Retry result");
+        assertThat(result.usage().totalTokens()).isEqualTo(12);
         verify(executor, times(2)).execute(any(ExecuteTeamTaskCommand.class));
         verify(reviewer, times(2)).review(any(ReviewTeamCommand.class));
 
