@@ -41,6 +41,21 @@ class ReviewResultValidatorTest {
     }
 
     @Test
+    void acceptsFailedReviewThatRequestsReplanWithInstruction() {
+        ReviewResultDTO review = new ReviewResultDTO(
+                false,
+                List.of(new ReviewResultDTO.ReviewIssueDTO(null, "WARN", "Need a new tool-backed task")),
+                List.of(),
+                "Need re-plan",
+                true,
+                "Add a TOOL_TASK that uses weather and keep completed task ids unchanged"
+        );
+
+        assertThatCode(() -> validator.validate(review, executionResults()))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
     void rejectsNullReview() {
         assertThatThrownBy(() -> validator.validate(null, executionResults()))
                 .isInstanceOf(BizException.class)
@@ -63,6 +78,15 @@ class ReviewResultValidatorTest {
         assertThatThrownBy(() -> validator.validate(review, executionResults()))
                 .isInstanceOf(BizException.class)
                 .hasMessageContaining("retryTasks references missing task missing-task");
+    }
+
+    @Test
+    void rejectsReplanWithoutInstruction() {
+        ReviewResultDTO review = new ReviewResultDTO(false, List.of(), List.of(), "Need re-plan", true, " ");
+
+        assertThatThrownBy(() -> validator.validate(review, executionResults()))
+                .isInstanceOf(BizException.class)
+                .hasMessageContaining("replanInstruction is required");
     }
 
     @Test

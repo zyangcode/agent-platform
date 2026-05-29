@@ -12,18 +12,18 @@ public class TeamAnswerDraftBuilder {
 
     public String build(String userInput, TaskPlanDTO plan, List<ExecutionResultDTO> results) {
         StringBuilder builder = new StringBuilder();
-        builder.append("User request: ").append(safe(userInput)).append("\n");
+        builder.append("用户请求：").append(safe(userInput)).append("\n");
         if (plan != null && plan.goal() != null && !plan.goal().isBlank()) {
-            builder.append("Goal: ").append(plan.goal()).append("\n");
+            builder.append("目标：").append(plan.goal()).append("\n");
         }
-        builder.append("Execution results:\n");
+        builder.append("执行结果：\n");
         builder.append(formatResults(results));
         return builder.toString();
     }
 
     private String formatResults(List<ExecutionResultDTO> results) {
         if (results == null || results.isEmpty()) {
-            return "- No successful task result yet.";
+            return "- 暂无成功的任务结果。";
         }
         return results.stream()
                 .map(result -> "- " + safe(result.taskId()) + " [" + safe(result.status()) + "]: "

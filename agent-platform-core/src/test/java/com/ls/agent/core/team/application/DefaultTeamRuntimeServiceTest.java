@@ -167,6 +167,90 @@ class DefaultTeamRuntimeServiceTest {
     }
 
     @Test
+    void replansWhenReviewerRequestsNewTasksAndExecutesOnlyNewTasks() {
+        when(contextBuilder.build(any(BuildAgentContextCommand.class))).thenReturn(context("TEAM"));
+        when(agentToolResolver.resolve(any())).thenReturn(List.of(tool("weather")));
+        when(planner.plan(any(PlanTeamCommand.class)))
+                .thenReturn(new TeamPlanResultDTO(plan(), List.of(modelInvocation("initial-plan", 3))))
+                .thenReturn(new TeamPlanResultDTO(replannedToolPlan(), List.of(modelInvocation("replan", 11))));
+        when(executor.execute(any(ExecuteTeamTaskCommand.class)))
+                .thenReturn(new TeamTaskExecutionResultDTO(
+                        new ExecutionResultDTO("task-1", "MODEL_TASK", "SUCCESS", "Initial summary", List.of(), null),
+                        List.of(),
+                        List.of()
+                ))
+                .thenReturn(new TeamTaskExecutionResultDTO(
+                        new ExecutionResultDTO("task-weather", "TOOL_TASK", "SUCCESS", "Weather is mild", List.of("weather"), null),
+                        List.of(),
+                        List.of(new AgentToolDispatchResult(
+                                true,
+                                "weather",
+                                AgentToolSourceType.SKILL,
+                                objectMapper.createObjectNode().put("temperature", "18C"),
+                                null
+                        ))
+                ));
+        when(reviewer.review(any(ReviewTeamCommand.class)))
+                .thenReturn(new TeamReviewResultDTO(
+                        new ReviewResultDTO(
+                                false,
+                                List.of(new ReviewResultDTO.ReviewIssueDTO(null, "WARN", "Need current weather")),
+                                List.of(),
+                                "Need weather before final answer",
+                                true,
+                                "Add a TOOL_TASK that calls weather and keep completed task ids unchanged"
+                        ),
+                        List.of(modelInvocation("review-replan", 5))
+                ))
+                .thenReturn(new TeamReviewResultDTO(
+                        new ReviewResultDTO(true, List.of(), List.of(), "review passed"),
+                        List.of(modelInvocation("review-final", 7))
+                ));
+
+        AgentRunResult result = service.run(command(90001L));
+
+        assertThat(result.assistantMessage()).contains("Initial summary", "Weather is mild");
+        assertThat(result.usage().totalTokens()).isEqualTo(26);
+        verify(planner, times(2)).plan(any(PlanTeamCommand.class));
+        verify(executor, times(2)).execute(any(ExecuteTeamTaskCommand.class));
+        verify(reviewer, times(2)).review(any(ReviewTeamCommand.class));
+
+        ArgumentCaptor<PlanTeamCommand> planCaptor = ArgumentCaptor.forClass(PlanTeamCommand.class);
+        verify(planner, times(2)).plan(planCaptor.capture());
+        assertThat(planCaptor.getAllValues().get(0).previousPlan()).isNull();
+        assertThat(planCaptor.getAllValues().get(1).previousPlan()).isEqualTo(plan());
+        assertThat(planCaptor.getAllValues().get(1).previousResults()).extracting(ExecutionResultDTO::taskId)
+                .containsExactly("task-1");
+        assertThat(planCaptor.getAllValues().get(1).previousReview().replanRequired()).isTrue();
+
+        ArgumentCaptor<ExecuteTeamTaskCommand> executeCaptor = ArgumentCaptor.forClass(ExecuteTeamTaskCommand.class);
+        verify(executor, times(2)).execute(executeCaptor.capture());
+        assertThat(executeCaptor.getAllValues()).extracting(command -> command.task().id())
+                .containsExactly("task-1", "task-weather");
+        assertThat(executeCaptor.getAllValues().get(1).previousResults()).extracting(ExecutionResultDTO::taskId)
+                .containsExactly("task-1");
+
+        ArgumentCaptor<TeamRuntimeEventDTO> eventCaptor = ArgumentCaptor.forClass(TeamRuntimeEventDTO.class);
+        verify(eventSink, times(13)).emit(eventCaptor.capture());
+        assertThat(eventCaptor.getAllValues()).extracting(TeamRuntimeEventDTO::type)
+                .containsExactly(
+                        "team_start",
+                        "team_plan",
+                        "team_task_start",
+                        "team_task_result",
+                        "team_review",
+                        "team_retry",
+                        "team_plan",
+                        "team_task_start",
+                        "team_tool_call",
+                        "team_tool_result",
+                        "team_task_result",
+                        "team_review",
+                        "team_final"
+                );
+    }
+
+    @Test
     void emitsToolCallAndToolResultAroundToolTask() {
         when(contextBuilder.build(any(BuildAgentContextCommand.class))).thenReturn(context("TEAM"));
         when(agentToolResolver.resolve(any())).thenReturn(List.of());
@@ -278,6 +362,43 @@ class DefaultTeamRuntimeServiceTest {
                         objectMapper.createObjectNode(),
                         List.of()
                 ))
+        );
+    }
+
+    private TaskPlanDTO replannedToolPlan() {
+        return new TaskPlanDTO(
+                "Plan activity with weather",
+                List.of(
+                        new TeamTaskDTO(
+                                "task-1",
+                                "Summarize",
+                                "Summarize options.",
+                                "MODEL_TASK",
+                                null,
+                                objectMapper.createObjectNode(),
+                                List.of()
+                        ),
+                        new TeamTaskDTO(
+                                "task-weather",
+                                "Fetch weather",
+                                "Fetch weather with the weather tool.",
+                                "TOOL_TASK",
+                                "weather",
+                                objectMapper.createObjectNode(),
+                                List.of("task-1")
+                        )
+                )
+        );
+    }
+
+    private AgentToolDTO tool(String name) {
+        return new AgentToolDTO(
+                name,
+                name,
+                "Tool " + name,
+                AgentToolSourceType.SKILL,
+                objectMapper.createObjectNode(),
+                com.ls.agent.core.agent.tool.AgentToolRiskLevel.LOW
         );
     }
 

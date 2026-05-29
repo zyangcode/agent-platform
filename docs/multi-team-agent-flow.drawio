@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="drawio" version="26.0.0">
+  <diagram name="Multi Team Agent Flow">
+    <mxGraphModel dx="1500" dy="1300" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="1900" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="title" value="多 Agent Team 协作细化流程：Profile.executionMode=TEAM&#xa;重点：外部仍走 /api/chat/stream；Team 只改变 Core Runtime 内部分发和执行过程" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#111827;strokeColor=#111827;fontColor=#ffffff;fontStyle=1;fontSize=22;align=center;verticalAlign=middle;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="80" y="30" width="1540" height="86" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend" value="图例&#xa;蓝色：浏览器 / Web / 请求处理&#xa;橙色：Gateway 治理链和 SSE 透传&#xa;紫色：Core Agent Runtime / 模型调用&#xa;黄色菱形：分支判断&#xa;绿色：成功返回 / 最终结果&#xa;红色：降级 / 失败 / 超限&#xa;灰色虚线：Trace / Token / 记忆等旁路记录" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8fafc;strokeColor=#94a3b8;fontColor=#334155;fontSize=13;align=left;verticalAlign=middle;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="80" y="145" width="350" height="165" as="geometry" />
+        </mxCell>
+
+        <mxCell id="noteScope" value="阶段 4 范围&#xa;1. Team 是 Profile 的执行模式，不是新入口。&#xa;2. Team 事件必须阶段性实时推送。&#xa;3. Team 运行数据先写 Trace Span attributes。&#xa;4. Token Usage 记录 Planner / Executor / Reviewer 的模型调用。&#xa;5. 不做 token 级逐字流式、Team 数据表、流程编辑器。" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8fafc;strokeColor=#64748b;fontColor=#334155;fontSize=13;align=left;verticalAlign=middle;spacing=10;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="470" y="145" width="520" height="165" as="geometry" />
+        </mxCell>
+
+        <mxCell id="noteEvents" value="Team SSE 事件顺序&#xa;team_start&#xa;team_plan&#xa;team_task_start / team_tool_call / team_tool_result / team_task_result&#xa;team_review&#xa;team_retry（可选：重试或 re-plan）&#xa;team_plan（仅 re-plan 时再次出现）&#xa;team_final&#xa;message&#xa;done" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff7ed;strokeColor=#f97316;fontColor=#9a3412;fontSize=13;align=left;verticalAlign=middle;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="1030" y="145" width="590" height="165" as="geometry" />
+        </mxCell>
+
+        <mxCell id="start" value="开始&#xa;用户在 Chat 页面发送消息&#xa;选择 Team Profile" style="ellipse;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontColor=#166534;fontSize=13;align=center;verticalAlign=middle;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="650" y="350" width="320" height="86" as="geometry" />
+        </mxCell>
+
+        <mxCell id="webChat" value="1. Web 接收 Chat 请求&#xa;POST /api/chat/stream&#xa;JWT CurrentUser + ChatStreamRequest" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#1e3a8a;fontSize=13;align=center;verticalAlign=middle;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="590" y="490" width="440" height="95" as="geometry" />
+        </mxCell>
+
+        <mxCell id="toGateway" value="2. Web 转发到 Gateway&#xa;InternalChatStreamRequest&#xa;X-Internal-Token" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontColor=#7c2d12;fontSize=13;align=center;verticalAlign=middle;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="590" y="640" width="440" height="95" as="geometry" />
+        </mxCell>
+
+        <mxCell id="gatewayGovernance" value="3. Gateway 治理链&#xa;SensitiveDataFilter -> QuotaFilter&#xa;StartTraceRoot + 保持 SSE 输出流" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontColor=#7c2d12;fontSize=13;align=center;verticalAlign=middle;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="590" y="790" width="440" height="105" as="geometry" />
+        </mxCell>
+
+        <mxCell id="agentRuntime" value="4. Core AgentRuntimeService.run(...)&#xa;确保 conversation&#xa;buildContext(profile / skills / mcp / memory / history)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontColor=#5b21b6;fontSize=13;align=center;verticalAlign=middle;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="590" y="955" width="440" height="110" as="geometry" />
+        </mxCell>
+
+        <mxCell id="modeDecision" value="5. Profile.executionMode ?&#xa;BASIC / TEAM" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontColor=#92400e;fontSize=13;align=center;verticalAlign=middle;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="670" y="1125" width="280" height="145" as="geometry" />
+        </mxCell>
+
+        <mxCell id="basicPath" value="BASIC 分支&#xa;继续单 Agent runModelLoop(...)&#xa;thinking / action / observation / message / done" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#1e3a8a;fontSize=13;align=center;verticalAlign=middle;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="1050" y="1150" width="380" height="105" as="geometry" />
+        </mxCell>
+
+        <mxCell id="teamStart" value="6. TEAM 分支&#xa;保存用户消息&#xa;委托 TeamRuntimeService.run(..., TeamEventSink)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontColor=#5b21b6;fontSize=13;align=center;verticalAlign=middle;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="590" y="1330" width="440" height="105" as="geometry" />
+        </mxCell>
+
+        <mxCell id="emitStart" value="7. emit team_start&#xa;Orchestrator 创建 Team Run 上下文&#xa;初始化 TeamRunLimiter" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontColor=#7c2d12;fontSize=13;align=center;verticalAlign=middle;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="590" y="1490" width="440" height="95" as="geometry" />
+        </mxCell>
+
+        <mxCell id="planner" value="8. Planner 规划 TaskPlan&#xa;输入：用户目标 + Profile Prompt + AgentTool 列表&#xa;输出：goal + tasks[]" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontColor=#5b21b6;fontSize=13;align=center;verticalAlign=middle;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="160" y="1650" width="390" height="115" as="geometry" />
+        </mxCell>
+
+        <mxCell id="planValid" value="9. TaskPlan 校验通过？&#xa;JSON Schema / taskType / dependsOn / maxTasks / tool 可用性" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontColor=#92400e;fontSize=12;align=center;verticalAlign=middle;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="645" y="1635" width="330" height="145" as="geometry" />
+        </mxCell>
+
+        <mxCell id="plannerFallback" value="9B. 失败降级&#xa;首次要求模型修正&#xa;二次失败生成通用 MODEL_TASK fallback&#xa;不能硬编码 weather/search/calculator" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontColor=#7f1d1d;fontSize=13;align=center;verticalAlign=middle;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="1080" y="1650" width="410" height="115" as="geometry" />
+        </mxCell>
+
+        <mxCell id="emitPlan" value="10. emit team_plan&#xa;前端右侧 Team 面板展示任务列表&#xa;Trace 写入 team.plan" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontColor=#7c2d12;fontSize=13;align=center;verticalAlign=middle;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="590" y="1845" width="440" height="95" as="geometry" />
+        </mxCell>
+
+        <mxCell id="executor" value="11. Executor 按依赖顺序执行任务&#xa;每个任务 emit team_task_start&#xa;任务级 Trace：team.task.execute" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontColor=#5b21b6;fontSize=13;align=center;verticalAlign=middle;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="590" y="1995" width="440" height="105" as="geometry" />
+        </mxCell>
+
+        <mxCell id="taskType" value="12. 当前单个任务类型？&#xa;taskType 只能二选一&#xa;TOOL_TASK 或 MODEL_TASK" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontColor=#92400e;fontSize=13;align=center;verticalAlign=middle;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="670" y="2160" width="280" height="145" as="geometry" />
+        </mxCell>
+
+        <mxCell id="toolTask" value="13A. TOOL_TASK&#xa;AgentToolDispatcher 分发&#xa;SKILL -> SkillExecutor&#xa;MCP -> McpToolExecutor" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontColor=#7c2d12;fontSize=13;align=center;verticalAlign=middle;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="145" y="2180" width="360" height="115" as="geometry" />
+        </mxCell>
+
+        <mxCell id="toolEvents" value="14A. 工具过程事件&#xa;emit team_tool_call&#xa;emit team_tool_result&#xa;敏感数据不直接透传原始参数" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontColor=#7c2d12;fontSize=13;align=center;verticalAlign=middle;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="145" y="2360" width="360" height="110" as="geometry" />
+        </mxCell>
+
+        <mxCell id="modelTask" value="13B. MODEL_TASK&#xa;调用 ModelInvokeService&#xa;只生成当前任务结果&#xa;不重新规划、不生成最终总结" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontColor=#5b21b6;fontSize=13;align=center;verticalAlign=middle;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="1095" y="2180" width="360" height="115" as="geometry" />
+        </mxCell>
+
+        <mxCell id="taskResult" value="15. 单个任务结果汇合&#xa;生成 ExecutionResult&#xa;SUCCESS / FAILED / SKIPPED&#xa;emit team_task_result&#xa;失败不直接中断整个 Team" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#1e3a8a;fontSize=13;align=center;verticalAlign=middle;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="590" y="2425" width="440" height="110" as="geometry" />
+        </mxCell>
+
+        <mxCell id="exclusiveNote" value="互斥分支说明&#xa;这里不是并行执行。&#xa;Executor 逐个取任务：&#xa;- taskType=TOOL_TASK 只走左侧工具分支&#xa;- taskType=MODEL_TASK 只走右侧模型分支&#xa;两条线最后汇合，只表示都产出同一种 ExecutionResult。" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fffbeb;strokeColor=#f59e0b;fontColor=#92400e;fontSize=13;align=left;verticalAlign=middle;spacing=10;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="1080" y="2370" width="430" height="145" as="geometry" />
+        </mxCell>
+
+        <mxCell id="moreTasks" value="16. 还有可执行任务？&#xa;检查 dependsOn / maxToolCalls / maxModelCalls / timeoutMs" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontColor=#92400e;fontSize=12;align=center;verticalAlign=middle;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="670" y="2595" width="280" height="145" as="geometry" />
+        </mxCell>
+
+        <mxCell id="answerDraft" value="17. Orchestrator 汇总 answerDraft&#xa;输入：TaskPlan + ExecutionResult 列表&#xa;这一步还不是最终答案" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#1e3a8a;fontSize=13;align=center;verticalAlign=middle;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="590" y="2810" width="440" height="95" as="geometry" />
+        </mxCell>
+
+        <mxCell id="reviewer" value="18. Reviewer 审查 answerDraft&#xa;检查覆盖度、失败任务、风险说明&#xa;可要求 retryTasks 或 replanRequired&#xa;Trace 写入 team.review" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontColor=#5b21b6;fontSize=13;align=center;verticalAlign=middle;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="590" y="2965" width="440" height="105" as="geometry" />
+        </mxCell>
+
+        <mxCell id="reviewPass" value="19. Review 通过？&#xa;passed=true 或 fallback accepted" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontColor=#92400e;fontSize=13;align=center;verticalAlign=middle;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="670" y="3130" width="280" height="145" as="geometry" />
+        </mxCell>
+
+        <mxCell id="retry" value="19B. 未通过且可重试&#xa;emit team_retry，maxRetries=1&#xa;A. retryTasks 非空：只重试指定旧任务&#xa;B. replanRequired=true：再次调用 Planner&#xa;输出完整更新计划，只执行新增 task id" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontColor=#7f1d1d;fontSize=13;align=center;verticalAlign=middle;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="160" y="3135" width="370" height="115" as="geometry" />
+        </mxCell>
+
+        <mxCell id="finalAnswer" value="20. Orchestrator 生成最终答案&#xa;结合 answerDraft + review notes&#xa;emit team_final" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontColor=#166534;fontSize=13;align=center;verticalAlign=middle;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="590" y="3350" width="440" height="95" as="geometry" />
+        </mxCell>
+
+        <mxCell id="gatewayFinish" value="21. Gateway 写出 message / done&#xa;quotaFilter.commit(actualTokens)&#xa;finishTraceRoot SUCCESS" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontColor=#7c2d12;fontSize=13;align=center;verticalAlign=middle;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="590" y="3505" width="440" height="95" as="geometry" />
+        </mxCell>
+
+        <mxCell id="end" value="结束&#xa;前端展示最终回答&#xa;右侧保留 Team Run 过程" style="ellipse;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontColor=#166534;fontSize=13;align=center;verticalAlign=middle;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="655" y="3660" width="310" height="86" as="geometry" />
+        </mxCell>
+
+        <mxCell id="traceToken" value="旁路记录：Trace / Token Usage&#xa;team.run&#xa;team.plan&#xa;team.task.execute&#xa;team.review&#xa;Planner / Executor / Reviewer 模型调用逐条写 token_usage_logs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8fafc;strokeColor=#64748b;fontColor=#334155;fontSize=13;align=left;verticalAlign=middle;spacing=10;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="1080" y="2800" width="430" height="170" as="geometry" />
+        </mxCell>
+
+        <mxCell id="guardrails" value="TeamRunLimiter 护栏&#xa;maxTasks=8&#xa;maxRetries=1&#xa;maxToolCalls=8&#xa;maxModelCalls=6&#xa;timeoutMs=120000&#xa;任何超限都要转成可观测失败，不允许 hang 住主链路" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef2f2;strokeColor=#ef4444;fontColor=#7f1d1d;fontSize=13;align=left;verticalAlign=middle;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="1080" y="3010" width="430" height="165" as="geometry" />
+        </mxCell>
+
+        <mxCell id="frontendPanel" value="前端展示&#xa;Chat 事件流：逐步追加 team_*&#xa;RuntimeDetailPanel：TeamRunPanel&#xa;Trace Detail：Team span 中文标签&#xa;Token Usage：多次模型调用正常展示" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#3b82f6;fontColor=#1e3a8a;fontSize=13;align=left;verticalAlign=middle;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="1080" y="3220" width="430" height="145" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#2563eb;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="start" target="webChat"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e2" value="SSE" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#2563eb;strokeWidth=2;endArrow=block;endFill=1;fontSize=12;fontColor=#1e3a8a;" edge="1" parent="1" source="webChat" target="toGateway"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#d79b00;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="toGateway" target="gatewayGovernance"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e4" value="AgentRunCommand" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#9673a6;strokeWidth=2;endArrow=block;endFill=1;fontSize=12;fontColor=#5b21b6;" edge="1" parent="1" source="gatewayGovernance" target="agentRuntime"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e5" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#9673a6;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="agentRuntime" target="modeDecision"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="eBasic" value="BASIC" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#2563eb;strokeWidth=2;endArrow=block;endFill=1;fontSize=12;fontColor=#1e3a8a;" edge="1" parent="1" source="modeDecision" target="basicPath"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="eTeam" value="TEAM" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#9673a6;strokeWidth=2;endArrow=block;endFill=1;fontSize=12;fontColor=#5b21b6;" edge="1" parent="1" source="modeDecision" target="teamStart"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e6" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#9673a6;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="teamStart" target="emitStart"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e7" value="team_start" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#d79b00;strokeWidth=2;endArrow=block;endFill=1;fontSize=12;fontColor=#7c2d12;" edge="1" parent="1" source="emitStart" target="planner"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="810" y="1615" /><mxPoint x="355" y="1615" /></Array></mxGeometry></mxCell>
+        <mxCell id="e8" value="TaskPlan" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#9673a6;strokeWidth=2;endArrow=block;endFill=1;fontSize=12;fontColor=#5b21b6;" edge="1" parent="1" source="planner" target="planValid"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e9Fail" value="否" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#b85450;strokeWidth=2;endArrow=block;endFill=1;fontSize=12;fontColor=#7f1d1d;" edge="1" parent="1" source="planValid" target="plannerFallback"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e9Fix" value="修正后再校验" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;strokeColor=#b85450;strokeWidth=2;endArrow=block;endFill=1;fontSize=12;fontColor=#7f1d1d;" edge="1" parent="1" source="plannerFallback" target="planValid"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1285" y="1810" /><mxPoint x="810" y="1810" /></Array></mxGeometry></mxCell>
+        <mxCell id="e9Ok" value="是" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;strokeWidth=2;endArrow=block;endFill=1;fontSize=12;fontColor=#166534;" edge="1" parent="1" source="planValid" target="emitPlan"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e10" value="team_plan" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#d79b00;strokeWidth=2;endArrow=block;endFill=1;fontSize=12;fontColor=#7c2d12;" edge="1" parent="1" source="emitPlan" target="executor"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e11" value="next task" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#9673a6;strokeWidth=2;endArrow=block;endFill=1;fontSize=12;fontColor=#5b21b6;" edge="1" parent="1" source="executor" target="taskType"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="eTool" value="若 taskType=TOOL_TASK" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#d79b00;strokeWidth=2;endArrow=block;endFill=1;fontSize=12;fontColor=#7c2d12;" edge="1" parent="1" source="taskType" target="toolTask"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="eTool2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#d79b00;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="toolTask" target="toolEvents"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="eToolResult" value="tool result" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#d79b00;strokeWidth=2;endArrow=block;endFill=1;fontSize=12;fontColor=#7c2d12;" edge="1" parent="1" source="toolEvents" target="taskResult"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="325" y="2495" /></Array></mxGeometry></mxCell>
+        <mxCell id="eModel" value="若 taskType=MODEL_TASK" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#9673a6;strokeWidth=2;endArrow=block;endFill=1;fontSize=12;fontColor=#5b21b6;" edge="1" parent="1" source="taskType" target="modelTask"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="eModelResult" value="model result" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#9673a6;strokeWidth=2;endArrow=block;endFill=1;fontSize=12;fontColor=#5b21b6;" edge="1" parent="1" source="modelTask" target="taskResult"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1275" y="2495" /></Array></mxGeometry></mxCell>
+        <mxCell id="e15" value="team_task_result" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#2563eb;strokeWidth=2;endArrow=block;endFill=1;fontSize=12;fontColor=#1e3a8a;" edge="1" parent="1" source="taskResult" target="moreTasks"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="eMore" value="是" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;strokeColor=#2563eb;strokeWidth=2;endArrow=block;endFill=1;fontSize=12;fontColor=#1e3a8a;" edge="1" parent="1" source="moreTasks" target="executor"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="530" y="2668" /><mxPoint x="530" y="2048" /></Array></mxGeometry></mxCell>
+        <mxCell id="eNoMore" value="否" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;strokeWidth=2;endArrow=block;endFill=1;fontSize=12;fontColor=#166534;" edge="1" parent="1" source="moreTasks" target="answerDraft"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="eDraft" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#2563eb;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="answerDraft" target="reviewer"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="eReview" value="team_review" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#9673a6;strokeWidth=2;endArrow=block;endFill=1;fontSize=12;fontColor=#5b21b6;" edge="1" parent="1" source="reviewer" target="reviewPass"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="eRetry" value="否" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#b85450;strokeWidth=2;endArrow=block;endFill=1;fontSize=12;fontColor=#7f1d1d;" edge="1" parent="1" source="reviewPass" target="retry"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="eRetryLoop" value="重试旧任务 / re-plan 后执行新增任务" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;strokeColor=#b85450;strokeWidth=2;endArrow=block;endFill=1;fontSize=12;fontColor=#7f1d1d;" edge="1" parent="1" source="retry" target="executor"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="345" y="3215" /><mxPoint x="80" y="3215" /><mxPoint x="80" y="2048" /><mxPoint x="570" y="2048" /></Array></mxGeometry></mxCell>
+        <mxCell id="ePass" value="是 / 达到重试上限后仲裁" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;strokeWidth=2;endArrow=block;endFill=1;fontSize=12;fontColor=#166534;" edge="1" parent="1" source="reviewPass" target="finalAnswer"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="eFinal" value="team_final" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;strokeWidth=2;endArrow=block;endFill=1;fontSize=12;fontColor=#166534;" edge="1" parent="1" source="finalAnswer" target="gatewayFinish"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="eDone" value="message / done" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#d79b00;strokeWidth=2;endArrow=block;endFill=1;fontSize=12;fontColor=#7c2d12;" edge="1" parent="1" source="gatewayFinish" target="end"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="eBasicDone" value="message / done" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;strokeColor=#2563eb;strokeWidth=2;endArrow=block;endFill=1;fontSize=12;fontColor=#1e3a8a;" edge="1" parent="1" source="basicPath" target="gatewayFinish"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1240" y="3552" /></Array></mxGeometry></mxCell>
+        <mxCell id="eTrace1" value="trace/token" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;strokeColor=#64748b;strokeWidth=2;endArrow=block;endFill=1;fontSize=12;fontColor=#334155;" edge="1" parent="1" source="planner" target="traceToken"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1540" y="1708" /><mxPoint x="1540" y="2885" /></Array></mxGeometry></mxCell>
+        <mxCell id="eTrace2" value="trace/token" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;strokeColor=#64748b;strokeWidth=2;endArrow=block;endFill=1;fontSize=12;fontColor=#334155;" edge="1" parent="1" source="taskResult" target="traceToken"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ePanel" value="SSE event stream" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;strokeColor=#3b82f6;strokeWidth=2;endArrow=block;endFill=1;fontSize=12;fontColor=#1e3a8a;" edge="1" parent="1" source="gatewayFinish" target="frontendPanel"><mxGeometry relative="1" as="geometry" /></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

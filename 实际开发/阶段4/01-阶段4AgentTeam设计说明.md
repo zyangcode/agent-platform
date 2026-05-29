@@ -22,7 +22,7 @@
 - TaskPlan 经过后端校验。
 - Executor 按依赖顺序执行任务，并调用授权 Skill / MCP Tool。
 - Reviewer 审查执行结果。
-- Reviewer 不通过时最多重试一次指定任务。
+- Reviewer 不通过时最多消耗一次 retry 预算：可重试指定旧任务，或请求 Orchestrator re-plan 后只执行新增任务。
 - Orchestrator 汇总最终答案。
 - SSE 能阶段性实时展示 plan / execute / review / final 事件，不能等 Team 全部执行结束后一次性刷出过程。
 - Trace Detail 能看到 planner、executor、reviewer、tool call 等 span。
@@ -103,7 +103,7 @@ Team 的主数据流固定为：
  -> Executor 执行 TOOL_TASK / MODEL_TASK
  -> Orchestrator 基于 ExecutionResult 生成 answerDraft
  -> Reviewer 审查 TaskPlan + ExecutionResult + answerDraft
- -> 必要时 Orchestrator 触发一次 retry
+ -> 必要时 Orchestrator 触发一次 retry 或 re-plan
  -> Orchestrator 输出 finalAnswer
 ```
 
@@ -246,16 +246,19 @@ Reviewer 负责审查执行结果是否满足用户目标。
   "passed": true,
   "issues": [],
   "retryTasks": [],
-  "summary": "方案已覆盖天气、预算和活动强度。"
+  "summary": "方案已覆盖天气、预算和活动强度。",
+  "replanRequired": false,
+  "replanInstruction": null
 }
 ```
 
 约束：
 
 - 不调用业务工具。
-- 不重新规划任务。
-- 只能建议重试已有任务。
-- 重试最多一次。
+- 不直接重新规划任务，不直接执行任务。
+- 可以通过 `retryTasks` 建议重试已有任务。
+- 如果缺少新信息且旧任务重试无法解决，可以设置 `replanRequired=true` 并给出 `replanInstruction`，由 Orchestrator 重新调用 Planner。
+- retry / re-plan 共用一次 `maxRetries` 预算。
 
 ## 6. AgentTool 统一工具视图
 
@@ -429,8 +432,9 @@ Reviewer 判断是否可接受。
 Reviewer 不通过：
 
 ```text
-按 retryTasks 最多重试一次。
-仍不通过时返回当前最优结果和风险说明。
+retryTasks 非空：按 retryTasks 最多重试一次已有任务。
+replanRequired=true 且 retryTasks 为空：Orchestrator 重新调用 Planner，生成完整更新计划，只执行新增 task id。
+仍不通过或达到 retry 上限时返回当前最优结果和风险说明。
 ```
 
 模型调用失败：

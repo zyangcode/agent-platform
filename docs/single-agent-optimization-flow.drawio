@@ -1,0 +1,258 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="drawio" version="26.0.0">
+  <diagram name="Single Agent Explicit Loop">
+    <mxGraphModel dx="2200" dy="1500" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2200" pageHeight="1500" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="2" value="单 Agent 主链路优化图：显式 ReAct 循环 + 并行工具调用 + RAG/pgvector + 箭头语义" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=18;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="30" width="900" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="3" value="图例&#xa;实线箭头：主执行数据流&#xa;虚线箭头：观测/治理/异步输出&#xa;粗蓝回环：Agent 下一轮循环&#xa;黑色粗条：Fork/Join，并行工具调用汇合&#xa;pgvector：PostgreSQL 的向量扩展，不是单独服务" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=13;align=left;spacingLeft=12;" vertex="1" parent="1">
+          <mxGeometry x="1580" y="30" width="520" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="4" value="A. 入口与 Gateway 治理：只做入口、安全、SSE，不组装 Agent 上下文" style="swimlane;whiteSpace=wrap;html=1;startSize=32;fillColor=#fff7e6;strokeColor=#d79b00;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="190" width="410" height="1080" as="geometry" />
+        </mxCell>
+        <mxCell id="5" value="1 用户 / Web Chat&#xa;作用：输入需求，实时渲染 SSE token" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=13;fontStyle=1;" vertex="1" parent="4">
+          <mxGeometry x="70" y="60" width="250" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="6" value="2 Web Controller&#xa;作用：JWT 鉴权后的浏览器入口，转发到 Gateway" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=13;" vertex="1" parent="4">
+          <mxGeometry x="70" y="190" width="250" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="7" value="3 Gateway SSE Controller&#xa;作用：创建 SSE 输出流，写 message_delta/message/done" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=13;fontStyle=1;" vertex="1" parent="4">
+          <mxGeometry x="70" y="320" width="250" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="8" value="4 Gateway 治理链&#xa;作用：Trace Root、Quota 预扣、敏感数据扫描、告警兜底" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=13;" vertex="1" parent="4">
+          <mxGeometry x="55" y="460" width="280" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="9" value="SSE 输出事件&#xa;message_delta：token 增量&#xa;message：最终完整回答&#xa;done/error：结束态" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=13;align=left;spacingLeft=10;" vertex="1" parent="4">
+          <mxGeometry x="55" y="700" width="280" height="125" as="geometry" />
+        </mxCell>
+        <mxCell id="10" value="Gateway 不做的事&#xa;不拼 Prompt&#xa;不决定工具&#xa;不执行 Skill/MCP&#xa;不管理 RAG 上下文" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=13;align=left;spacingLeft=10;" vertex="1" parent="4">
+          <mxGeometry x="55" y="880" width="280" height="125" as="geometry" />
+        </mxCell>
+        <mxCell id="11" value="B. Core 上下文与 RAG：决定模型看见什么" style="swimlane;whiteSpace=wrap;html=1;startSize=32;fillColor=#f3fff2;strokeColor=#82b366;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="510" y="190" width="500" height="1080" as="geometry" />
+        </mxCell>
+        <mxCell id="12" value="5 AgentRuntimeService.run&#xa;作用：单 Agent 总控，维护本次 ReAct 循环状态" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=13;fontStyle=1;" vertex="1" parent="11">
+          <mxGeometry x="95" y="60" width="300" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="13" value="6 AgentContextBuilder&#xa;作用：组装 System Prompt、Profile Prompt、History、Memory" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=13;" vertex="1" parent="11">
+          <mxGeometry x="95" y="185" width="300" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="14" value="7 ToolResolver&#xa;作用：列出本轮可用 Skill/MCP，生成名称、描述、参数 Schema、风险等级" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=13;" vertex="1" parent="11">
+          <mxGeometry x="95" y="315" width="300" height="95" as="geometry" />
+        </mxCell>
+        <mxCell id="15" value="8 Query Embedding&#xa;作用：把用户问题转成向量，用于相似度检索" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=13;" vertex="1" parent="11">
+          <mxGeometry x="95" y="455" width="300" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="16" value="9 PostgreSQL + pgvector&#xa;作用：向量库。knowledge_chunk.embedding 存文档分段向量，按 cosine/L2 检索 topK" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=13;fontStyle=1;" vertex="1" parent="11">
+          <mxGeometry x="100" y="590" width="290" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="17" value="10 RAG Context Composer&#xa;作用：把 topK 知识片段压缩成“参考资料”，并写入上下文预算" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=13;" vertex="1" parent="11">
+          <mxGeometry x="95" y="755" width="300" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="18" value="11 Context Budget Snapshot&#xa;作用：输出给循环的上下文包：messages + tool specs + rag refs + token estimate" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=13;fontStyle=1;" vertex="1" parent="11">
+          <mxGeometry x="85" y="900" width="320" height="95" as="geometry" />
+        </mxCell>
+        <mxCell id="19" value="C. 主模型 ReAct 循环：模型决定下一步，Runtime 负责边界和执行" style="swimlane;whiteSpace=wrap;html=1;startSize=32;fillColor=#eef5ff;strokeColor=#6c8ebf;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1070" y="190" width="520" height="1080" as="geometry" />
+        </mxCell>
+        <mxCell id="20" value="12 Round Start&#xa;作用：进入第 N 轮，检查 timeout/maxRounds/maxToolCalls" style="ellipse;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=13;fontStyle=1;" vertex="1" parent="19">
+          <mxGeometry x="160" y="55" width="190" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="21" value="13 Micro Compact&#xa;作用：先裁剪过长 tool observation、RAG 片段、异常输出，避免污染模型上下文" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=13;fontStyle=1;" vertex="1" parent="19">
+          <mxGeometry x="100" y="185" width="310" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="22" value="14 Token Budget Decision&#xa;作用：判断是否超过阈值&#xa;输入：当前 messages + tools + RAG 的估算 token" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=13;fontStyle=1;" vertex="1" parent="19">
+          <mxGeometry x="160" y="320" width="190" height="125" as="geometry" />
+        </mxCell>
+        <mxCell id="23" value="15 Auto Compact / Fallback Trim&#xa;作用：旧历史摘要化，保留最近 N 条；摘要失败则保留最近上下文并注入降级说明" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=13;" vertex="1" parent="19">
+          <mxGeometry x="100" y="500" width="310" height="105" as="geometry" />
+        </mxCell>
+        <mxCell id="24" value="16 Main Model Streaming Call&#xa;作用：调用主模型；token 通过回调实时输出，同时聚合完整 assistant message" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=13;fontStyle=1;" vertex="1" parent="19">
+          <mxGeometry x="90" y="665" width="330" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="25" value="17 Parse Assistant Output&#xa;作用：识别最终答案、单个工具调用、多个并行工具调用、或非法输出" style="rhombus;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=13;fontStyle=1;" vertex="1" parent="19">
+          <mxGeometry x="150" y="825" width="210" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="26" value="18 Final Answer Builder&#xa;作用：清洗内部标签和工具 JSON，只返回用户可读答案" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=13;fontStyle=1;" vertex="1" parent="19">
+          <mxGeometry x="60" y="1010" width="220" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="27" value="19 Tool Request Batch&#xa;作用：把模型一次输出的多个工具请求整理成批次，交给并行执行层" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=13;fontStyle=1;" vertex="1" parent="19">
+          <mxGeometry x="310" y="1010" width="190" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="28" value="D. 并行工具执行：工具之间不依赖时可并列跑，Join 后统一写回上下文" style="swimlane;whiteSpace=wrap;html=1;startSize=32;fillColor=#f7f0ff;strokeColor=#9673a6;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1650" y="190" width="510" height="1080" as="geometry" />
+        </mxCell>
+        <mxCell id="29" value="" style="shape=line;html=1;strokeWidth=8;strokeColor=#333333;" vertex="1" parent="28">
+          <mxGeometry x="70" y="85" width="370" height="10" as="geometry" />
+        </mxCell>
+        <mxCell id="30" value="20 Fork&#xa;作用：把一个模型响应里的多个独立工具调用拆开并行执行" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;" vertex="1" parent="28">
+          <mxGeometry x="115" y="35" width="280" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="31" value="21a Skill 调用&#xa;作用：执行配置型/Jar Skill&#xa;来源：Skill Registry / URLClassLoader" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=13;" vertex="1" parent="28">
+          <mxGeometry x="30" y="145" width="140" height="115" as="geometry" />
+        </mxCell>
+        <mxCell id="32" value="21b MCP 调用&#xa;作用：调用外部 MCP 工具&#xa;来源：MCP Tool Registry" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=13;" vertex="1" parent="28">
+          <mxGeometry x="185" y="145" width="140" height="115" as="geometry" />
+        </mxCell>
+        <mxCell id="33" value="21c Task/SubAgent 调用&#xa;作用：复杂子任务委托&#xa;增强项：独立上下文、裁剪工具集、防递归" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=13;fontStyle=1;" vertex="1" parent="28">
+          <mxGeometry x="340" y="145" width="140" height="115" as="geometry" />
+        </mxCell>
+        <mxCell id="34" value="22 Risk Guard&#xa;作用：按风险等级确认或阻断。Web 场景通过 tool_confirm_required SSE 等待确认" style="rhombus;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=13;fontStyle=1;" vertex="1" parent="28">
+          <mxGeometry x="160" y="320" width="190" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="35" value="23 ToolDispatcher&#xa;作用：统一分发，不让 Runtime 直接依赖 SkillExecutor/McpExecutor" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=13;fontStyle=1;" vertex="1" parent="28">
+          <mxGeometry x="105" y="490" width="300" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="36" value="24 Tool Result Normalizer&#xa;作用：把成功、失败、异常统一成 observation；空结果写 [empty]，异常写 [tool crash]" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=13;" vertex="1" parent="28">
+          <mxGeometry x="95" y="635" width="320" height="95" as="geometry" />
+        </mxCell>
+        <mxCell id="37" value="" style="shape=line;html=1;strokeWidth=8;strokeColor=#333333;" vertex="1" parent="28">
+          <mxGeometry x="70" y="790" width="370" height="10" as="geometry" />
+        </mxCell>
+        <mxCell id="38" value="25 Join&#xa;作用：等待并行工具全部完成，按请求顺序合并 observation" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;" vertex="1" parent="28">
+          <mxGeometry x="115" y="810" width="280" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="39" value="26 Loop Limit Decision&#xa;作用：检查 maxRounds、maxToolCalls、timeout、token danger ratio；超限则降级收尾" style="rhombus;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=13;fontStyle=1;" vertex="1" parent="28">
+          <mxGeometry x="155" y="900" width="200" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="40" value="存储/观测侧写入&#xa;conversation_message：用户/助手消息&#xa;memory：长期记忆/摘要&#xa;trace_span：每个关键步骤&#xa;token_usage：预扣/结算" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=13;align=left;spacingLeft=12;" vertex="1" parent="1">
+          <mxGeometry x="510" y="1320" width="610" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="41" value="全链路治理插点&#xa;入站敏感扫描 -> 工具入参扫描 -> 工具结果扫描 -> 最终响应扫描&#xa;Trace 只做诊断，不允许打断用户响应；告警失败只记录状态" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=13;align=left;spacingLeft=12;" vertex="1" parent="1">
+          <mxGeometry x="1190" y="1320" width="700" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="42" value="用户消息 + profileId + skill/mcp 选择" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="4" source="5" target="6">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="43" value="内部请求，保持 SSE" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="4" source="6" target="7">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="44" value="创建 traceId，预扣配额，扫描请求" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="4" source="7" target="8">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="45" value="AgentRunCommand：治理后的运行命令" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="8" target="12">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="46" value="读取 Profile、History、Memory" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="11" source="12" target="13">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="47" value="把可用工具声明注入 Prompt" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="11" source="13" target="14">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="48" value="用户问题 -> query vector" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="11" source="14" target="15">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="49" value="向量相似度检索 topK chunks" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="11" source="15" target="16">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="50" value="返回知识片段：文本 + 来源 + 分数" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="11" source="16" target="17">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="51" value="最终上下文包：messages/tools/rag/tokenEstimate" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="11" source="17" target="18">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="52" value="进入 ReAct 第 1 轮" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="18" target="20">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="53" value="本轮上下文先清理" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="19" source="20" target="21">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="54" value="估算 token 水位" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="19" source="21" target="22">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="55" value="超阈值：压缩旧上下文" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="19" source="22" target="23">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="56" value="压缩后继续调用模型" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="19" source="23" target="24">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="57" value="未超阈值：直接模型调用" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;entryX=1;entryY=0.25;" edge="1" parent="19" source="22" target="24">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="470" y="382" />
+              <mxPoint x="470" y="690" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="58" value="assistant 完整输出：文本或工具调用" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="19" source="24" target="25">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="59" value="最终答案分支" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.25;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="19" source="25" target="26">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="60" value="工具调用分支：可能 1 个或多个" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.75;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="19" source="25" target="27">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="61" value="token 实时增量：每个 chunk 直接写 SSE" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;flowAnimation=1;dashed=1;exitX=0;exitY=0.5;entryX=1;entryY=0.5;" edge="1" parent="1" source="24" target="7">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1050" y="855" />
+              <mxPoint x="1050" y="120" />
+              <mxPoint x="360" y="120" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="62" value="最终响应：message/done" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;exitX=0;exitY=0.5;entryX=1;entryY=0.5;" edge="1" parent="1" source="26" target="9">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="63" value="工具请求批次：[{name,args,risk,source}]" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="27" target="29">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="64" value="并行分支 A" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.2;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="28" source="29" target="31">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="65" value="并行分支 B" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="28" source="29" target="32">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="66" value="并行分支 C，可选增强" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.8;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="28" source="29" target="33">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="67" value="工具调用先过风险策略" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="28" source="32" target="34">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="68" value="Skill/MCP/SubAgent 均统一分发" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="28" source="34" target="35">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="69" value="执行结果标准化" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="28" source="35" target="36">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="70" value="按工具请求顺序汇合" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="28" source="36" target="37">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="71" value="合并后的 observation 列表" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="28" source="37" target="39">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="72" value="未超限：把 observation 写回 messages，进入下一轮 Round Start" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=3;strokeColor=#0066cc;fontColor=#0066cc;exitX=0;exitY=0.5;entryX=1;entryY=0.5;" edge="1" parent="1" source="39" target="20">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1630" y="1130" />
+              <mxPoint x="1630" y="1460" />
+              <mxPoint x="1330" y="1460" />
+              <mxPoint x="1330" y="260" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="73" value="超限：降级为当前最优答案/风险说明" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;exitX=0;exitY=0.75;entryX=1;entryY=0.5;" edge="1" parent="1" source="39" target="26">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1630" y="1160" />
+              <mxPoint x="1630" y="1280" />
+              <mxPoint x="1550" y="1280" />
+              <mxPoint x="1550" y="1240" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="74" value="存储：消息、记忆、知识分段、用量" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;exitX=0.5;exitY=1;entryX=0.2;entryY=0;" edge="1" parent="1" source="26" target="40">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="75" value="观测：每个关键节点写 Span，不中断主响应" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;exitX=0.5;exitY=1;entryX=0.4;entryY=0;" edge="1" parent="1" source="24" target="41">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

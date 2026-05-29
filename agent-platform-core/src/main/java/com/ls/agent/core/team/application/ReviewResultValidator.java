@@ -28,6 +28,10 @@ public class ReviewResultValidator {
                 fail("retryTasks references missing task " + retryTask);
             }
         }
+        if (Boolean.TRUE.equals(review.replanRequired())
+                && (review.replanInstruction() == null || review.replanInstruction().isBlank())) {
+            fail("replanInstruction is required when replanRequired is true");
+        }
         for (ReviewResultDTO.ReviewIssueDTO issue : review.issues()) {
             if (issue == null) {
                 fail("issue is required");

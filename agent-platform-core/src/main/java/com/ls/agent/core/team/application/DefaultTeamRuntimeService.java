@@ -39,7 +39,9 @@ import com.ls.agent.core.trace.dto.TraceSpanDTO;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Service
 public class DefaultTeamRuntimeService implements TeamRuntimeService {
@@ -111,13 +113,15 @@ public class DefaultTeamRuntimeService implements TeamRuntimeService {
             TraceSpanDTO planSpan = safeStartSpan(command.traceId(), spanId(runSpan), "team.plan", "TEAM",
                     objectMapper.createObjectNode());
             TeamPlanResultDTO planResult = planner.plan(new PlanTeamCommand(command.userInput(), context, tools));
+            List<TeamPlanResultDTO> planResults = new ArrayList<>();
+            planResults.add(planResult);
             limiter.consumeModelCalls(planResult.modelInvocations().size());
             recordModelInvocations(command, planResult.modelInvocations(), spanId(planSpan));
             safeFinishSpan(planSpan, "SUCCESS", null, null);
 
             TaskPlanDTO plan = planResult.plan();
             limiter.checkTaskCount(plan.tasks().size());
-            emit(activeEventSink, TeamRuntimeEventDTO.plan(command.traceId(), step++, "Planner generated task plan", objectMapper.valueToTree(plan)));
+            emit(activeEventSink, TeamRuntimeEventDTO.plan(command.traceId(), step++, "Planner 已生成任务计划", objectMapper.valueToTree(plan)));
 
             TaskExecutionBatch taskExecutionBatch = executeTasks(command, context, tools, plan, limiter, spanId(runSpan), step, activeEventSink);
             List<TeamTaskExecutionResultDTO> taskExecutionResults = taskExecutionBatch.taskResults();
@@ -133,7 +137,7 @@ public class DefaultTeamRuntimeService implements TeamRuntimeService {
             if (needsRetry(reviewResult.reviewResult())) {
                 limiter.consumeRetry();
                 TeamTaskDTO retryTask = findTask(plan, reviewResult.reviewResult().retryTasks().get(0));
-                emit(activeEventSink, TeamRuntimeEventDTO.retry(command.traceId(), step++, retryTask.id(), "Reviewer requested retry", null));
+                emit(activeEventSink, TeamRuntimeEventDTO.retry(command.traceId(), step++, retryTask.id(), "Reviewer 要求重试任务", null));
                 TaskExecutionOutcome retried = executeTask(command, context, tools, retryTask, executionResults, limiter, spanId(runSpan), step, activeEventSink);
                 step += retried.emittedEventCount();
                 TeamTaskExecutionResultDTO retriedResult = retried.taskResult();
@@ -143,11 +147,43 @@ public class DefaultTeamRuntimeService implements TeamRuntimeService {
                 reviewResult = review(command, context, plan, executionResults, answerDraft, limiter, spanId(runSpan));
                 reviewResults.add(reviewResult);
                 step = emitReview(command, step, answerDraft, reviewResult.reviewResult(), activeEventSink);
+            } else if (needsReplan(reviewResult.reviewResult())) {
+                limiter.consumeRetry();
+                emit(activeEventSink, TeamRuntimeEventDTO.retry(command.traceId(), step++, null, "Reviewer 要求重新规划", null));
+                TraceSpanDTO replanSpan = safeStartSpan(command.traceId(), spanId(runSpan), "team.plan", "TEAM",
+                        objectMapper.createObjectNode().put("reason", "reviewer_replan"));
+                TeamPlanResultDTO replanResult = planner.plan(new PlanTeamCommand(
+                        command.userInput(),
+                        context,
+                        tools,
+                        plan,
+                        executionResults,
+                        reviewResult.reviewResult()
+                ));
+                planResults.add(replanResult);
+                limiter.consumeModelCalls(replanResult.modelInvocations().size());
+                recordModelInvocations(command, replanResult.modelInvocations(), spanId(replanSpan));
+                safeFinishSpan(replanSpan, "SUCCESS", null, null);
+
+                TaskPlanDTO previousPlan = plan;
+                plan = replanResult.plan();
+                limiter.checkTaskCount(plan.tasks().size());
+                emit(activeEventSink, TeamRuntimeEventDTO.plan(command.traceId(), step++, "Planner 已生成更新后的任务计划", objectMapper.valueToTree(plan)));
+                TaskExecutionBatch newTaskBatch = executeNewTasks(command, context, tools, previousPlan, plan, executionResults, limiter, spanId(runSpan), step, activeEventSink);
+                taskExecutionResults.addAll(newTaskBatch.taskResults());
+                for (TeamTaskExecutionResultDTO taskResult : newTaskBatch.taskResults()) {
+                    replaceResult(executionResults, taskResult.executionResult());
+                }
+                step += newTaskBatch.emittedEventCount();
+                answerDraft = answerDraftBuilder.build(command.userInput(), plan, executionResults);
+                reviewResult = review(command, context, plan, executionResults, answerDraft, limiter, spanId(runSpan));
+                reviewResults.add(reviewResult);
+                step = emitReview(command, step, answerDraft, reviewResult.reviewResult(), activeEventSink);
             }
 
             String finalAnswer = finalAnswerBuilder.build(answerDraft, reviewResult.reviewResult());
-            emit(activeEventSink, TeamRuntimeEventDTO.finalAnswer(command.traceId(), step, "Team final answer generated", null));
-            ModelUsageDTO totalUsage = totalUsage(planResult, taskExecutionResults, reviewResults);
+            emit(activeEventSink, TeamRuntimeEventDTO.finalAnswer(command.traceId(), step, "Team 已生成最终答案", null));
+            ModelUsageDTO totalUsage = totalUsage(planResults, taskExecutionResults, reviewResults);
             safeFinishSpan(runSpan, "SUCCESS", null, null);
             return new AgentRunResult(conversationId, finalAnswer, totalUsage);
         } catch (Exception ex) {
@@ -179,6 +215,37 @@ public class DefaultTeamRuntimeService implements TeamRuntimeService {
         return new TaskExecutionBatch(taskResults, emittedEventCount);
     }
 
+    private TaskExecutionBatch executeNewTasks(
+            AgentRunCommand command,
+            AgentContextDTO context,
+            List<AgentToolDTO> tools,
+            TaskPlanDTO previousPlan,
+            TaskPlanDTO updatedPlan,
+            List<ExecutionResultDTO> executionResults,
+            TeamRunLimiter limiter,
+            Long parentSpanId,
+            int step,
+            TeamEventSink eventSink
+    ) {
+        Set<String> previousTaskIds = taskIds(previousPlan);
+        Set<String> completedTaskIds = resultTaskIds(executionResults);
+        List<TeamTaskExecutionResultDTO> taskResults = new ArrayList<>();
+        int emittedEventCount = 0;
+        for (TeamTaskDTO task : taskDependencySorter.sort(updatedPlan.tasks())) {
+            String taskId = task.id() == null ? "" : task.id().trim();
+            if (taskId.isBlank() || previousTaskIds.contains(taskId) || completedTaskIds.contains(taskId)) {
+                continue;
+            }
+            TaskExecutionOutcome outcome = executeTask(command, context, tools, task, executionResults, limiter, parentSpanId, step, eventSink);
+            taskResults.add(outcome.taskResult());
+            executionResults.add(outcome.taskResult().executionResult());
+            completedTaskIds.add(taskId);
+            step += outcome.emittedEventCount();
+            emittedEventCount += outcome.emittedEventCount();
+        }
+        return new TaskExecutionBatch(taskResults, emittedEventCount);
+    }
+
     private TaskExecutionOutcome executeTask(
             AgentRunCommand command,
             AgentContextDTO context,
@@ -192,7 +259,7 @@ public class DefaultTeamRuntimeService implements TeamRuntimeService {
     ) {
         limiter.checkTimeout();
         int emittedEventCount = 0;
-        emit(eventSink, TeamRuntimeEventDTO.taskStart(command.traceId(), step + emittedEventCount++, task.id(), "Start task: " + task.name()));
+        emit(eventSink, TeamRuntimeEventDTO.taskStart(command.traceId(), step + emittedEventCount++, task.id(), "开始任务：" + task.name()));
         if ("TOOL_TASK".equals(task.taskType())) {
             emit(eventSink, TeamRuntimeEventDTO.toolCall(command.traceId(), step + emittedEventCount++, task.id(), task.suggestedTool()));
         }
@@ -307,6 +374,13 @@ public class DefaultTeamRuntimeService implements TeamRuntimeService {
         return review != null && Boolean.FALSE.equals(review.passed()) && !review.retryTasks().isEmpty();
     }
 
+    private boolean needsReplan(ReviewResultDTO review) {
+        return review != null
+                && Boolean.FALSE.equals(review.passed())
+                && Boolean.TRUE.equals(review.replanRequired())
+                && review.retryTasks().isEmpty();
+    }
+
     private TeamTaskDTO findTask(TaskPlanDTO plan, String taskId) {
         return plan.tasks().stream()
                 .filter(task -> task.id().equals(taskId))
@@ -328,6 +402,32 @@ public class DefaultTeamRuntimeService implements TeamRuntimeService {
         return new ArrayList<>(taskExecutionResults.stream()
                 .map(TeamTaskExecutionResultDTO::executionResult)
                 .toList());
+    }
+
+    private Set<String> taskIds(TaskPlanDTO plan) {
+        if (plan == null || plan.tasks() == null) {
+            return Set.of();
+        }
+        Set<String> ids = new HashSet<>();
+        for (TeamTaskDTO task : plan.tasks()) {
+            if (task.id() != null && !task.id().isBlank()) {
+                ids.add(task.id().trim());
+            }
+        }
+        return ids;
+    }
+
+    private Set<String> resultTaskIds(List<ExecutionResultDTO> results) {
+        if (results == null || results.isEmpty()) {
+            return new HashSet<>();
+        }
+        Set<String> ids = new HashSet<>();
+        for (ExecutionResultDTO result : results) {
+            if (result.taskId() != null && !result.taskId().isBlank()) {
+                ids.add(result.taskId().trim());
+            }
+        }
+        return ids;
     }
 
     private AgentContextDTO buildContext(AgentRunCommand command, Long conversationId, Long parentSpanId) {
@@ -436,7 +536,7 @@ public class DefaultTeamRuntimeService implements TeamRuntimeService {
     }
 
     private ModelUsageDTO totalUsage(
-            TeamPlanResultDTO planResult,
+            List<TeamPlanResultDTO> planResults,
             List<TeamTaskExecutionResultDTO> taskExecutionResults,
             List<TeamReviewResultDTO> reviewResults
     ) {
@@ -444,13 +544,15 @@ public class DefaultTeamRuntimeService implements TeamRuntimeService {
         int completionTokens = 0;
         int totalTokens = 0;
         boolean estimated = false;
-        for (ModelInvokeResult invocation : planResult.modelInvocations()) {
-            ModelUsageDTO usage = invocation.usage();
-            if (usage != null) {
-                promptTokens += usage.promptTokens();
-                completionTokens += usage.completionTokens();
-                totalTokens += usage.totalTokens();
-                estimated = estimated || usage.estimated();
+        for (TeamPlanResultDTO planResult : planResults) {
+            for (ModelInvokeResult invocation : planResult.modelInvocations()) {
+                ModelUsageDTO usage = invocation.usage();
+                if (usage != null) {
+                    promptTokens += usage.promptTokens();
+                    completionTokens += usage.completionTokens();
+                    totalTokens += usage.totalTokens();
+                    estimated = estimated || usage.estimated();
+                }
             }
         }
         for (TeamTaskExecutionResultDTO taskResult : taskExecutionResults) {

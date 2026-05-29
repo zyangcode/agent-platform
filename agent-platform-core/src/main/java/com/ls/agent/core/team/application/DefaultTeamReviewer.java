@@ -105,14 +105,18 @@ public class DefaultTeamReviewer implements TeamReviewer {
                             {"taskId": "task-1", "level": "INFO or WARN or ERROR", "message": "issue detail"}
                           ],
                           "retryTasks": ["task-1"],
-                          "summary": "short review summary"
+                          "summary": "short review summary",
+                          "replanRequired": false,
+                          "replanInstruction": "only when missing information requires new tasks"
                         }
                         """)
                 .append("\nRules:\n")
                 .append("- Review only the answer draft and execution results.\n")
-                .append("- Do not re-plan tasks.\n")
+                .append("- Do not create a new plan or execute tasks.\n")
                 .append("- Do not call tools.\n")
                 .append("- retryTasks can only contain existing task ids.\n");
+        prompt.append("- Set replanRequired=true only when the answer needs information that cannot be obtained by retrying existing tasks.\n")
+                .append("- When replanRequired=true, leave retryTasks empty and provide a concrete replanInstruction.\n");
         if (previousFailure != null && !previousFailure.isBlank()) {
             prompt.append("\nPrevious review was invalid: ").append(truncateFailure(previousFailure))
                     .append("\nCorrect it and return valid JSON only.\n");

@@ -220,6 +220,81 @@ class DefaultTeamPlannerTest {
         assertThat(retryPrompt).doesNotContain("x".repeat(250));
     }
 
+    @Test
+    void includesPreviousPlanResultsAndReviewWhenReplanning() {
+        when(modelInvokeService.invoke(any(ModelInvokeCommand.class))).thenReturn(modelResult("""
+                {
+                  "goal": "Plan with missing weather",
+                  "tasks": [
+                    {
+                      "id": "task-1",
+                      "name": "Summarize",
+                      "description": "Summarize existing options.",
+                      "taskType": "MODEL_TASK",
+                      "suggestedTool": null,
+                      "arguments": {},
+                      "dependsOn": []
+                    },
+                    {
+                      "id": "task-weather",
+                      "name": "Check weather",
+                      "description": "Check weather before final recommendation.",
+                      "taskType": "TOOL_TASK",
+                      "suggestedTool": "weather",
+                      "arguments": {"city": "Chongqing"},
+                      "dependsOn": ["task-1"]
+                    }
+                  ]
+                }
+                """));
+        PlanTeamCommand replanCommand = new PlanTeamCommand(
+                "Plan an easy team activity",
+                context(),
+                tools(),
+                new TaskPlanDTO(
+                        "Plan activity",
+                        List.of(new com.ls.agent.core.team.dto.TeamTaskDTO(
+                                "task-1",
+                                "Summarize",
+                                "Summarize existing options.",
+                                "MODEL_TASK",
+                                null,
+                                objectMapper.createObjectNode(),
+                                List.of()
+                        ))
+                ),
+                List.of(new com.ls.agent.core.team.dto.ExecutionResultDTO(
+                        "task-1",
+                        "MODEL_TASK",
+                        "SUCCESS",
+                        "Indoor options only",
+                        List.of(),
+                        null
+                )),
+                new com.ls.agent.core.team.dto.ReviewResultDTO(
+                        false,
+                        List.of(new com.ls.agent.core.team.dto.ReviewResultDTO.ReviewIssueDTO(null, "WARN", "Need weather")),
+                        List.of(),
+                        "Need weather before final answer",
+                        true,
+                        "Add a weather tool task and keep task-1 unchanged"
+                )
+        );
+
+        TeamPlanResultDTO result = planner.plan(replanCommand);
+
+        assertThat(result.plan().tasks()).extracting("id").containsExactly("task-1", "task-weather");
+        ArgumentCaptor<ModelInvokeCommand> captor = ArgumentCaptor.forClass(ModelInvokeCommand.class);
+        verify(modelInvokeService).invoke(captor.capture());
+        String prompt = captor.getValue().messages().get(1).content();
+        assertThat(prompt).contains("Re-plan mode");
+        assertThat(prompt).contains("Keep existing completed task ids unchanged");
+        assertThat(prompt).contains("task-1");
+        assertThat(prompt).contains("Indoor options only");
+        assertThat(prompt).contains("Need weather before final answer");
+        assertThat(prompt).contains("Add a weather tool task");
+    }
+
     private PlanTeamCommand command(String userInput, List<AgentToolDTO> tools) {
         return new PlanTeamCommand(userInput, context(), tools);
     }

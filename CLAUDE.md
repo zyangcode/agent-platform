@@ -257,13 +257,13 @@ Git 提交与标签约定：
 - Team SSE 必须阶段性实时推送：Planner 完成推 `team_plan`，任务开始/结束推 `team_task_start` / `team_task_result`，工具调用推 `team_tool_call` / `team_tool_result`，Reviewer 完成推 `team_review`
 - Planner：只拆任务，不调工具，不生成最终答案
 - Executor：只执行分配的子任务，调用授权 Skill/Tool，不重新规划
-- Reviewer：只审查结果，不规划不执行
+- Reviewer：只审查结果，不直接规划、不执行、不调用工具；需要新信息时只能通过结构化审查结果请求 Orchestrator 重新调用 Planner
 - Skill **不**分别绑给三个角色，统一绑到任务/领域/用户，仅 Executor 拿到调用权限
 - 每个角色的输出必须通过 JSON Schema 校验（TaskPlan / ExecutionResult / ReviewResult）
 - Planner 规划失败：首次要求修正，二次失败降级为通用单任务 `MODEL_TASK`，不能硬编码 weather/search/calculator 等 Demo 工具组合
 - Executor 任务类型第一版只做 `TOOL_TASK` / `MODEL_TASK`；最终 answerDraft 和 finalAnswer 由 Orchestrator 生成
 - Reviewer 审查的是 TaskPlan、ExecutionResult 和 Orchestrator 生成的 answerDraft，不直接生成最终答案
-- Reviewer 不通过：最多让 Executor 重试一次；仍失败则由 Orchestrator 仲裁，返回当前最优结果和风险说明
+- Reviewer 不通过：最多消耗一次 retry 预算。`retryTasks` 非空时只让 Executor 重试指定已有任务；`replanRequired=true` 且 `retryTasks` 为空时，由 Orchestrator 重新调用 Planner 生成完整更新计划，并只执行新增 task id；仍失败则由 Orchestrator 仲裁，返回当前最优结果和风险说明
 - Team 模式必须有整体上限：maxTasks、maxRetries、maxToolCalls、maxModelCalls、timeoutMs，避免多 Agent 链路 hang 住
 
 ## 网关拦截器链（项目3）

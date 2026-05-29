@@ -11,6 +11,8 @@ import com.ls.agent.core.model.dto.ModelMessage;
 import com.ls.agent.core.profile.dto.ProfileDTO;
 import com.ls.agent.core.team.api.TeamPlanner;
 import com.ls.agent.core.team.command.PlanTeamCommand;
+import com.ls.agent.core.team.dto.ExecutionResultDTO;
+import com.ls.agent.core.team.dto.ReviewResultDTO;
 import com.ls.agent.core.team.dto.TaskPlanDTO;
 import com.ls.agent.core.team.dto.TeamPlanResultDTO;
 import com.ls.agent.core.team.dto.TeamTaskDTO;
@@ -118,6 +120,20 @@ public class DefaultTeamPlanner implements TeamPlanner {
                 .append("- TOOL_TASK requires suggestedTool from the available tools list.\n")
                 .append("- MODEL_TASK must use suggestedTool=null.\n")
                 .append("- Every task must have a non-empty description.\n");
+        if (isReplan(command)) {
+            userPrompt.append("\nRe-plan mode:\n")
+                    .append("- The Reviewer found missing information and requested a new plan.\n")
+                    .append("- Return the full updated TaskPlan, including previous tasks and any new tasks.\n")
+                    .append("- Keep existing completed task ids unchanged; do not rename or remove completed tasks.\n")
+                    .append("- Add only the tasks needed to satisfy the review instruction.\n")
+                    .append("\nPrevious plan:\n")
+                    .append(planSummary(command.previousPlan()))
+                    .append("\n\nPrevious execution results:\n")
+                    .append(executionSummary(command.previousResults()))
+                    .append("\n\nPrevious review:\n")
+                    .append(reviewSummary(command.previousReview()))
+                    .append("\n");
+        }
         if (previousFailure != null && !previousFailure.isBlank()) {
             userPrompt.append("\nPrevious plan was invalid: ").append(truncateFailure(previousFailure))
                     .append("\nCorrect it and return valid JSON only.\n");
@@ -144,6 +160,52 @@ public class DefaultTeamPlanner implements TeamPlanner {
         return tools.stream()
                 .map(tool -> "[" + tool.sourceType().name() + "] " + tool.name() + " - " + safe(tool.description()))
                 .collect(Collectors.joining("\n"));
+    }
+
+    private boolean isReplan(PlanTeamCommand command) {
+        return command.previousPlan() != null || command.previousReview() != null || !command.previousResults().isEmpty();
+    }
+
+    private String planSummary(TaskPlanDTO plan) {
+        if (plan == null || plan.tasks().isEmpty()) {
+            return "(none)";
+        }
+        return plan.tasks().stream()
+                .map(task -> "- " + safe(task.id()) + " [" + safe(task.taskType()) + "] "
+                        + safe(task.name()) + ": " + safe(task.description()))
+                .collect(Collectors.joining("\n"));
+    }
+
+    private String executionSummary(List<ExecutionResultDTO> results) {
+        if (results == null || results.isEmpty()) {
+            return "(none)";
+        }
+        return results.stream()
+                .map(result -> "- " + safe(result.taskId()) + " [" + safe(result.status()) + "]: "
+                        + safe(result.result()) + errorSuffix(result))
+                .collect(Collectors.joining("\n"));
+    }
+
+    private String reviewSummary(ReviewResultDTO review) {
+        if (review == null) {
+            return "(none)";
+        }
+        String issues = review.issues().isEmpty()
+                ? "(none)"
+                : review.issues().stream()
+                .map(issue -> "- " + safe(issue.taskId()) + " [" + safe(issue.level()) + "]: " + safe(issue.message()))
+                .collect(Collectors.joining("\n"));
+        return "passed=" + review.passed()
+                + "\nsummary=" + safe(review.summary())
+                + "\nreplanRequired=" + review.replanRequired()
+                + "\nreplanInstruction=" + safe(review.replanInstruction())
+                + "\nissues:\n" + issues;
+    }
+
+    private String errorSuffix(ExecutionResultDTO result) {
+        return result.errorMessage() == null || result.errorMessage().isBlank()
+                ? ""
+                : " error=" + result.errorMessage();
     }
 
     private String extractJson(String content) {

@@ -6,11 +6,23 @@ public record ReviewResultDTO(
         Boolean passed,
         List<ReviewIssueDTO> issues,
         List<String> retryTasks,
-        String summary
+        String summary,
+        Boolean replanRequired,
+        String replanInstruction
 ) {
     public ReviewResultDTO {
         issues = issues == null ? List.of() : List.copyOf(issues);
         retryTasks = retryTasks == null ? List.of() : List.copyOf(retryTasks);
+        replanRequired = Boolean.TRUE.equals(replanRequired);
+    }
+
+    public ReviewResultDTO(
+            Boolean passed,
+            List<ReviewIssueDTO> issues,
+            List<String> retryTasks,
+            String summary
+    ) {
+        this(passed, issues, retryTasks, summary, false, null);
     }
 
     public record ReviewIssueDTO(
