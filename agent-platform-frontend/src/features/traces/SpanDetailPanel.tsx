@@ -8,6 +8,7 @@ import type { TraceSpan } from '@/lib/api/types'
 import { copyTextToClipboard } from '@/lib/clipboard'
 import { formatDateTime, formatLatency } from '@/lib/format/date'
 import { useI18n } from '@/lib/i18n/use-i18n'
+import { getTraceSpanFacts, getTraceSpanTitle } from './trace-labels'
 import { formatTraceStatus, getTraceStatusVariant } from './trace-utils'
 
 type SpanDetailPanelProps = {
@@ -44,14 +45,17 @@ export function SpanDetailPanel({ span }: SpanDetailPanelProps) {
     )
   }
 
+  const spanFacts = getTraceSpanFacts(span, locale)
+  const spanTitle = getTraceSpanTitle(span, locale)
+
   return (
     <Card className="min-w-0">
       <CardHeader>
         <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
-            <CardTitle className="break-words">{span.spanName}</CardTitle>
+            <CardTitle className="break-words">{spanTitle}</CardTitle>
             <CardDescription className="break-words">
-              {span.component} / {span.spanType}
+              {span.spanName} / {span.component} / {span.spanType}
             </CardDescription>
           </div>
           <Badge className="w-fit shrink-0" variant={getTraceStatusVariant(span.status)}>
@@ -74,6 +78,14 @@ export function SpanDetailPanel({ span }: SpanDetailPanelProps) {
           <Field label={t('trace.errorCode')} value={span.errorCode || '-'} />
         </div>
 
+        {spanFacts.length > 0 ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {spanFacts.map((fact) => (
+              <FactField key={fact.label} label={fact.label} value={fact.value} />
+            ))}
+          </div>
+        ) : null}
+
         {span.errorMessage ? (
           <Alert variant="danger">
             <AlertTitle>{t('trace.spanError')}</AlertTitle>
@@ -86,12 +98,21 @@ export function SpanDetailPanel({ span }: SpanDetailPanelProps) {
             <Code2 className="h-3.5 w-3.5" strokeWidth={1.75} />
             {t('trace.attributes')}
           </div>
-          <pre className="mt-3 max-h-80 max-w-full overflow-auto rounded-xl bg-black/20 p-3 font-mono text-xs leading-5 text-zinc-300">
+          <pre className="mt-3 max-h-80 max-w-full overflow-auto whitespace-pre-wrap break-words rounded-xl bg-black/20 p-3 font-mono text-xs leading-5 text-zinc-300">
             {span.attributes ? JSON.stringify(span.attributes, null, 2) : '{}'}
           </pre>
         </div>
       </CardContent>
     </Card>
+  )
+}
+
+function FactField({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 rounded-xl border border-cyan-200/10 bg-cyan-300/[0.035] px-3 py-2">
+      <span className="text-xs text-zinc-500">{label}</span>
+      <p className="mt-1 min-w-0 break-all font-mono text-xs leading-5 text-cyan-100">{value}</p>
+    </div>
   )
 }
 

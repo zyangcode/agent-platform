@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge'
 import type { TraceSpan } from '@/lib/api/types'
 import { formatDateTime, formatLatency } from '@/lib/format/date'
 import { useI18n } from '@/lib/i18n/use-i18n'
+import { getTraceSpanFacts, getTraceSpanTitle } from './trace-labels'
 import { formatTraceStatus, getTraceStatusVariant, sortTraceSpans } from './trace-utils'
 
 type TraceTimelineProps = {
@@ -30,6 +31,8 @@ export function TraceTimeline({ onSelectSpan, selectedSpanId, spans }: TraceTime
       {sortedSpans.map((span, index) => {
         const isSelected = selectedSpanId === span.id
         const isFailed = getTraceStatusVariant(span.status) === 'danger'
+        const spanFacts = getTraceSpanFacts(span, locale)
+        const spanTitle = getTraceSpanTitle(span, locale)
 
         return (
           <button
@@ -60,7 +63,7 @@ export function TraceTimeline({ onSelectSpan, selectedSpanId, spans }: TraceTime
             >
               <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
-                  <p className="break-words font-medium text-white">{span.spanName}</p>
+                  <p className="break-words font-medium text-white">{spanTitle}</p>
                   <p className="mt-1 break-words text-xs text-zinc-500">
                     {span.component} / {span.spanType}
                   </p>
@@ -73,6 +76,15 @@ export function TraceTimeline({ onSelectSpan, selectedSpanId, spans }: TraceTime
                 <span>{formatDateTime(span.startedAt)}</span>
                 <span className="font-mono">{formatLatency(span.latencyMs)}</span>
               </div>
+              {spanFacts.length > 0 ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {spanFacts.slice(0, 3).map((fact) => (
+                    <Badge className="max-w-full truncate" key={fact.label} variant="muted">
+                      {fact.label}: {fact.value}
+                    </Badge>
+                  ))}
+                </div>
+              ) : null}
             </div>
           </button>
         )
