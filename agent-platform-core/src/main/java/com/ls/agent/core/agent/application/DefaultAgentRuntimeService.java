@@ -27,6 +27,8 @@ import com.ls.agent.core.skill.api.SkillExecutor;
 import com.ls.agent.core.skill.command.SkillExecuteCommand;
 import com.ls.agent.core.skill.dto.SkillExecuteResult;
 import com.ls.agent.core.quota.api.TokenUsageService;
+import com.ls.agent.core.team.api.TeamEventSink;
+import com.ls.agent.core.team.api.TeamRuntimeService;
 import com.ls.agent.core.trace.api.TraceService;
 import com.ls.agent.core.trace.command.FinishTraceSpanCommand;
 import com.ls.agent.core.quota.command.RecordTokenUsageCommand;
@@ -57,6 +59,7 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
     private final ModelInvokeService modelInvokeService;
     private final SkillExecutor skillExecutor;
     private final McpToolExecutor mcpToolExecutor;
+    private final TeamRuntimeService teamRuntimeService;
     private final ConversationRepository conversationRepository;
     private final MemoryWriteService memoryWriteService;
     private final TraceService traceService;
@@ -68,6 +71,7 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
             ModelInvokeService modelInvokeService,
             SkillExecutor skillExecutor,
             McpToolExecutor mcpToolExecutor,
+            TeamRuntimeService teamRuntimeService,
             ConversationRepository conversationRepository,
             MemoryWriteService memoryWriteService,
             TraceService traceService,
@@ -78,6 +82,7 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
         this.modelInvokeService = modelInvokeService;
         this.skillExecutor = skillExecutor;
         this.mcpToolExecutor = mcpToolExecutor;
+        this.teamRuntimeService = teamRuntimeService;
         this.conversationRepository = conversationRepository;
         this.memoryWriteService = memoryWriteService;
         this.traceService = traceService;
@@ -87,15 +92,33 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
 
     @Override
     public AgentRunResult run(AgentRunCommand command) {
+        return run(command, null);
+    }
+
+    @Override
+    public AgentRunResult run(AgentRunCommand command, TeamEventSink teamEventSink) {
         validate(command);
         TraceSpanDTO runSpan = safeStartSpan(command.traceId(), null, "agent_runtime.run", "AGENT",
                 objectMapper.createObjectNode().put("profileId", command.profileId()));
         try {
             Long conversationId = ensureConversation(command);
-            saveMessage(conversationId, command.traceId(), "user", command.userInput(), null);
-
             AgentContextDTO context = buildContext(command, conversationId, runSpan == null ? null : runSpan.id());
+            if (isTeamMode(context)) {
+                saveMessage(conversationId, command.traceId(), "user", command.userInput(), null);
+                safeFinishSpan(runSpan, "SUCCESS", null, null);
+                AgentRunResult result = teamRuntimeService.run(withConversationId(command, conversationId), teamEventSink);
+                saveMessage(
+                        conversationId,
+                        command.traceId(),
+                        "assistant",
+                        result.assistantMessage(),
+                        result.usage() == null ? null : result.usage().completionTokens()
+                );
+                saveMemory(command, conversationId, result.assistantMessage());
+                return result;
+            }
 
+            saveMessage(conversationId, command.traceId(), "user", command.userInput(), null);
             List<AgentToolEventDTO> toolEvents = new ArrayList<>();
             ModelInvokeResult modelResult = runModelLoop(command, context, runSpan == null ? null : runSpan.id(), toolEvents);
             saveMessage(
@@ -166,6 +189,30 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
             messages.add(new ModelMessage("tool", toolOutput));
         }
         throw new BizException(ErrorCode.AGENT_MAX_STEPS_EXCEEDED, "Agent max steps exceeded");
+    }
+
+    private boolean isTeamMode(AgentContextDTO context) {
+        return context != null
+                && context.profile() != null
+                && "TEAM".equalsIgnoreCase(context.profile().executionMode());
+    }
+
+    private AgentRunCommand withConversationId(AgentRunCommand command, Long conversationId) {
+        if (conversationId.equals(command.conversationId())) {
+            return command;
+        }
+        return new AgentRunCommand(
+                command.tenantId(),
+                command.userId(),
+                command.applicationId(),
+                command.profileId(),
+                conversationId,
+                command.userInput(),
+                command.traceId(),
+                command.selectedSkillIds(),
+                command.selectedMcpToolIds(),
+                command.maxContextTokens()
+        );
     }
 
     private ModelInvokeResult invokeModel(

@@ -25,6 +25,8 @@ import com.ls.agent.core.skill.command.SkillExecuteCommand;
 import com.ls.agent.core.skill.dto.SkillDTO;
 import com.ls.agent.core.skill.dto.SkillExecuteResult;
 import com.ls.agent.core.mcp.dto.McpToolDTO;
+import com.ls.agent.core.team.api.TeamEventSink;
+import com.ls.agent.core.team.api.TeamRuntimeService;
 import com.ls.agent.core.quota.api.TokenUsageService;
 import com.ls.agent.core.trace.api.TraceService;
 import com.ls.agent.core.trace.command.FinishTraceSpanCommand;
@@ -43,6 +45,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -61,12 +64,14 @@ class DefaultAgentRuntimeServiceTest {
     private final MemoryWriteService memoryWriteService = mock(MemoryWriteService.class);
     private final TraceService traceService = mock(TraceService.class);
     private final TokenUsageService tokenUsageService = mock(TokenUsageService.class);
+    private final TeamRuntimeService teamRuntimeService = mock(TeamRuntimeService.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final DefaultAgentRuntimeService service = new DefaultAgentRuntimeService(
             contextBuilder,
             modelInvokeService,
             skillExecutor,
             mcpToolExecutor,
+            teamRuntimeService,
             conversationRepository,
             memoryWriteService,
             traceService,
@@ -102,6 +107,43 @@ class DefaultAgentRuntimeServiceTest {
         ArgumentCaptor<RecordMemoryCommand> memoryCaptor = ArgumentCaptor.forClass(RecordMemoryCommand.class);
         verify(memoryWriteService).record(memoryCaptor.capture());
         assertThat(memoryCaptor.getValue().content()).contains("hello", "done");
+    }
+
+    @Test
+    void runDelegatesToTeamRuntimeWhenProfileExecutionModeIsTeam() {
+        AgentRunResult teamResult = new AgentRunResult(90001L, "team answer", new ModelUsageDTO(1, 1, 2, true));
+        when(conversationRepository.findConversationById(90001L)).thenReturn(conversation());
+        when(contextBuilder.build(any(BuildAgentContextCommand.class))).thenReturn(contextWithExecutionMode("TEAM"));
+        when(teamRuntimeService.run(any(AgentRunCommand.class), isNull())).thenReturn(teamResult);
+
+        AgentRunResult result = service.run(command(90001L));
+
+        assertThat(result).isSameAs(teamResult);
+        verify(teamRuntimeService).run(command(90001L), null);
+        verify(modelInvokeService, never()).invoke(any(ModelInvokeCommand.class));
+        verify(skillExecutor, never()).execute(any(SkillExecuteCommand.class));
+        verify(mcpToolExecutor, never()).execute(any());
+
+        ArgumentCaptor<com.ls.agent.core.agent.entity.ConversationMessageEntity> messageCaptor =
+                ArgumentCaptor.forClass(com.ls.agent.core.agent.entity.ConversationMessageEntity.class);
+        verify(conversationRepository, times(2)).insertMessage(messageCaptor.capture());
+        assertThat(messageCaptor.getAllValues()).extracting("role").containsExactly("user", "assistant");
+        assertThat(messageCaptor.getAllValues()).extracting("content").containsExactly("hello", "team answer");
+        verify(memoryWriteService).record(any(RecordMemoryCommand.class));
+    }
+
+    @Test
+    void runPassesRequestScopedTeamEventSinkToTeamRuntime() {
+        TeamEventSink teamEventSink = mock(TeamEventSink.class);
+        AgentRunResult teamResult = new AgentRunResult(90001L, "team answer", new ModelUsageDTO(1, 1, 2, true));
+        when(conversationRepository.findConversationById(90001L)).thenReturn(conversation());
+        when(contextBuilder.build(any(BuildAgentContextCommand.class))).thenReturn(contextWithExecutionMode("TEAM"));
+        when(teamRuntimeService.run(any(AgentRunCommand.class), any(TeamEventSink.class))).thenReturn(teamResult);
+
+        AgentRunResult result = service.run(command(90001L), teamEventSink);
+
+        assertThat(result).isSameAs(teamResult);
+        verify(teamRuntimeService).run(command(90001L), teamEventSink);
     }
 
     @Test
@@ -381,7 +423,23 @@ class DefaultAgentRuntimeServiceTest {
         );
     }
 
+    private AgentContextDTO contextWithExecutionMode(String executionMode) {
+        return new AgentContextDTO(
+                30001L,
+                profile(executionMode),
+                List.of(new ModelMessage("system", "You are AgentX"), new ModelMessage("user", "hello")),
+                List.of(skill()),
+                List.of(mcpTool()),
+                20,
+                false
+        );
+    }
+
     private ProfileDTO profile() {
+        return profile("BASIC");
+    }
+
+    private ProfileDTO profile(String executionMode) {
         return new ProfileDTO(
                 50001L,
                 20001L,
@@ -392,7 +450,7 @@ class DefaultAgentRuntimeServiceTest {
                 "Be concise.",
                 null,
                 6,
-                "BASIC",
+                executionMode,
                 "PRIVATE",
                 "DRAFT",
                 List.of(),
