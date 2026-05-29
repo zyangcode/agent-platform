@@ -9,8 +9,10 @@ import com.ls.agent.core.model.entity.ModelConfigEntity;
 import com.ls.agent.core.model.entity.ModelProviderEntity;
 import com.ls.agent.core.model.mapper.ModelConfigMapper;
 import com.ls.agent.core.model.mapper.ModelProviderMapper;
+import com.ls.agent.core.model.provider.MockModelProvider;
 import com.ls.agent.core.model.provider.ModelProvider;
 import com.ls.agent.core.model.provider.ModelProviderRegistry;
+import com.ls.agent.core.model.provider.OpenAiCompatibleProvider;
 import com.ls.agent.core.model.provider.ProviderRequest;
 import com.ls.agent.core.model.provider.ProviderResponse;
 import com.ls.agent.core.support.security.SecretEncryptor;
@@ -41,8 +43,10 @@ class DefaultModelInvokeServiceTest {
     private final DefaultModelInvokeService service = new DefaultModelInvokeService(
             configMapper,
             providerMapper,
-            secretEncryptor,
-            objectMapper
+            new ModelProviderRegistry(List.of(
+                    new MockModelProvider(),
+                    new OpenAiCompatibleProvider(secretEncryptor, objectMapper)
+            ))
     );
 
     @Test

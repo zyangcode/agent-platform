@@ -1,6 +1,5 @@
 package com.ls.agent.core.model.application;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ls.agent.common.error.BizException;
 import com.ls.agent.common.error.ErrorCode;
 import com.ls.agent.core.model.api.ModelInvokeService;
@@ -10,17 +9,11 @@ import com.ls.agent.core.model.entity.ModelConfigEntity;
 import com.ls.agent.core.model.entity.ModelProviderEntity;
 import com.ls.agent.core.model.mapper.ModelConfigMapper;
 import com.ls.agent.core.model.mapper.ModelProviderMapper;
-import com.ls.agent.core.model.provider.MockModelProvider;
 import com.ls.agent.core.model.provider.ModelProvider;
 import com.ls.agent.core.model.provider.ModelProviderRegistry;
-import com.ls.agent.core.model.provider.OpenAiCompatibleProvider;
 import com.ls.agent.core.model.provider.ProviderRequest;
 import com.ls.agent.core.model.provider.ProviderResponse;
-import com.ls.agent.core.support.security.SecretEncryptor;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-
-import java.util.List;
 
 @Service
 public class DefaultModelInvokeService implements ModelInvokeService {
@@ -28,23 +21,6 @@ public class DefaultModelInvokeService implements ModelInvokeService {
     private final ModelConfigMapper configMapper;
     private final ModelProviderMapper providerMapper;
     private final ModelProviderRegistry providerRegistry;
-
-    @Autowired
-    public DefaultModelInvokeService(
-            ModelConfigMapper configMapper,
-            ModelProviderMapper providerMapper,
-            SecretEncryptor secretEncryptor,
-            ObjectMapper objectMapper
-    ) {
-        this(
-                configMapper,
-                providerMapper,
-                new ModelProviderRegistry(List.of(
-                        new MockModelProvider(),
-                        new OpenAiCompatibleProvider(secretEncryptor, objectMapper)
-                ))
-        );
-    }
 
     public DefaultModelInvokeService(
             ModelConfigMapper configMapper,

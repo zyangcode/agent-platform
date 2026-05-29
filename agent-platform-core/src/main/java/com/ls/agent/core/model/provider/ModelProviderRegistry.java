@@ -4,9 +4,11 @@ import com.ls.agent.common.error.BizException;
 import com.ls.agent.common.error.ErrorCode;
 import com.ls.agent.core.model.entity.ModelConfigEntity;
 import com.ls.agent.core.model.entity.ModelProviderEntity;
+import org.springframework.stereotype.Component;
 
 import java.util.List;
 
+@Component
 public class ModelProviderRegistry {
 
     private final List<ModelProvider> providers;
