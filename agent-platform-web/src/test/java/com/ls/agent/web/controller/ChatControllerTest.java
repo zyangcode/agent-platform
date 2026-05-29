@@ -123,6 +123,58 @@ class ChatControllerTest {
     }
 
     @Test
+    void chatStreamProxiesTeamRuntimeEventsWithoutMerging() throws Exception {
+        doAnswer(invocation -> {
+            invocation.getArgument(1, java.io.OutputStream.class)
+                    .write(("""
+                            event: team_plan
+                            data: {"type":"team_plan","role":"PLANNER"}
+
+                            event: message
+                            data: {"type":"message","content":"ok"}
+
+                            """).getBytes(StandardCharsets.UTF_8));
+            return null;
+        }).when(gatewayClient).chatStream(any(InternalChatStreamRequest.class), any());
+
+        ChatStreamRequest request = new ChatStreamRequest(
+                20001L,
+                "agent",
+                50001L,
+                null,
+                "hello",
+                List.of(),
+                List.of(),
+                "client-1",
+                null,
+                null,
+                true
+        );
+
+        var result = mockMvc.perform(post("/api/chat/stream")
+                        .header("Authorization", bearerToken())
+                        .accept(MediaType.TEXT_EVENT_STREAM)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        String body = mockMvc.perform(asyncDispatch(result))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("event: team_plan")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"type\":\"team_plan\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"role\":\"PLANNER\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("event: message")))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        assertThat(body.indexOf("event: team_plan")).isLessThan(body.indexOf("event: message"));
+        verify(gatewayClient).chatStream(any(InternalChatStreamRequest.class), any());
+    }
+
+    @Test
     void streamTestConvertsGatewayFailureToSseErrorEvent() throws Exception {
         doThrow(new BizException(ErrorCode.INTERNAL_ERROR, "Gateway request failed"))
                 .when(gatewayClient).streamTest(any());

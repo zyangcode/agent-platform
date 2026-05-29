@@ -27,6 +27,8 @@ import com.ls.agent.core.security.api.SecurityEventService;
 import com.ls.agent.core.security.api.SensitiveDataScanner;
 import com.ls.agent.core.security.command.RecordSecurityEventCommand;
 import com.ls.agent.core.security.dto.SensitiveDataFindingDTO;
+import com.ls.agent.core.team.api.TeamEventSink;
+import com.ls.agent.core.team.dto.TeamRuntimeEventDTO;
 import com.ls.agent.core.trace.api.TraceService;
 import com.ls.agent.core.trace.command.FinishTraceRootCommand;
 import com.ls.agent.core.trace.command.FinishTraceSpanCommand;
@@ -128,7 +130,7 @@ class InternalAiControllerTest {
     void internalChatStreamCallsAgentRuntime() throws Exception {
         when(sensitiveDataScanner.scan("hello", "REQUEST_MESSAGE")).thenReturn(List.of());
         when(quotaService.reserve(any(ReserveQuotaCommand.class))).thenReturn(reservation());
-        when(agentRuntimeService.run(any(AgentRunCommand.class))).thenReturn(agentResult());
+        when(agentRuntimeService.run(any(AgentRunCommand.class), any(TeamEventSink.class))).thenReturn(agentResult());
 
         var result = mockMvc.perform(post("/internal/ai/chat/stream")
                         .header("X-Internal-Token", "dev-internal-token")
@@ -145,7 +147,7 @@ class InternalAiControllerTest {
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("done")));
 
         ArgumentCaptor<AgentRunCommand> captor = ArgumentCaptor.forClass(AgentRunCommand.class);
-        verify(agentRuntimeService).run(captor.capture());
+        verify(agentRuntimeService).run(captor.capture(), any(TeamEventSink.class));
         assertThat(captor.getValue().tenantId()).isEqualTo(1L);
         assertThat(captor.getValue().applicationId()).isEqualTo(20001L);
         assertThat(captor.getValue().userId()).isEqualTo(10001L);
@@ -175,7 +177,7 @@ class InternalAiControllerTest {
     void internalChatStreamEmitsRuntimeToolEventsBeforeFinalMessage() throws Exception {
         when(sensitiveDataScanner.scan("hello", "REQUEST_MESSAGE")).thenReturn(List.of());
         when(quotaService.reserve(any(ReserveQuotaCommand.class))).thenReturn(reservation());
-        when(agentRuntimeService.run(any(AgentRunCommand.class))).thenReturn(agentResultWithToolEvents());
+        when(agentRuntimeService.run(any(AgentRunCommand.class), any(TeamEventSink.class))).thenReturn(agentResultWithToolEvents());
 
         var result = mockMvc.perform(post("/internal/ai/chat/stream")
                         .header("X-Internal-Token", "dev-internal-token")
@@ -197,10 +199,52 @@ class InternalAiControllerTest {
     }
 
     @Test
+    void internalChatStreamWritesTeamRuntimeEventsBeforeFinalMessage() throws Exception {
+        when(sensitiveDataScanner.scan("hello", "REQUEST_MESSAGE")).thenReturn(List.of());
+        when(quotaService.reserve(any(ReserveQuotaCommand.class))).thenReturn(reservation());
+        when(agentRuntimeService.run(any(AgentRunCommand.class), any(TeamEventSink.class)))
+                .thenAnswer(invocation -> {
+                    TeamEventSink sink = invocation.getArgument(1);
+                    sink.emit(TeamRuntimeEventDTO.plan(
+                            "tr_team",
+                            2,
+                            "Planner generated task plan",
+                            objectMapper.createObjectNode().put("goal", "demo")
+                    ));
+                    return agentResult();
+                });
+
+        var result = mockMvc.perform(post("/internal/ai/chat/stream")
+                        .header("X-Internal-Token", "dev-internal-token")
+                        .accept(MediaType.TEXT_EVENT_STREAM)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(internalRequest())))
+                .andExpect(status().isOk())
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        String body = mockMvc.perform(asyncDispatch(result))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("event: team_plan")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"type\":\"team_plan\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"role\":\"PLANNER\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"payload\":{\"goal\":\"demo\"}")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("event: message")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("event: done")))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        assertThat(body.indexOf("event: team_plan")).isLessThan(body.indexOf("event: message"));
+        verify(agentRuntimeService).run(any(AgentRunCommand.class), any(TeamEventSink.class));
+        verify(agentRuntimeService, never()).run(any(AgentRunCommand.class));
+    }
+
+    @Test
     void internalChatStreamDefaultsToAgentMode() throws Exception {
         when(sensitiveDataScanner.scan("hello", "REQUEST_MESSAGE")).thenReturn(List.of());
         when(quotaService.reserve(any(ReserveQuotaCommand.class))).thenReturn(reservation());
-        when(agentRuntimeService.run(any(AgentRunCommand.class))).thenReturn(agentResult());
+        when(agentRuntimeService.run(any(AgentRunCommand.class), any(TeamEventSink.class))).thenReturn(agentResult());
 
         GatewayChatRequest request = new GatewayChatRequest(
                 1L,
@@ -232,7 +276,7 @@ class InternalAiControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("event: message")));
 
-        verify(agentRuntimeService).run(any(AgentRunCommand.class));
+        verify(agentRuntimeService).run(any(AgentRunCommand.class), any(TeamEventSink.class));
     }
 
     @Test
@@ -240,7 +284,7 @@ class InternalAiControllerTest {
         when(sensitiveDataScanner.scan("hello", "REQUEST_MESSAGE")).thenReturn(List.of());
         when(quotaService.reserve(any(ReserveQuotaCommand.class))).thenReturn(reservation());
         doThrow(new BizException(ErrorCode.REQUEST_INVALID, "Agent failed"))
-                .when(agentRuntimeService).run(any(AgentRunCommand.class));
+                .when(agentRuntimeService).run(any(AgentRunCommand.class), any(TeamEventSink.class));
 
         var result = mockMvc.perform(post("/internal/ai/chat/stream")
                         .header("X-Internal-Token", "dev-internal-token")
@@ -275,7 +319,7 @@ class InternalAiControllerTest {
         when(apiKeyService.authenticate("sk-valid")).thenReturn(new ApiKeyAuthResult(1L, 20001L, 10001L));
         when(sensitiveDataScanner.scan("hello", "REQUEST_MESSAGE")).thenReturn(List.of());
         when(quotaService.reserve(any(ReserveQuotaCommand.class))).thenReturn(reservation());
-        when(agentRuntimeService.run(any(AgentRunCommand.class))).thenReturn(agentResult());
+        when(agentRuntimeService.run(any(AgentRunCommand.class), any(TeamEventSink.class))).thenReturn(agentResult());
 
         var result = mockMvc.perform(post("/api/ai/chat/stream")
                         .header("Authorization", "Bearer sk-valid")
@@ -291,7 +335,7 @@ class InternalAiControllerTest {
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("event: message")));
 
         verify(apiKeyService).authenticate("sk-valid");
-        verify(agentRuntimeService).run(any(AgentRunCommand.class));
+        verify(agentRuntimeService).run(any(AgentRunCommand.class), any(TeamEventSink.class));
 
         ArgumentCaptor<StartTraceRootCommand> startCaptor = ArgumentCaptor.forClass(StartTraceRootCommand.class);
         verify(traceService).startRoot(startCaptor.capture());
@@ -307,7 +351,7 @@ class InternalAiControllerTest {
                 .when(traceService).startRoot(any(StartTraceRootCommand.class));
         doThrow(new IllegalStateException("trace down"))
                 .when(traceService).finishRoot(any(FinishTraceRootCommand.class));
-        when(agentRuntimeService.run(any(AgentRunCommand.class))).thenReturn(agentResult());
+        when(agentRuntimeService.run(any(AgentRunCommand.class), any(TeamEventSink.class))).thenReturn(agentResult());
 
         var result = mockMvc.perform(post("/internal/ai/chat/stream")
                         .header("X-Internal-Token", "dev-internal-token")

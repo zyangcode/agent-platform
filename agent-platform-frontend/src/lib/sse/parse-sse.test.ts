@@ -49,4 +49,31 @@ describe('parseSseChunk', () => {
       remainder: '',
     })
   })
+
+  it('parses team runtime events as ordinary SSE payloads', () => {
+    const result = parseSseChunk(
+      '',
+      'event: team_plan\n' +
+        'data: {"type":"team_plan","traceId":"tr_team","step":2,"role":"PLANNER","content":"Planner generated task plan","payload":{"goal":"demo"}}\n\n',
+    )
+
+    expect(result).toEqual({
+      events: [
+        {
+          event: 'team_plan',
+          data: {
+            content: 'Planner generated task plan',
+            payload: {
+              goal: 'demo',
+            },
+            role: 'PLANNER',
+            step: 2,
+            traceId: 'tr_team',
+            type: 'team_plan',
+          },
+        },
+      ],
+      remainder: '',
+    })
+  })
 })

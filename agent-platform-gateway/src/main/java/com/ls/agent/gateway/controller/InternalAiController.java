@@ -1,6 +1,7 @@
 package com.ls.agent.gateway.controller;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ls.agent.common.error.BizException;
 import com.ls.agent.common.error.ErrorCode;
@@ -11,12 +12,14 @@ import com.ls.agent.core.agent.dto.AgentToolEventDTO;
 import com.ls.agent.core.identity.api.ApiKeyService;
 import com.ls.agent.core.identity.dto.ApiKeyAuthResult;
 import com.ls.agent.core.model.dto.ModelInvokeResult;
+import com.ls.agent.core.team.dto.TeamRuntimeEventDTO;
 import com.ls.agent.core.trace.api.TraceService;
 import com.ls.agent.core.trace.command.FinishTraceRootCommand;
 import com.ls.agent.core.trace.command.StartTraceRootCommand;
 import com.ls.agent.gateway.application.DirectModelRunService;
 import com.ls.agent.gateway.dto.GatewayChatRequest;
 import com.ls.agent.gateway.dto.SseEventPayload;
+import com.ls.agent.gateway.dto.TeamSseEventPayload;
 import com.ls.agent.gateway.filter.AlertFilter;
 import com.ls.agent.gateway.filter.QuotaFilter;
 import com.ls.agent.gateway.filter.SensitiveDataFilter;
@@ -158,7 +161,7 @@ public class InternalAiController {
                         request.enabledSkillIds(),
                         request.enabledMcpToolIds(),
                         null
-                ));
+                ), event -> writeTeamEvent(output, event));
                 conversationId = result.conversationId();
                 int step = 2;
                 for (AgentToolEventDTO event : result.toolEvents()) {
@@ -294,7 +297,73 @@ public class InternalAiController {
         );
     }
 
+    private void writeTeamEvent(OutputStream output, TeamRuntimeEventDTO event) {
+        try {
+            writeEvent(output, event.type(), teamPayload(
+                    event.type(),
+                    event.traceId(),
+                    null,
+                    event.step() == null ? 0 : event.step(),
+                    roleFor(event.type()),
+                    event.taskId(),
+                    event.toolName(),
+                    event.status(),
+                    event.message(),
+                    event.payload()
+            ));
+        } catch (IOException ex) {
+            throw new BizException(ErrorCode.INTERNAL_ERROR, "Team SSE event write failed");
+        }
+    }
+
+    private TeamSseEventPayload teamPayload(
+            String type,
+            String traceId,
+            Long conversationId,
+            int step,
+            String role,
+            String taskId,
+            String toolName,
+            String status,
+            String content,
+            JsonNode payload
+    ) {
+        return new TeamSseEventPayload(
+                type,
+                traceId,
+                conversationId,
+                step,
+                role,
+                taskId,
+                toolName,
+                status,
+                content,
+                payload
+        );
+    }
+
+    private String roleFor(String eventType) {
+        if (TeamRuntimeEventDTO.TYPE_TEAM_PLAN.equals(eventType)) {
+            return "PLANNER";
+        }
+        if (TeamRuntimeEventDTO.TYPE_TEAM_REVIEW.equals(eventType)) {
+            return "REVIEWER";
+        }
+        if (TeamRuntimeEventDTO.TYPE_TEAM_START.equals(eventType)
+                || TeamRuntimeEventDTO.TYPE_TEAM_RETRY.equals(eventType)
+                || TeamRuntimeEventDTO.TYPE_TEAM_FINAL.equals(eventType)) {
+            return "ORCHESTRATOR";
+        }
+        return "EXECUTOR";
+    }
+
     private void writeEvent(OutputStream output, String event, SseEventPayload payload) throws IOException {
+        output.write(("event: " + event + "\n").getBytes(StandardCharsets.UTF_8));
+        output.write(("data: " + toJson(payload) + "\n\n").getBytes(StandardCharsets.UTF_8));
+        output.flush();
+    }
+
+    private void writeEvent(OutputStream output, String event, TeamSseEventPayload payload) throws IOException {
         output.write(("event: " + event + "\n").getBytes(StandardCharsets.UTF_8));
         output.write(("data: " + toJson(payload) + "\n\n").getBytes(StandardCharsets.UTF_8));
         output.flush();
@@ -305,6 +374,14 @@ public class InternalAiController {
     }
 
     private String toJson(SseEventPayload payload) {
+        try {
+            return objectMapper.writeValueAsString(payload);
+        } catch (JsonProcessingException ex) {
+            throw new BizException(ErrorCode.INTERNAL_ERROR, "SSE payload serialization failed");
+        }
+    }
+
+    private String toJson(TeamSseEventPayload payload) {
         try {
             return objectMapper.writeValueAsString(payload);
         } catch (JsonProcessingException ex) {
