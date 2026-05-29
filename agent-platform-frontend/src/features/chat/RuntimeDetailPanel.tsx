@@ -3,6 +3,8 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useI18n } from '@/lib/i18n/use-i18n'
+import { TeamRunPanel } from './TeamRunPanel'
+import { buildTeamRunSummary } from './team-run-utils'
 import type { ChatStreamEvent, RuntimeStatus } from './types'
 
 type RuntimeDetailPanelProps = {
@@ -49,6 +51,7 @@ function getConversationId(events: ChatStreamEvent[]) {
 
 export function RuntimeDetailPanel({ error, events, status }: RuntimeDetailPanelProps) {
   const { t } = useI18n()
+  const teamSummary = buildTeamRunSummary(events)
 
   return (
     <aside className="space-y-4">
@@ -89,6 +92,8 @@ export function RuntimeDetailPanel({ error, events, status }: RuntimeDetailPanel
           ) : null}
         </CardContent>
       </Card>
+
+      <TeamRunPanel summary={teamSummary} />
 
       <Card>
         <CardHeader>
