@@ -79,8 +79,8 @@ insert into skills (
 )
 values
     (1, 1, null, 'Calculator', 'calculator', 'Built-in arithmetic calculator', 'BUILTIN', 'GLOBAL', '{"network": false, "file": false}'::jsonb, 'ENABLED'),
-    (2, 1, null, 'Weather', 'weather', 'Open-Meteo weather query skill', 'BUILTIN', 'GLOBAL', '{"network": true, "file": false}'::jsonb, 'ENABLED'),
-    (3, 1, null, 'Search', 'search', 'Wikipedia OpenSearch skill', 'BUILTIN', 'GLOBAL', '{"network": true, "file": false}'::jsonb, 'ENABLED');
+    (2, 1, null, 'Weather', 'weather', 'Mock weather query skill', 'BUILTIN', 'GLOBAL', '{"network": true, "file": false}'::jsonb, 'ENABLED'),
+    (3, 1, null, 'Search', 'search', 'Mock search skill', 'BUILTIN', 'GLOBAL', '{"network": true, "file": false}'::jsonb, 'ENABLED');
 
 select setval('skills_id_seq', (select max(id) from skills));
 
@@ -96,8 +96,8 @@ insert into skill_versions (
 )
 values
     (1, 1, '1.0.0', '{"type": "object", "properties": {"expression": {"type": "string"}}, "required": ["expression"]}'::jsonb, '{"type": "object", "properties": {"result": {"type": "string"}}}'::jsonb, '{"handler": "builtin:calculator"}'::jsonb, '[]'::jsonb, 'READY'),
-    (2, 2, '1.0.0', '{"type": "object", "properties": {"city": {"type": "string"}}, "required": ["city"]}'::jsonb, '{"type": "object", "properties": {"source": {"type": "string"}, "city": {"type": "string"}, "country": {"type": "string"}, "temperatureC": {"type": "number"}, "windSpeedKmh": {"type": "number"}, "weather": {"type": "string"}, "summary": {"type": "string"}}}'::jsonb, '{"handler": "builtin:open-meteo-weather"}'::jsonb, '[]'::jsonb, 'READY'),
-    (3, 3, '1.0.0', '{"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}'::jsonb, '{"type": "object", "properties": {"source": {"type": "string"}, "query": {"type": "string"}, "results": {"type": "array"}}}'::jsonb, '{"handler": "builtin:wikipedia-opensearch"}'::jsonb, '[]'::jsonb, 'READY');
+    (2, 2, '1.0.0', '{"type": "object", "properties": {"city": {"type": "string"}}, "required": ["city"]}'::jsonb, '{"type": "object", "properties": {"summary": {"type": "string"}}}'::jsonb, '{"handler": "mock:weather"}'::jsonb, '[]'::jsonb, 'READY'),
+    (3, 3, '1.0.0', '{"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}'::jsonb, '{"type": "object", "properties": {"results": {"type": "array"}}}'::jsonb, '{"handler": "mock:search"}'::jsonb, '[]'::jsonb, 'READY');
 
 select setval('skill_versions_id_seq', (select max(id) from skill_versions));
 

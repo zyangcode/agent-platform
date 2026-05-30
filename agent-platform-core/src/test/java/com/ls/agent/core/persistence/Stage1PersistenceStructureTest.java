@@ -5,6 +5,8 @@ import com.ls.agent.core.support.persistence.CreatedEntity;
 import com.ls.agent.core.support.persistence.VersionedEntity;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -70,6 +72,36 @@ class Stage1PersistenceStructureTest {
             assertThat(Class.forName(mapperName))
                     .as(mapperName)
                     .isInterface();
+        }
+    }
+
+    @Test
+    void appliedSeedMigrationKeepsOriginalSkillRowsAndLaterMigrationUpdatesRealHandlers() throws IOException {
+        String seedSql = readMigration("db/migration/V005__init_seed_data.sql");
+        String updateSql = readMigration("db/migration/V010__update_builtin_skill_real_handlers.sql");
+
+        assertThat(seedSql).contains(
+                "Mock weather query skill",
+                "Mock search skill",
+                "{\"handler\": \"mock:weather\"}",
+                "{\"handler\": \"mock:search\"}"
+        );
+        assertThat(seedSql).doesNotContain("builtin:open-meteo-weather", "builtin:wikipedia-opensearch");
+
+        assertThat(updateSql).contains(
+                "Open-Meteo weather query skill",
+                "Wikipedia OpenSearch skill",
+                "builtin:open-meteo-weather",
+                "builtin:wikipedia-opensearch"
+        );
+    }
+
+    private String readMigration(String resourcePath) throws IOException {
+        try (var inputStream = getClass().getClassLoader().getResourceAsStream(resourcePath)) {
+            assertThat(inputStream)
+                    .as(resourcePath + " should exist")
+                    .isNotNull();
+            return new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
         }
     }
 }
