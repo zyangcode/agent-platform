@@ -15,6 +15,7 @@ import { listModelConfigs } from '@/lib/api/model-configs'
 import { listProfiles } from '@/lib/api/profiles'
 import type { ConversationSummary } from '@/lib/api/types'
 import { useI18n } from '@/lib/i18n/use-i18n'
+import { loadLastSelectedProfileId, saveLastSelectedProfileId } from '@/lib/profile-selection-storage'
 import { streamChat } from './api'
 import { ChatHistoryPanel } from './ChatHistoryPanel'
 import { conversationMessagesToChatMessages } from './chat-history-utils'
@@ -201,10 +202,14 @@ export function ChatPage() {
         applicationId ?? null,
         loadLastSelectedApplicationId(),
       )
-      const nextProfileId = selectRunnableProfileId(nextState.profiles, selectedProfileId)
+      const nextProfileId = selectRunnableProfileId(
+        nextState.profiles,
+        loadLastSelectedProfileId(nextApplicationId) ?? selectedProfileId,
+      )
       setSelectedApplicationId(nextApplicationId)
       setSelectedModelConfigId((current) => current ?? nextState.modelConfigs[0]?.modelConfigId ?? null)
       setSelectedProfileId(nextProfileId)
+      saveLastSelectedProfileId(nextApplicationId, nextProfileId)
       await loadConversationHistory(nextApplicationId, nextProfileId)
     }
   }
@@ -244,6 +249,7 @@ export function ChatPage() {
     setConversationId(conversation.conversationId)
     setSelectedApplicationId(conversation.applicationId)
     setSelectedProfileId(conversation.profileId)
+    saveLastSelectedProfileId(conversation.applicationId, conversation.profileId)
 
     try {
       const historyMessages = await listConversationMessages(
@@ -421,27 +427,36 @@ export function ChatPage() {
               : preferredApplicationId,
             preferredApplicationId,
           )
+          const preferredProfileId = loadLastSelectedProfileId(nextApplicationId)
+          const shouldRestoreConversation =
+            shouldRestoreStoredSession && (!preferredProfileId || storedSession?.profileId === preferredProfileId)
+          const preferredProfileExists = nextState.profiles.some(
+            (profile) => profile.profileId === preferredProfileId && isRunnableProfile(profile),
+          )
           const nextProfileId =
-            shouldRestoreStoredSession && storedProfileExists && storedSession
+            shouldRestoreConversation && storedProfileExists && storedSession
               ? storedSession.profileId
+              : preferredProfileExists
+                ? preferredProfileId
               : selectRunnableProfileId(nextState.profiles)
 
-          setAgentMode(shouldRestoreStoredSession ? storedSession?.agentMode ?? 'agent' : 'agent')
+          setAgentMode(shouldRestoreConversation ? storedSession?.agentMode ?? 'agent' : 'agent')
           setSelectedApplicationId(nextApplicationId)
           setSelectedModelConfigId(
-            shouldRestoreStoredSession && storedModelConfigExists && storedSession
+            shouldRestoreConversation && storedModelConfigExists && storedSession
               ? storedSession.modelConfigId
               : nextState.modelConfigs[0]?.modelConfigId ?? null,
           )
           setSelectedProfileId(nextProfileId)
-          setConversationId(shouldRestoreStoredSession ? storedSession?.conversationId ?? null : null)
-          setMessages(shouldRestoreStoredSession ? storedSession?.messages ?? [] : [])
+          saveLastSelectedProfileId(nextApplicationId, nextProfileId)
+          setConversationId(shouldRestoreConversation ? storedSession?.conversationId ?? null : null)
+          setMessages(shouldRestoreConversation ? storedSession?.messages ?? [] : [])
           try {
             setConversationHistory(
               await fetchConversationHistory(
                 nextApplicationId,
-                shouldRestoreStoredSession && storedSession?.agentMode === 'none' ? null : nextProfileId,
-                shouldRestoreStoredSession ? storedSession?.agentMode ?? 'agent' : 'agent',
+                shouldRestoreConversation && storedSession?.agentMode === 'none' ? null : nextProfileId,
+                shouldRestoreConversation ? storedSession?.agentMode ?? 'agent' : 'agent',
               ),
             )
           } catch (error) {
@@ -568,6 +583,7 @@ export function ChatPage() {
                   onValueChange={(value) => {
                     const profileId = Number(value)
                     setSelectedProfileId(profileId)
+                    saveLastSelectedProfileId(selectedApplicationId, profileId)
                     const cleared = clearCurrentChatSession()
                     setConversationId(cleared.conversationId)
                     setMessages(cleared.messages)

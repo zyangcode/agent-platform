@@ -16,6 +16,7 @@ import { listModelConfigs } from '@/lib/api/model-configs'
 import { listProfiles } from '@/lib/api/profiles'
 import type { Application, ModelConfig, PageResult, Profile } from '@/lib/api/types'
 import { useI18n } from '@/lib/i18n/use-i18n'
+import { loadLastSelectedProfileId, saveLastSelectedProfileId } from '@/lib/profile-selection-storage'
 import { CreateProfileDialog } from './CreateProfileDialog'
 import { DisableProfileDialog } from './DisableProfileDialog'
 import { EditProfileDialog } from './EditProfileDialog'
@@ -120,7 +121,13 @@ export function ProfilesPage() {
         loadLastSelectedApplicationId(),
       )
       setSelectedApplicationId(nextApplicationId)
-      setSelectedProfile(selectProfileAfterReload(nextState.profiles.records, preferredProfileId, detailedProfile))
+      const nextProfile = selectProfileAfterReload(
+        nextState.profiles.records,
+        preferredProfileId ?? loadLastSelectedProfileId(nextApplicationId),
+        detailedProfile,
+      )
+      setSelectedProfile(nextProfile)
+      saveLastSelectedProfileId(nextApplicationId, nextProfile?.profileId)
     }
   }
 
@@ -143,6 +150,7 @@ export function ProfilesPage() {
   }
 
   async function handleProfileSelect(profile: Profile) {
+    saveLastSelectedProfileId(profile.applicationId, profile.profileId)
     try {
       setSelectedProfile(await getProfile(profile.profileId))
     } catch {
@@ -167,12 +175,16 @@ export function ProfilesPage() {
             preferredApplicationId,
           )
           setSelectedApplicationId(nextApplicationId)
-          const firstProfile = nextState.profiles.records[0] ?? null
-          if (firstProfile) {
+          const nextProfile = selectProfileAfterReload(
+            nextState.profiles.records,
+            loadLastSelectedProfileId(nextApplicationId),
+          )
+          if (nextProfile) {
+            saveLastSelectedProfileId(nextApplicationId, nextProfile.profileId)
             try {
-              setSelectedProfile(await getProfile(firstProfile.profileId))
+              setSelectedProfile(await getProfile(nextProfile.profileId))
             } catch {
-              setSelectedProfile(firstProfile)
+              setSelectedProfile(nextProfile)
             }
           } else {
             setSelectedProfile(null)
@@ -221,8 +233,9 @@ export function ProfilesPage() {
             application={selectedApplication}
             modelConfigs={state.modelConfigs}
             onCreated={(profile) => {
+              saveLastSelectedProfileId(profile.applicationId, profile.profileId)
               setSelectedProfile(profile)
-              void loadProfiles(profile.applicationId)
+              void loadProfiles(profile.applicationId, profile.profileId, profile)
             }}
           />
         </div>

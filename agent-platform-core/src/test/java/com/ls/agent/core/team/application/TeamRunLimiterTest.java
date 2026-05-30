@@ -28,6 +28,20 @@ class TeamRunLimiterTest {
     }
 
     @Test
+    void defaultModelCallLimitSupportsPlannerAllModelTasksAndReviewer() {
+        TeamRunLimiter limiter = new TeamRunLimiter().newRun();
+
+        assertThatCode(() -> {
+            limiter.checkTaskCount(TeamLimits.DEFAULT_MAX_TASKS);
+            limiter.consumeModelCall();
+            for (int index = 0; index < TeamLimits.DEFAULT_MAX_TASKS; index++) {
+                limiter.consumeModelCall();
+            }
+            limiter.consumeModelCall();
+        }).doesNotThrowAnyException();
+    }
+
+    @Test
     void rejectsTaskModelToolRetryAndTimeoutLimits() {
         TeamRunLimiter limiter = new TeamRunLimiter(1, 0, 0, 0, 1L, fixedClock());
 
