@@ -12,7 +12,10 @@ import com.ls.agent.core.agent.tool.AgentToolResolver;
 import com.ls.agent.core.context.api.AgentContextBuilder;
 import com.ls.agent.core.context.command.BuildAgentContextCommand;
 import com.ls.agent.core.context.dto.AgentContextDTO;
+import com.ls.agent.core.model.api.ModelInvokeService;
+import com.ls.agent.core.model.command.ModelInvokeCommand;
 import com.ls.agent.core.model.dto.ModelInvokeResult;
+import com.ls.agent.core.model.dto.ModelMessage;
 import com.ls.agent.core.model.dto.ModelUsageDTO;
 import com.ls.agent.core.quota.api.TokenUsageService;
 import com.ls.agent.core.quota.command.RecordTokenUsageCommand;
@@ -38,6 +41,7 @@ import com.ls.agent.core.trace.command.StartTraceSpanCommand;
 import com.ls.agent.core.trace.dto.TraceSpanDTO;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -58,6 +62,7 @@ public class DefaultTeamRuntimeService implements TeamRuntimeService {
     private final TeamEventSink eventSink;
     private final TraceService traceService;
     private final TokenUsageService tokenUsageService;
+    private final ModelInvokeService modelInvokeService;
     private final ObjectMapper objectMapper;
 
     public DefaultTeamRuntimeService(
@@ -73,6 +78,7 @@ public class DefaultTeamRuntimeService implements TeamRuntimeService {
             TeamEventSink eventSink,
             TraceService traceService,
             TokenUsageService tokenUsageService,
+            ModelInvokeService modelInvokeService,
             ObjectMapper objectMapper
     ) {
         this.contextBuilder = contextBuilder;
@@ -87,6 +93,7 @@ public class DefaultTeamRuntimeService implements TeamRuntimeService {
         this.eventSink = eventSink;
         this.traceService = traceService;
         this.tokenUsageService = tokenUsageService;
+        this.modelInvokeService = modelInvokeService;
         this.objectMapper = objectMapper;
     }
 
@@ -126,6 +133,7 @@ public class DefaultTeamRuntimeService implements TeamRuntimeService {
             TaskExecutionBatch taskExecutionBatch = executeTasks(command, context, tools, plan, limiter, spanId(runSpan), step, activeEventSink);
             List<TeamTaskExecutionResultDTO> taskExecutionResults = taskExecutionBatch.taskResults();
             List<ExecutionResultDTO> executionResults = executionResults(taskExecutionResults);
+            List<ModelInvokeResult> fallbackModelInvocations = new ArrayList<>();
             step += taskExecutionBatch.emittedEventCount();
 
             String answerDraft = answerDraftBuilder.build(command.userInput(), plan, executionResults);
@@ -175,6 +183,22 @@ public class DefaultTeamRuntimeService implements TeamRuntimeService {
                     replaceResult(executionResults, taskResult.executionResult());
                 }
                 step += newTaskBatch.emittedEventCount();
+
+                // If no new tasks executed (e.g. fallback plan produced same task IDs), use a direct
+                // model call to answer based on accumulated context — mirroring the single-agent fallback.
+                if (newTaskBatch.taskResults().isEmpty()) {
+                    FallbackModelAnswer fallback = fallbackModelAnswer(command, context, plan, executionResults, limiter, spanId(runSpan));
+                    if (fallback.modelInvocation() != null) {
+                        fallbackModelInvocations.add(fallback.modelInvocation());
+                    }
+                    if (!fallback.answer().isBlank()) {
+                        emit(activeEventSink, TeamRuntimeEventDTO.finalAnswer(command.traceId(), step, "Team 降级为直接模型回答", null));
+                        ModelUsageDTO totalUsage = totalUsage(planResults, taskExecutionResults, reviewResults, fallbackModelInvocations);
+                        safeFinishSpan(runSpan, "SUCCESS", null, null);
+                        return new AgentRunResult(conversationId, fallback.answer(), totalUsage);
+                    }
+                }
+
                 answerDraft = answerDraftBuilder.build(command.userInput(), plan, executionResults);
                 reviewResult = review(command, context, plan, executionResults, answerDraft, limiter, spanId(runSpan));
                 reviewResults.add(reviewResult);
@@ -182,8 +206,16 @@ public class DefaultTeamRuntimeService implements TeamRuntimeService {
             }
 
             String finalAnswer = finalAnswerBuilder.build(answerDraft, reviewResult.reviewResult());
+            // If the final answer is empty, try a direct model fallback
+            if (finalAnswer.isBlank()) {
+                FallbackModelAnswer fallback = fallbackModelAnswer(command, context, plan, executionResults, limiter, spanId(runSpan));
+                if (fallback.modelInvocation() != null) {
+                    fallbackModelInvocations.add(fallback.modelInvocation());
+                }
+                finalAnswer = fallback.answer();
+            }
             emit(activeEventSink, TeamRuntimeEventDTO.finalAnswer(command.traceId(), step, "Team 已生成最终答案", null));
-            ModelUsageDTO totalUsage = totalUsage(planResults, taskExecutionResults, reviewResults);
+            ModelUsageDTO totalUsage = totalUsage(planResults, taskExecutionResults, reviewResults, fallbackModelInvocations);
             safeFinishSpan(runSpan, "SUCCESS", null, null);
             return new AgentRunResult(conversationId, finalAnswer, totalUsage);
         } catch (Exception ex) {
@@ -538,7 +570,8 @@ public class DefaultTeamRuntimeService implements TeamRuntimeService {
     private ModelUsageDTO totalUsage(
             List<TeamPlanResultDTO> planResults,
             List<TeamTaskExecutionResultDTO> taskExecutionResults,
-            List<TeamReviewResultDTO> reviewResults
+            List<TeamReviewResultDTO> reviewResults,
+            List<ModelInvokeResult> fallbackModelInvocations
     ) {
         int promptTokens = 0;
         int completionTokens = 0;
@@ -577,6 +610,15 @@ public class DefaultTeamRuntimeService implements TeamRuntimeService {
                 }
             }
         }
+        for (ModelInvokeResult invocation : fallbackModelInvocations) {
+            ModelUsageDTO usage = invocation.usage();
+            if (usage != null) {
+                promptTokens += usage.promptTokens();
+                completionTokens += usage.completionTokens();
+                totalTokens += usage.totalTokens();
+                estimated = estimated || usage.estimated();
+            }
+        }
         return new ModelUsageDTO(promptTokens, completionTokens, totalTokens, estimated);
     }
 
@@ -586,6 +628,57 @@ public class DefaultTeamRuntimeService implements TeamRuntimeService {
 
     private void emit(TeamEventSink eventSink, TeamRuntimeEventDTO event) {
         eventSink.emit(event);
+    }
+
+    /**
+     * Direct model call without tools, using the accumulated plan and execution results as
+     * context. Used as a last-resort fallback when the ReAct / re-plan pipeline can't produce a
+     * satisfactory answer.
+     */
+    private FallbackModelAnswer fallbackModelAnswer(
+            AgentRunCommand command,
+            AgentContextDTO context,
+            TaskPlanDTO plan,
+            List<ExecutionResultDTO> executionResults,
+            TeamRunLimiter limiter,
+            Long parentSpanId
+    ) {
+        limiter.consumeModelCall();
+        TraceSpanDTO span = safeStartSpan(command.traceId(), parentSpanId, "team.fallback", "MODEL",
+                objectMapper.createObjectNode().put("reason", "replan_empty_batch"));
+        try {
+            StringBuilder ctx = new StringBuilder();
+            ctx.append("User question: ").append(command.userInput()).append("\n\n");
+            if (plan != null && plan.goal() != null) {
+                ctx.append("Goal: ").append(plan.goal()).append("\n\n");
+            }
+            if (!executionResults.isEmpty()) {
+                ctx.append("Information gathered so far:\n");
+                for (ExecutionResultDTO r : executionResults) {
+                    ctx.append("- ").append(r.result()).append("\n");
+                }
+            }
+            ctx.append("\nBased on the above, provide a direct, complete answer to the user's question. Do NOT use tool call format.");
+            ctx.append("\nCurrent date: ").append(java.time.LocalDate.now());
+
+            List<ModelMessage> messages = List.of(
+                    new ModelMessage("system", "You are a helpful assistant. Answer the user directly based on the provided context."),
+                    new ModelMessage("user", ctx.toString())
+            );
+
+            ModelInvokeResult result = modelInvokeService.invoke(new ModelInvokeCommand(
+                    context.modelConfigId(),
+                    messages,
+                    BigDecimal.valueOf(0.7),
+                    false
+            ));
+            safeRecordTokenUsage(command, result, spanId(span));
+            safeFinishSpan(span, "SUCCESS", null, null);
+            return new FallbackModelAnswer(result.assistantMessage() == null ? "" : result.assistantMessage(), result);
+        } catch (Exception ex) {
+            safeFinishSpan(span, "FAILED", errorCode(ex), errorMessage(ex));
+            return new FallbackModelAnswer("", null);
+        }
     }
 
     private String errorCode(Exception ex) {
@@ -605,6 +698,12 @@ public class DefaultTeamRuntimeService implements TeamRuntimeService {
     private record TaskExecutionOutcome(
             TeamTaskExecutionResultDTO taskResult,
             int emittedEventCount
+    ) {
+    }
+
+    private record FallbackModelAnswer(
+            String answer,
+            ModelInvokeResult modelInvocation
     ) {
     }
 }

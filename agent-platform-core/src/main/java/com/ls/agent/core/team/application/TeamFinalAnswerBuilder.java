@@ -87,17 +87,11 @@ public class TeamFinalAnswerBuilder {
     }
 
     private String fallbackAnswer(String draft) {
-        String userRequest = extractLabelValue(draft, "User request:", "用户请求：", "鐢ㄦ埛璇锋眰锛?");
+        String userRequest = extractLabelValue(draft, "User request:", "用户请求：");
         if (userRequest.isBlank()) {
-            return "当前没有拿到足够可靠的工具结果，我先给出一个通用建议：请补充目标、地点、人数、预算和时间后重新规划。";
+            return "";
         }
-        if (looksLikeTeamBuildingRequest(userRequest)) {
-            String city = userRequest.contains("重庆") ? "重庆" : "当地";
-            String people = userRequest.contains("20") ? "20人" : "团队";
-            return city + people + "团建建议：上午集合破冰并分组，午餐安排桌餐或烧烤，下午选择轻户外拓展、密室协作或轰趴桌游，傍晚复盘颁奖后聚餐。"
-                    + "预算可按人均300-500元预估，并提前确认交通、天气、忌口和是否有人不适合剧烈运动。";
-        }
-        return "当前工具结果不完整，我无法可靠复述内部执行细节。建议先按你的需求给出一个简版方案，再补充关键条件后细化。";
+        return "";
     }
 
     private String extractLabelValue(String draft, String... labels) {
@@ -122,10 +116,6 @@ public class TeamFinalAnswerBuilder {
             }
         }
         return "";
-    }
-
-    private boolean looksLikeTeamBuildingRequest(String text) {
-        return text.contains("团建") || text.toLowerCase().contains("team");
     }
 
     private record TaskResultLine(String rawResult) {

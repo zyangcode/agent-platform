@@ -10,6 +10,7 @@ import com.ls.agent.core.agent.tool.AgentToolResolver;
 import com.ls.agent.core.context.api.AgentContextBuilder;
 import com.ls.agent.core.context.command.BuildAgentContextCommand;
 import com.ls.agent.core.context.dto.AgentContextDTO;
+import com.ls.agent.core.model.api.ModelInvokeService;
 import com.ls.agent.core.model.dto.ModelInvokeResult;
 import com.ls.agent.core.model.dto.ModelMessage;
 import com.ls.agent.core.model.dto.ModelUsageDTO;
@@ -59,6 +60,7 @@ class DefaultTeamRuntimeServiceTest {
     private final TeamEventSink eventSink = mock(TeamEventSink.class);
     private final TraceService traceService = mock(TraceService.class);
     private final TokenUsageService tokenUsageService = mock(TokenUsageService.class);
+    private final ModelInvokeService modelInvokeService = mock(ModelInvokeService.class);
     private final TeamRunLimiter limiter = new TeamRunLimiter(8, 1, 8, 6, 120_000L);
     private final DefaultTeamRuntimeService service = new DefaultTeamRuntimeService(
             contextBuilder,
@@ -73,6 +75,7 @@ class DefaultTeamRuntimeServiceTest {
             eventSink,
             traceService,
             tokenUsageService,
+            modelInvokeService,
             objectMapper
     );
 
@@ -248,6 +251,33 @@ class DefaultTeamRuntimeServiceTest {
                         "team_review",
                         "team_final"
                 );
+    }
+
+    @Test
+    void includesFallbackModelUsageWhenFinalAnswerIsBlank() {
+        when(contextBuilder.build(any(BuildAgentContextCommand.class))).thenReturn(context("TEAM"));
+        when(agentToolResolver.resolve(any())).thenReturn(List.of());
+        when(planner.plan(any(PlanTeamCommand.class))).thenReturn(new TeamPlanResultDTO(
+                plan(),
+                List.of(modelInvocation("plan", 3))
+        ));
+        when(executor.execute(any(ExecuteTeamTaskCommand.class))).thenReturn(new TeamTaskExecutionResultDTO(
+                new ExecutionResultDTO("task-1", "MODEL_TASK", "FAILED", "Model task failed", List.of(), "model down"),
+                List.of(),
+                List.of()
+        ));
+        when(reviewer.review(any(ReviewTeamCommand.class))).thenReturn(new TeamReviewResultDTO(
+                new ReviewResultDTO(true, List.of(), List.of(), "allow fallback"),
+                List.of(modelInvocation("review", 5))
+        ));
+        when(modelInvokeService.invoke(any())).thenReturn(modelInvocation("Fallback answer", 13));
+
+        AgentRunResult result = service.run(command(90001L));
+
+        assertThat(result.assistantMessage()).isEqualTo("Fallback answer");
+        assertThat(result.usage().totalTokens()).isEqualTo(21);
+        verify(modelInvokeService).invoke(any());
+        verify(tokenUsageService, times(3)).record(any(RecordTokenUsageCommand.class));
     }
 
     @Test

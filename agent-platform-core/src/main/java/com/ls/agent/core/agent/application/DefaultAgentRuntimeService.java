@@ -179,7 +179,15 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
         ModelInvokeResult result = null;
         for (int step = 0; step < MAX_AGENT_STEPS; step++) {
             result = invokeModel(command, context, messages, parentSpanId, step + 1);
-            ToolCall toolCall = parseToolCall(result.assistantMessage());
+            ToolCall toolCall;
+            try {
+                toolCall = parseToolCall(result.assistantMessage());
+            } catch (Exception ex) {
+                // Model produced invalid tool-call format; record as observation and let it retry
+                messages.add(new ModelMessage("assistant", result.assistantMessage()));
+                messages.add(new ModelMessage("tool", "[tool call parse error] " + ex.getMessage()));
+                continue;
+            }
             if (toolCall == null) {
                 return result;
             }
@@ -188,7 +196,54 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
             messages.add(new ModelMessage("assistant", result.assistantMessage()));
             messages.add(new ModelMessage("tool", toolOutput));
         }
-        throw new BizException(ErrorCode.AGENT_MAX_STEPS_EXCEEDED, "Agent max steps exceeded");
+        return fallbackDirectAnswer(command, context, messages, parentSpanId);
+    }
+
+    /**
+     * When the ReAct loop exceeds max steps, downgrade to a direct model call without tool
+     * declarations, asking the model to synthesize a best-effort answer from gathered context.
+     * If even the fallback call fails, return a graceful Chinese apology message.
+     */
+    private ModelInvokeResult fallbackDirectAnswer(
+            AgentRunCommand command,
+            AgentContextDTO context,
+            List<ModelMessage> accumulatedMessages,
+            Long parentSpanId
+    ) {
+        List<ModelMessage> fallbackMessages = new ArrayList<>();
+        for (ModelMessage msg : accumulatedMessages) {
+            if ("system".equals(msg.role())) {
+                fallbackMessages.add(new ModelMessage("system", stripToolListings(msg.content())));
+            } else {
+                fallbackMessages.add(msg);
+            }
+        }
+        fallbackMessages.add(new ModelMessage("user",
+                "You were unable to fully resolve the request using tools within the allowed steps. "
+                        + "Based on all the information gathered above, please provide the best possible answer "
+                        + "to the original question. Do NOT output tool-call format like @skill: or @mcp:. "
+                        + "If you still cannot answer, honestly state what information is missing."));
+
+        try {
+            return invokeModel(command, context, fallbackMessages, parentSpanId, MAX_AGENT_STEPS + 1);
+        } catch (Exception ex) {
+            return new ModelInvokeResult(
+                    context.modelConfigId(), null, null, null,
+                    "抱歉，我暂时无法回答这个问题。请尝试换个方式提问，或提供更多信息。",
+                    null
+            );
+        }
+    }
+
+    /** Remove tool availability sections from the system prompt so the fallback model won't attempt tool calls. */
+    private String stripToolListings(String systemPrompt) {
+        if (systemPrompt == null) {
+            return "";
+        }
+        return systemPrompt
+                .replaceAll("(?m)^Available skills:.*(\\n(?:- .*\\n)*)?", "")
+                .replaceAll("(?m)^Available MCP tools:.*(\\n(?:- .*\\n)*)?", "")
+                .strip();
     }
 
     private boolean isTeamMode(AgentContextDTO context) {

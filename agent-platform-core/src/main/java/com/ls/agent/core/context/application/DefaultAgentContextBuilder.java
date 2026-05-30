@@ -20,6 +20,8 @@ import com.ls.agent.core.skill.api.SkillRegistry;
 import com.ls.agent.core.skill.dto.SkillDTO;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -29,11 +31,13 @@ public class DefaultAgentContextBuilder implements AgentContextBuilder {
     private static final int DEFAULT_MAX_CONTEXT_TOKENS = 4_000;
     private static final int HISTORY_LIMIT = 20;
     private static final int MEMORY_LIMIT = 5;
+    private static final int MEMORY_TOKEN_BUDGET = 300;
     private static final String PROFILE_STATUS_DRAFT = "DRAFT";
     private static final String PROFILE_STATUS_PUBLISHED = "PUBLISHED";
     private static final String PLATFORM_SYSTEM_PROMPT = """
             You are AgentX, a helpful AI agent platform assistant.
             Follow the user's profile prompt and only use listed tools when needed.
+            Current date: %s.
             """;
 
     private final ProfileService profileService;
@@ -92,7 +96,7 @@ public class DefaultAgentContextBuilder implements AgentContextBuilder {
                 HISTORY_LIMIT
         );
 
-        String systemPrompt = buildSystemPrompt(profile, skills, mcpTools, memories);
+        String systemPrompt = buildSystemPrompt(profile, skills, mcpTools, memories, MEMORY_TOKEN_BUDGET);
         int reservedTokens = estimateTokens(systemPrompt) + estimateTokens(command.userInput());
         List<ModelMessage> keptHistory = trimHistory(history, maxTokens - reservedTokens);
         boolean truncated = keptHistory.size() < history.size();
@@ -175,16 +179,25 @@ public class DefaultAgentContextBuilder implements AgentContextBuilder {
             ProfileDTO profile,
             List<SkillDTO> skills,
             List<McpToolDTO> mcpTools,
-            List<MemoryDTO> memories
+            List<MemoryDTO> memories,
+            int memoryTokenBudget
     ) {
         StringBuilder builder = new StringBuilder();
-        builder.append(PLATFORM_SYSTEM_PROMPT.strip()).append("\n\n");
+        builder.append(String.format(PLATFORM_SYSTEM_PROMPT.strip(), LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE))).append("\n\n");
         if (profile.promptExtra() != null && !profile.promptExtra().isBlank()) {
             builder.append("Profile Prompt:\n").append(profile.promptExtra().strip()).append("\n\n");
         }
         if (!memories.isEmpty()) {
             builder.append("Long-term memories:\n");
-            memories.forEach(memory -> builder.append("- ").append(memory.content()).append('\n'));
+            int used = 0;
+            for (MemoryDTO memory : memories) {
+                int tokens = estimateTokens(memory.content());
+                if (used + tokens > memoryTokenBudget) {
+                    break;
+                }
+                builder.append("- ").append(memory.content()).append('\n');
+                used += tokens;
+            }
             builder.append('\n');
         }
         if (!skills.isEmpty()) {

@@ -542,10 +542,6 @@ export function ChatPage() {
                 <Select
                   onValueChange={(value) => {
                     setAgentMode(value as AgentMode)
-                    const cleared = clearCurrentChatSession()
-                    setConversationId(cleared.conversationId)
-                    setConversationHistory([])
-                    setMessages(cleared.messages)
                   }}
                   value={agentMode}
                 >

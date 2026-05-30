@@ -88,10 +88,8 @@ class TeamFinalAnswerBuilderTest {
                 "Need a usable final answer instead of leaking execution details."
         ));
 
-        assertThat(answer)
-                .contains("重庆")
-                .contains("20人")
-                .doesNotContain("用户请求", "目标", "执行结果", "task-1", "task-2", "task-3")
-                .doesNotContain("Mock search result", "example.com", "Missing skill argument", "dependsOn");
+        // Empty answer signals that no usable result was found; the Orchestrator's
+        // fallbackModelAnswer will take over with a direct model call.
+        assertThat(answer).isEmpty();
     }
 }

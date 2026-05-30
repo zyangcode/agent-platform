@@ -106,7 +106,7 @@ class DefaultAgentContextBuilderTest {
                 50001L,
                 90001L,
                 "current question",
-                80,
+                90,
                 null,
                 null
         ));
@@ -161,7 +161,7 @@ class DefaultAgentContextBuilderTest {
     @Test
     void buildContextUsesModelConfigTokenLimitWhenCommandLimitIsMissing() {
         when(profileService.getProfile(1L, 10001L, 50001L)).thenReturn(profile());
-        when(modelConfigService.getActiveModelConfig(30001L)).thenReturn(modelConfig(80));
+        when(modelConfigService.getActiveModelConfig(30001L)).thenReturn(modelConfig(90));
         when(skillRegistry.listAvailableSkills(1L, List.of(1L))).thenReturn(List.of(skill()));
         when(mcpToolRegistry.listAvailableTools(1L, List.of(1L))).thenReturn(List.of(mcpTool()));
         when(messageHistoryService.listRecentMessages(1L, 20001L, 10001L, 50001L, 90001L, 20)).thenReturn(List.of(
