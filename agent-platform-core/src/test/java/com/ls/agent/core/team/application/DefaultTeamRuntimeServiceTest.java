@@ -11,6 +11,7 @@ import com.ls.agent.core.context.api.AgentContextBuilder;
 import com.ls.agent.core.context.command.BuildAgentContextCommand;
 import com.ls.agent.core.context.dto.AgentContextDTO;
 import com.ls.agent.core.model.api.ModelInvokeService;
+import com.ls.agent.core.model.command.ModelInvokeCommand;
 import com.ls.agent.core.model.dto.ModelInvokeResult;
 import com.ls.agent.core.model.dto.ModelMessage;
 import com.ls.agent.core.model.dto.ModelUsageDTO;
@@ -281,6 +282,43 @@ class DefaultTeamRuntimeServiceTest {
     }
 
     @Test
+    void synthesizesMultiTaskPlanningResultsIntoFinalAnswer() {
+        when(contextBuilder.build(any(BuildAgentContextCommand.class))).thenReturn(context("TEAM"));
+        when(agentToolResolver.resolve(any())).thenReturn(List.of());
+        when(planner.plan(any(PlanTeamCommand.class))).thenReturn(new TeamPlanResultDTO(
+                teamBuildingPlan(),
+                List.of(modelInvocation("plan", 3))
+        ));
+        when(executor.execute(any(ExecuteTeamTaskCommand.class)))
+                .thenReturn(new TeamTaskExecutionResultDTO(
+                        new ExecutionResultDTO("task-flow", "MODEL_TASK", "SUCCESS", "上午破冰，下午分组活动，晚上聚餐。", List.of(), null),
+                        List.of(modelInvocation("task-flow", 4)),
+                        List.of()
+                ))
+                .thenReturn(new TeamTaskExecutionResultDTO(
+                        new ExecutionResultDTO("task-budget", "MODEL_TASK", "SUCCESS", "20 人分 4 组，每组 5 人，人均预算 200-400 元。", List.of(), null),
+                        List.of(modelInvocation("task-budget", 4)),
+                        List.of()
+                ));
+        when(reviewer.review(any(ReviewTeamCommand.class))).thenReturn(new TeamReviewResultDTO(
+                new ReviewResultDTO(true, List.of(), List.of(), "review passed"),
+                List.of(modelInvocation("review", 5))
+        ));
+        when(modelInvokeService.invoke(any(ModelInvokeCommand.class))).thenReturn(
+                modelInvocation("完整团建计划：20 人分 4 组，上午破冰，下午团队挑战，晚上聚餐，人均预算 200-400 元。", 13)
+        );
+
+        AgentRunResult result = service.run(teamBuildingCommand(90001L));
+
+        assertThat(result.assistantMessage()).isEqualTo("完整团建计划：20 人分 4 组，上午破冰，下午团队挑战，晚上聚餐，人均预算 200-400 元。");
+        assertThat(result.usage().totalTokens()).isEqualTo(29);
+        ArgumentCaptor<ModelInvokeCommand> finalAnswerCaptor = ArgumentCaptor.forClass(ModelInvokeCommand.class);
+        verify(modelInvokeService).invoke(finalAnswerCaptor.capture());
+        assertThat(finalAnswerCaptor.getValue().messages()).extracting(ModelMessage::content)
+                .anySatisfy(content -> assertThat(content).contains("我要组织团建，20人，给我计划", "上午破冰", "人均预算"));
+    }
+
+    @Test
     void emitsToolCallAndToolResultAroundToolTask() {
         when(contextBuilder.build(any(BuildAgentContextCommand.class))).thenReturn(context("TEAM"));
         when(agentToolResolver.resolve(any())).thenReturn(List.of());
@@ -331,6 +369,21 @@ class DefaultTeamRuntimeServiceTest {
                 50001L,
                 conversationId,
                 "Plan a team activity",
+                "trace-1",
+                null,
+                null,
+                1000
+        );
+    }
+
+    private AgentRunCommand teamBuildingCommand(Long conversationId) {
+        return new AgentRunCommand(
+                1L,
+                10001L,
+                20001L,
+                50001L,
+                conversationId,
+                "我要组织团建，20人，给我计划",
                 "trace-1",
                 null,
                 null,
@@ -392,6 +445,32 @@ class DefaultTeamRuntimeServiceTest {
                         objectMapper.createObjectNode(),
                         List.of()
                 ))
+        );
+    }
+
+    private TaskPlanDTO teamBuildingPlan() {
+        return new TaskPlanDTO(
+                "制定 20 人团建计划",
+                List.of(
+                        new TeamTaskDTO(
+                                "task-flow",
+                                "设计流程",
+                                "设计 20 人团建的一天活动流程。",
+                                "MODEL_TASK",
+                                null,
+                                objectMapper.createObjectNode(),
+                                List.of()
+                        ),
+                        new TeamTaskDTO(
+                                "task-budget",
+                                "估算预算和分组",
+                                "估算预算、分组和执行注意事项。",
+                                "MODEL_TASK",
+                                null,
+                                objectMapper.createObjectNode(),
+                                List.of("task-flow")
+                        )
+                )
         );
     }
 

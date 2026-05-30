@@ -27,14 +27,38 @@ public class MockModelProvider implements ModelProvider {
                 .map(ModelMessage::content)
                 .reduce((first, second) -> second)
                 .orElse("");
-        String assistantMessage = "[mock-chat] " + (lastUserMessage.isBlank()
-                ? "Hello, this is a mock model response."
-                : "Echo: " + lastUserMessage);
+        String assistantMessage = mockAssistantMessage(lastUserMessage);
         int promptTokens = UsageParser.estimateTokens(lastUserMessage);
         int completionTokens = UsageParser.estimateTokens(assistantMessage);
         return new ProviderResponse(
                 assistantMessage,
                 new ModelUsageDTO(promptTokens, completionTokens, promptTokens + completionTokens, true)
         );
+    }
+
+    private String mockAssistantMessage(String lastUserMessage) {
+        if (isTeamBuildingFinalAnswerPrompt(lastUserMessage)) {
+            return """
+                    团建计划建议：
+                    1. 人员分组：20 人分成 4 组，每组 5 人，每组指定 1 名组长。
+                    2. 上午安排：集合签到、破冰游戏、团队目标说明和分组任务。
+                    3. 下午安排：选择飞盘、旱地冰壶、密室协作或趣味运动会，按积分制推进。
+                    4. 晚上安排：聚餐、颁奖、合影和简短复盘。
+                    5. 预算建议：人均 200-400 元，包含场地、餐饮、饮水和小奖品。
+                    6. 执行提醒：提前确认天气、交通、餐位、备用室内方案和应急联系人。
+                    """.strip();
+        }
+        return "[mock-chat] " + (lastUserMessage.isBlank()
+                ? "Hello, this is a mock model response."
+                : "Echo: " + lastUserMessage);
+    }
+
+    private boolean isTeamBuildingFinalAnswerPrompt(String lastUserMessage) {
+        if (lastUserMessage == null || lastUserMessage.isBlank()) {
+            return false;
+        }
+        String normalized = lastUserMessage.toLowerCase();
+        return normalized.contains("provide a direct, complete answer")
+                && (lastUserMessage.contains("团建") || normalized.contains("team activity"));
     }
 }

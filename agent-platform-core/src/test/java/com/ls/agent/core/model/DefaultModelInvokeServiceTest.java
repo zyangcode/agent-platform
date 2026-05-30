@@ -73,6 +73,29 @@ class DefaultModelInvokeServiceTest {
     }
 
     @Test
+    void mockChatReturnsUsableTeamBuildingPlanForDirectFinalAnswerPrompt() {
+        when(configMapper.selectById(1L)).thenReturn(mockConfig());
+        when(providerMapper.selectById(1L)).thenReturn(mockProvider());
+
+        ModelInvokeResult result = service.invoke(new ModelInvokeCommand(
+                1L,
+                List.of(new ModelMessage("user", """
+                        User question: 我要组织团建，20人，给我计划
+
+                        Information gathered so far:
+                        - 上午破冰，下午分组活动，晚上聚餐。
+
+                        Based on the above, provide a direct, complete answer to the user's question. Do NOT use tool call format.
+                        """)),
+                BigDecimal.valueOf(0.7),
+                false
+        ));
+
+        assertThat(result.assistantMessage()).contains("20 人", "4 组", "预算");
+        assertThat(result.assistantMessage()).doesNotContain("[mock-chat] Echo:", "User question:");
+    }
+
+    @Test
     void openAiCompatibleModelPostsChatCompletionAndParsesResponse() throws Exception {
         List<String> requestBodies = new ArrayList<>();
         List<String> authorizationHeaders = new ArrayList<>();
