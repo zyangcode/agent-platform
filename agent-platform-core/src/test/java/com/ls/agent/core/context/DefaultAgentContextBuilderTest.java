@@ -271,7 +271,7 @@ class DefaultAgentContextBuilderTest {
                 2L,
                 "weather",
                 "Weather",
-                "Return mock weather.",
+                "Return current weather.",
                 "BUILTIN",
                 "GLOBAL",
                 "ENABLED",
