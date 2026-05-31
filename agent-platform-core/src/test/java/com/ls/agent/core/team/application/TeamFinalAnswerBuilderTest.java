@@ -72,6 +72,26 @@ class TeamFinalAnswerBuilderTest {
     }
 
     @Test
+    void keepsMarkdownBulletListFromSuccessfulTaskResult() {
+        String answer = builder.build("""
+                User request: organize team activity for 20 people
+                Goal: make a practical activity plan
+                Execution results:
+                - task-3 [SUCCESS]:
+                  - Morning: check in, icebreaker, split into four groups.
+                  - Afternoon: team challenge, points competition, backup indoor option.
+                  - Evening: dinner, awards, short retrospective.
+                """, new ReviewResultDTO(true, List.of(), List.of(), "review passed"));
+
+        assertThat(answer).contains(
+                "Morning: check in, icebreaker, split into four groups.",
+                "Afternoon: team challenge, points competition, backup indoor option.",
+                "Evening: dinner, awards, short retrospective."
+        );
+        assertThat(answer).doesNotContain("User request:", "Execution results:", "task-3");
+    }
+
+    @Test
     void doesNotFallBackToInternalDraftWhenOnlyMockToolJsonAndFailuresExist() {
         String answer = builder.build("""
                 用户请求：我要组织团建，20人，给我计划

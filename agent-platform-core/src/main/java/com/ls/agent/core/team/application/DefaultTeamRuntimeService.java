@@ -206,7 +206,7 @@ public class DefaultTeamRuntimeService implements TeamRuntimeService {
             }
 
             String finalAnswer = finalAnswerBuilder.build(answerDraft, reviewResult.reviewResult());
-            if (shouldGenerateFinalAnswer(plan, executionResults, finalAnswer)) {
+            if (shouldGenerateFinalAnswer(finalAnswer)) {
                 FallbackModelAnswer fallback = fallbackModelAnswer(command, context, plan, executionResults, limiter, spanId(runSpan));
                 if (fallback.modelInvocation() != null) {
                     fallbackModelInvocations.add(fallback.modelInvocation());
@@ -463,21 +463,11 @@ public class DefaultTeamRuntimeService implements TeamRuntimeService {
         return ids;
     }
 
-    private boolean shouldGenerateFinalAnswer(
-            TaskPlanDTO plan,
-            List<ExecutionResultDTO> executionResults,
-            String localFinalAnswer
-    ) {
+    private boolean shouldGenerateFinalAnswer(String localFinalAnswer) {
         if (localFinalAnswer == null || localFinalAnswer.isBlank()) {
             return true;
         }
-        if (looksLikePromptEcho(localFinalAnswer)) {
-            return true;
-        }
-        long successfulResults = executionResults == null ? 0 : executionResults.stream()
-                .filter(result -> "SUCCESS".equals(result.status()))
-                .count();
-        return successfulResults > 1 || (plan != null && plan.tasks() != null && plan.tasks().size() > 1);
+        return looksLikePromptEcho(localFinalAnswer);
     }
 
     private boolean looksLikePromptEcho(String answer) {

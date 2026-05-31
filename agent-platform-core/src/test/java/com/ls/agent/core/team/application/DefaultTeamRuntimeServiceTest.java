@@ -11,7 +11,6 @@ import com.ls.agent.core.context.api.AgentContextBuilder;
 import com.ls.agent.core.context.command.BuildAgentContextCommand;
 import com.ls.agent.core.context.dto.AgentContextDTO;
 import com.ls.agent.core.model.api.ModelInvokeService;
-import com.ls.agent.core.model.command.ModelInvokeCommand;
 import com.ls.agent.core.model.dto.ModelInvokeResult;
 import com.ls.agent.core.model.dto.ModelMessage;
 import com.ls.agent.core.model.dto.ModelUsageDTO;
@@ -282,7 +281,7 @@ class DefaultTeamRuntimeServiceTest {
     }
 
     @Test
-    void synthesizesMultiTaskPlanningResultsIntoFinalAnswer() {
+    void returnsUsableMultiTaskResultsWithoutBlockingFinalModelCall() {
         when(contextBuilder.build(any(BuildAgentContextCommand.class))).thenReturn(context("TEAM"));
         when(agentToolResolver.resolve(any())).thenReturn(List.of());
         when(planner.plan(any(PlanTeamCommand.class))).thenReturn(new TeamPlanResultDTO(
@@ -304,18 +303,15 @@ class DefaultTeamRuntimeServiceTest {
                 new ReviewResultDTO(true, List.of(), List.of(), "review passed"),
                 List.of(modelInvocation("review", 5))
         ));
-        when(modelInvokeService.invoke(any(ModelInvokeCommand.class))).thenReturn(
-                modelInvocation("完整团建计划：20 人分 4 组，上午破冰，下午团队挑战，晚上聚餐，人均预算 200-400 元。", 13)
-        );
 
         AgentRunResult result = service.run(teamBuildingCommand(90001L));
 
-        assertThat(result.assistantMessage()).isEqualTo("完整团建计划：20 人分 4 组，上午破冰，下午团队挑战，晚上聚餐，人均预算 200-400 元。");
-        assertThat(result.usage().totalTokens()).isEqualTo(29);
-        ArgumentCaptor<ModelInvokeCommand> finalAnswerCaptor = ArgumentCaptor.forClass(ModelInvokeCommand.class);
-        verify(modelInvokeService).invoke(finalAnswerCaptor.capture());
-        assertThat(finalAnswerCaptor.getValue().messages()).extracting(ModelMessage::content)
-                .anySatisfy(content -> assertThat(content).contains("我要组织团建，20人，给我计划", "上午破冰", "人均预算"));
+        assertThat(result.assistantMessage()).contains(
+                "上午破冰，下午分组活动，晚上聚餐。",
+                "20 人分 4 组，每组 5 人，人均预算 200-400 元。"
+        );
+        assertThat(result.usage().totalTokens()).isEqualTo(16);
+        verify(modelInvokeService, org.mockito.Mockito.never()).invoke(any());
     }
 
     @Test

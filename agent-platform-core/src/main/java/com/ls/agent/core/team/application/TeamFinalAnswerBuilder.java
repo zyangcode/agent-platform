@@ -9,11 +9,13 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.regex.Pattern;
 
 @Component
 public class TeamFinalAnswerBuilder {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final Pattern TASK_RESULT_LINE = Pattern.compile("^-\\s+\\S+\\s+\\[[A-Z_]+\\]:.*$");
 
     public String build(String answerDraft, ReviewResultDTO review) {
         String draft = visibleAnswer(answerDraft);
@@ -58,7 +60,7 @@ public class TeamFinalAnswerBuilder {
         StringBuilder currentResult = null;
         for (String line : draft.split("\\R")) {
             String trimmed = line.strip();
-            if (trimmed.startsWith("- ") && trimmed.contains("[SUCCESS]:")) {
+            if (isSuccessfulTaskResultLine(trimmed)) {
                 if (currentResult != null && !currentResult.toString().isBlank()) {
                     results.add(new TaskResultLine(currentResult.toString().strip()));
                 }
@@ -79,7 +81,15 @@ public class TeamFinalAnswerBuilder {
     }
 
     private boolean isContinuationLine(String line) {
-        return line != null && !line.isBlank() && !line.stripLeading().startsWith("- ");
+        return line != null && !line.isBlank() && !isTaskResultLine(line.strip());
+    }
+
+    private boolean isSuccessfulTaskResultLine(String line) {
+        return isTaskResultLine(line) && line.contains("[SUCCESS]:");
+    }
+
+    private boolean isTaskResultLine(String line) {
+        return line != null && TASK_RESULT_LINE.matcher(line).matches();
     }
 
     private boolean looksLikeJsonObject(String result) {
