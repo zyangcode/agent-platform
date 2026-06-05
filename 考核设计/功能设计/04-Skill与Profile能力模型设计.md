@@ -1,5 +1,7 @@
 # Skill 与 Profile 使用方案
 
+> ⚠ 角色体系已简化为 User/Admin 两角色（详见 CLAUDE.md 角色体系）。本文中的 Developer 视为 User。
+
 ## 1. 设计结论
 
 本平台不是单个通用智能体，而是一个支持“通用 Agent + 垂直领域 Agent + 用户自定义能力”的 AI Agent 平台。

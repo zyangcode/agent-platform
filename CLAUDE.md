@@ -36,18 +36,17 @@
 - 支付/真实计费暂缓；注册充值页面暂缓；MVP 先做 Token 配额（Admin 后台配置日/月额度），后续可扩展为真实成本和充值计费。
 - 完整单元测试体系暂缓；MVP 仍需做接口验证、手工验证和 Demo 验证，后续补充单元测试和集成测试。
 - 完整 RAG 知识库暂缓；MVP 必须体现长期记忆持久化，后续再扩展向量库和知识库问答。
-- 普通 User 上传任意 Jar Skill 暂缓；MVP 优先支持普通 User 上传配置型 Skill，Jar Skill 主要由 Developer/Admin 上传，后续再做用户 Jar 沙箱和审核。
-- Team Profile 配置暂缓到阶段 4；MVP 的 Developer 只配置单 Agent Profile。
+- 普通 User 上传任意 Jar Skill 暂缓；MVP 优先支持普通 User 上传配置型 Skill，Jar Skill 由 User/Admin 上传，后续再做用户 Jar 沙箱和审核。
+- Team Profile 配置暂缓到阶段 4；MVP 的 User 可配置单 Agent Profile。
 
 ## 角色体系
 
 | 角色 | 职责 |
 |------|------|
-| Admin | 管理模型供应商、全局 Skill 校验/上架/下架、MCP Server、全局安全策略、Token 配额、飞书告警、用户管理 |
-| Developer | 创建垂直领域 Agent Profile、配置领域 Prompt 和 Skill、上传领域 Skill、查看自己应用的 Trace/Token |
-| User | 选择 Agent 发起对话、勾选可用 Skill、上传个人私有 Skill、保存个人偏好、查看自己的 Trace/Token/历史 |
+| Admin | 管理模型供应商、全局 Skill 校验/上架/下架、MCP Server、全局安全策略、Token 配额、飞书告警、用户管理、查看全局 Trace/Token |
+| User | 对话、创建 Agent Profile、配置 Prompt/Skill/MCP、上传 Skill、管理知识库和记忆、创建 API Key、查看自己的 Trace/Token/历史 |
 
-User 不能：修改公共 Profile、修改核心 System Prompt、启用未授权高危 Skill、绕过安全检查。
+User 不能：修改核心 System Prompt、启用未授权高危 Skill、绕过安全检查。Admin 也是用户，拥有 User 全部能力。
 
 权限落地方式：Spring Security + JWT + API Key。登录注册页面做极简版（用户名+密码）。用户登录后在个人中心创建 Application，每个应用自动生成一个 API Key，可创建多个应用、单独吊销。Admin 后台可手动创建用户作为兜底。
 
@@ -101,10 +100,10 @@ Agent 模式 vs 透传模式：请求参数 `agent_mode` 控制。`agent` 走完
 基础 Agent 是必做能力，Team 模式是高分项。
 
 - **通用 Agent**：平台内置通用 System Prompt，用户自选全局 Skill + 个人 Skill
-- **垂直领域 Agent**：Developer 预配置领域 Profile（领域 Prompt + 领域 Skill），User 开箱即用
+- **垂直领域 Agent**：User 创建领域 Profile（领域 Prompt + 领域 Skill），其他用户可直接选用
 - **Team 执行链路**：复杂任务可启用 Planner→Executor→Reviewer；基础 Agent 和 Team 共用模型调用、Skill 合成、记忆、Trace、Token、脱敏和告警能力
 
-MVP 的 Developer = 配单 Agent Profile；阶段 4 的 Developer = 在 Profile 上启用 Team 模式并配置团队策略。
+MVP 的 User 可配单 Agent Profile；阶段 4 可在 Profile 上启用 Team 模式并配置团队策略。
 
 最终 Prompt = 核心 System Prompt（平台锁定）+ Profile 补充 Prompt（可配置）+ 当前任务上下文（运行时注入）
 
@@ -297,7 +296,7 @@ GatewayContext 用 ThreadLocal 贯穿，请求结束 finally 清理。
 - 模型供应商密钥通过 `core.support.security.SecretEncryptor` 统一处理；阶段 1 实现只能作为开发占位，后续可替换 AES/KMS，不改变业务接口。
 - Profile 绑定 Skill/MCP 时，`core.profile` 只能调用 `core.skill.api.SkillQueryService` / `core.mcp.api.McpToolQueryService` 校验可绑定性，不能直接访问 `skill.mapper` 或 `mcp.mapper`。
 - Skill 状态流转：UPLOADED → VALIDATING → INSTALLED → ENABLED → LOADED（可到 DISABLED/FAILED/UNINSTALLED）
-- Skill 安全：配置型 Skill 普通 User 可上传；代码型 Jar Skill 主要由 Developer/Admin 上传，ClassLoader 只做依赖隔离，不等价于安全沙箱
+- Skill 安全：配置型 Skill 所有 User 可上传；代码型 Jar Skill 由 User/Admin 上传，ClassLoader 只做依赖隔离，不等价于安全沙箱
 - Skill / MCP 边界：经验型 Skill 只做 Prompt/规则经验注入，不进入工具池；Jar Skill 定位为平台插件型 Skill，用于展示上传、校验、热加载、注册和运行时扩展能力；天气、搜索、文件系统、第三方 API 等外部工具优先作为 MCP Tool 接入，避免把外部工具 Demo 和 Jar 热加载 Demo 混在一起。
 - MCP 协议边界：消息层统一使用 JSON-RPC 2.0，和传输方式解耦；本地 MCP Server 优先使用 stdio，由平台启动子进程并通过 stdin/stdout 通信；远程 MCP Server 采用 2025-03-26 Streamable HTTP 兼容子集，默认单端点 `POST /mcp`，简单响应返回 JSON，长任务或流式结果返回 `text/event-stream` SSE。阶段内不再扩展旧 HTTP+SSE 双端点方案。
 - 敏感数据不入长期记忆原文

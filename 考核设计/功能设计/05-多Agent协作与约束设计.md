@@ -1,5 +1,7 @@
 # 多 Agent 协作实现与约束方案
 
+> ⚠ 角色体系已简化为 User/Admin 两角色（详见 CLAUDE.md 角色体系）。本文中的 Developer 视为 User。
+
 ## 1. 设计结论
 
 Planner、Executor、Reviewer 是平台内置的多 Agent 协作框架，不要求用户自己编写三个 Agent 的代码。
