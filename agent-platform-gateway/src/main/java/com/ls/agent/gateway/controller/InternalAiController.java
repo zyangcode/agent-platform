@@ -202,7 +202,13 @@ public class InternalAiController {
                     writeMessageDelta(output, traceId, result.conversationId(), stepHolder[0]++, token);
                 }
                 writeEvent(output, "message", payload("message", traceId, result.conversationId(), stepHolder[0]++, result.assistantMessage(), Map.of()));
-                writeEvent(output, "done", payload("done", traceId, result.conversationId(), stepHolder[0], null, Map.of()));
+                Map<String, Object> doneMeta = new HashMap<>();
+                if (result.ragCitations() != null && !result.ragCitations().isEmpty()) {
+                    doneMeta.put("ragCitations", result.ragCitations().stream()
+                            .map(r -> Map.of("title", r.title(), "sourceUri", r.sourceUri(), "documentId", r.documentId()))
+                            .toList());
+                }
+                writeEvent(output, "done", payload("done", traceId, result.conversationId(), stepHolder[0], null, doneMeta));
 
                 quotaFilter.commit(traceId, totalTokens(result.usage()));
                 finishTraceRoot(traceId, conversationId, "SUCCESS", null, null);

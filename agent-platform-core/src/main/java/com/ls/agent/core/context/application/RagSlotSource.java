@@ -21,6 +21,7 @@ public class RagSlotSource implements ContextSlotSource {
 
     private final RagSearchService ragSearchService;
     private final TraceService traceService;
+    private List<RagSearchResultDTO> lastResults = List.of();
 
     public RagSlotSource(RagSearchService ragSearchService) {
         this(ragSearchService, null);
@@ -65,7 +66,9 @@ public class RagSlotSource implements ContextSlotSource {
                         span == null ? command.parentSpanId() : span.id()
                 );
             }
-            ContextSlotContent content = format(results == null ? List.of() : results, slot.tokenBudget());
+            List<RagSearchResultDTO> safeResults = results == null ? List.of() : results;
+            this.lastResults = safeResults;
+            ContextSlotContent content = format(safeResults, slot.tokenBudget());
             if (span != null && span.attributes() instanceof ObjectNode attributes) {
                 attributes.put("returnedCount", results == null ? 0 : results.size());
                 attributes.put("usedTokens", content.usedTokens());
@@ -114,6 +117,10 @@ public class RagSlotSource implements ContextSlotSource {
 
     private String source(RagSearchResultDTO result) {
         return result.sourceUri().isBlank() ? "" : " (" + result.sourceUri().strip() + ")";
+    }
+
+    public List<RagSearchResultDTO> getLastResults() {
+        return lastResults;
     }
 
     private int estimateTokens(String text) {

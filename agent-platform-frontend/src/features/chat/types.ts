@@ -50,3 +50,9 @@ export type PendingToolConfirmation = {
 }
 
 export type RuntimeStatus = 'idle' | 'streaming' | 'done' | 'error'
+
+export type RagCitation = {
+  title: string
+  sourceUri: string
+  documentId: number
+}

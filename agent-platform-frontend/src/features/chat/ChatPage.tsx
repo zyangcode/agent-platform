@@ -30,7 +30,7 @@ import { nextConversationId } from './chat-session-utils'
 import { ConversationPanel } from './ConversationPanel'
 import { archiveConversation, listConversationMessages, listConversations } from './history-api'
 import { RuntimeDetailPanel } from './RuntimeDetailPanel'
-import type { AgentMode, ChatMessage, ChatStreamEvent, PendingToolConfirmation, RuntimeStatus } from './types'
+import type { AgentMode, ChatMessage, ChatStreamEvent, PendingToolConfirmation, RagCitation, RuntimeStatus } from './types'
 
 type ResourceState =
   | {
@@ -97,6 +97,7 @@ export function ChatPage() {
   const [historyError, setHistoryError] = useState<string | null>(null)
   const [historyStatus, setHistoryStatus] = useState<'idle' | 'loading'>('idle')
   const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [ragCitations, setRagCitations] = useState<RagCitation[]>([])
   const [runtimeError, setRuntimeError] = useState<string | null>(null)
   const [runtimeEvents, setRuntimeEvents] = useState<ChatStreamEvent[]>([])
   const [runtimeStatus, setRuntimeStatus] = useState<RuntimeStatus>('idle')
@@ -335,6 +336,13 @@ export function ChatPage() {
 
     if (event.type === 'done') {
       setRuntimeStatus('done')
+      const metadata = event.metadata && typeof event.metadata === 'object' && !Array.isArray(event.metadata)
+        ? event.metadata as Record<string, unknown>
+        : null
+      const citations = metadata && Array.isArray(metadata.ragCitations)
+        ? (metadata.ragCitations as RagCitation[])
+        : []
+      setRagCitations(citations)
       setMessages((current) =>
         current.map((message) =>
           message.id === assistantMessageId && message.content.trim().length === 0
@@ -361,6 +369,7 @@ export function ChatPage() {
     const assistantMessageId = nextId('assistant')
 
     setInput('')
+    setRagCitations([])
     setRuntimeError(null)
     setRuntimeEvents([])
     setRuntimeStatus('streaming')
@@ -691,6 +700,7 @@ export function ChatPage() {
           disabledReason={disabledReason}
           input={input}
           messages={messages}
+          ragCitations={ragCitations}
           onInputChange={setInput}
           onStop={stopStreaming}
           onSubmit={sendMessage}

@@ -1,15 +1,16 @@
-import { Bot, Send, Square, UserRound } from 'lucide-react'
+import { Bot, ExternalLink, Send, Square, UserRound } from 'lucide-react'
 import { type FormEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { useI18n } from '@/lib/i18n/use-i18n'
 import { cn } from '@/lib/utils'
-import type { ChatMessage, RuntimeStatus } from './types'
+import type { ChatMessage, RagCitation, RuntimeStatus } from './types'
 
 type ConversationPanelProps = {
   disabledReason: string | null
   input: string
   messages: ChatMessage[]
+  ragCitations?: RagCitation[]
   onInputChange: (value: string) => void
   onStop: () => void
   onSubmit: () => void
@@ -20,6 +21,7 @@ export function ConversationPanel({
   disabledReason,
   input,
   messages,
+  ragCitations,
   onInputChange,
   onStop,
   onSubmit,
@@ -54,36 +56,57 @@ export function ConversationPanel({
             </div>
           </div>
         ) : (
-          messages.map((message) => (
-            <div
-              className={cn(
-                'flex gap-3',
-                message.role === 'user' ? 'justify-end' : 'justify-start',
-              )}
-              key={message.id}
-            >
-              {message.role === 'assistant' ? (
-                <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-cyan-200/20 bg-cyan-300/10">
-                  <Bot className="h-4 w-4 text-cyan-100" strokeWidth={1.75} />
-                </div>
-              ) : null}
+          <>
+            {messages.map((message) => (
               <div
                 className={cn(
-                  'max-w-[88%] whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-6',
-                  message.role === 'user'
-                    ? 'bg-cyan-200 text-zinc-950'
-                    : 'border border-white/10 bg-white/[0.055] text-zinc-100',
+                  'flex gap-3',
+                  message.role === 'user' ? 'justify-end' : 'justify-start',
                 )}
+                key={message.id}
               >
-                {message.content}
-              </div>
-              {message.role === 'user' ? (
-                <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.06]">
-                  <UserRound className="h-4 w-4 text-zinc-300" strokeWidth={1.75} />
+                {message.role === 'assistant' ? (
+                  <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-cyan-200/20 bg-cyan-300/10">
+                    <Bot className="h-4 w-4 text-cyan-100" strokeWidth={1.75} />
+                  </div>
+                ) : null}
+                <div
+                  className={cn(
+                    'max-w-[88%] whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-6',
+                    message.role === 'user'
+                      ? 'bg-cyan-200 text-zinc-950'
+                      : 'border border-white/10 bg-white/[0.055] text-zinc-100',
+                  )}
+                >
+                  {message.content}
                 </div>
-              ) : null}
-            </div>
-          ))
+                {message.role === 'user' ? (
+                  <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.06]">
+                    <UserRound className="h-4 w-4 text-zinc-300" strokeWidth={1.75} />
+                  </div>
+                ) : null}
+              </div>
+            ))}
+            {ragCitations && ragCitations.length > 0 ? (
+              <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                <p className="text-xs font-medium text-zinc-400">{t('chat.references')}</p>
+                <div className="mt-2 space-y-2">
+                  {ragCitations.map((citation, index) => (
+                    <a
+                      className="flex items-center gap-2 text-xs text-cyan-300 hover:text-cyan-200"
+                      href={citation.sourceUri || undefined}
+                      key={`${citation.documentId}-${index}`}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      <ExternalLink className="h-3 w-3" strokeWidth={1.75} />
+                      {citation.title || `Reference ${index + 1}`}
+                    </a>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </>
         )}
       </div>
 

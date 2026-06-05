@@ -24,14 +24,14 @@ class ContextSchemaAssemblerTest {
         ));
         ContextSchemaAssembler assembler = new ContextSchemaAssembler(List.of(
                 source(ContextSlotKind.TOOLS, "Available skills:\n- calculator: Evaluate expressions.\n", 12),
-                source(ContextSlotKind.PROFILE, "You are AgentX.\n\nProfile Prompt:\nBe concise.", 15),
+                source(ContextSlotKind.PROFILE, "You are Nexus.\n\nProfile Prompt:\nBe concise.", 15),
                 source(ContextSlotKind.TASK_MEMORY, "", 0)
         ));
 
         ContextSchemaAssembler.AssembledContext assembled = assembler.assemble(schema, command());
 
         assertThat(assembled.systemPrompt())
-                .isEqualTo("You are AgentX.\n\nProfile Prompt:\nBe concise.\n\nAvailable skills:\n- calculator: Evaluate expressions.");
+                .isEqualTo("You are Nexus.\n\nProfile Prompt:\nBe concise.\n\nAvailable skills:\n- calculator: Evaluate expressions.");
         assertThat(assembled.content(ContextSlotKind.PROFILE).usedTokens()).isEqualTo(15);
         assertThat(assembled.content(ContextSlotKind.TASK_MEMORY).usedTokens()).isZero();
         assertThat(assembled.content(ContextSlotKind.TOOLS).usedTokens()).isEqualTo(12);

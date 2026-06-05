@@ -13,7 +13,7 @@ import java.time.format.DateTimeFormatter;
 public class ProfileSlotSource implements ContextSlotSource {
 
     static final String PLATFORM_SYSTEM_PROMPT = """
-            You are AgentX. Tools only when needed; call as @skill:name {"arg":"value"} or @mcp:name {"arg":"value"}, not promises.
+            You are Nexus. Tools only when needed; call as @skill:name {"arg":"value"} or @mcp:name {"arg":"value"}, not promises.
             Current date: %s.
             """;
 

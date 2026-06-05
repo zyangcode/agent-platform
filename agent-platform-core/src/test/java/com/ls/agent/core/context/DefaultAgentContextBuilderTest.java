@@ -99,7 +99,7 @@ class DefaultAgentContextBuilderTest {
         assertThat(result.apiMessages()).extracting("role")
                 .containsExactly("system", "user", "assistant", "user");
         assertThat(result.apiMessages().get(0).content())
-                .contains("You are AgentX")
+                .contains("You are Nexus")
                 .contains("not promises")
                 .contains("@skill:name")
                 .contains("Be concise.")
@@ -115,7 +115,7 @@ class DefaultAgentContextBuilderTest {
                         .doesNotContain("Ada likes concise answers.")
                         .doesNotContain("calculator")
                         .doesNotContain("read_file")
-                        .doesNotContain("You are AgentX"));
+                        .doesNotContain("You are Nexus"));
         assertThat(result.availableSkills()).extracting("code").containsExactly("calculator");
         assertThat(result.availableMcpTools()).extracting("name").containsExactly("read_file");
         assertThat(result.truncated()).isFalse();

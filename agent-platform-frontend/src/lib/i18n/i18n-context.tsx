@@ -68,6 +68,7 @@ const defaultDictionary: TranslationDictionary = {
   },
   'chat.profile': { en: 'Profile', zh: 'Profile' },
   'chat.quotaNotEnough': { en: 'Token quota is not enough for this request.', zh: '本次请求的 Token 配额不足。' },
+  'chat.references': { en: 'References', zh: '参考来源' },
   'chat.refreshResources': { en: 'Refresh resources', zh: '刷新资源' },
   'chat.requestBlocked': { en: 'The request was blocked by security policy or permission rules.', zh: '请求被安全策略或权限规则阻断。' },
   'chat.runSetup': { en: 'Run setup', zh: '运行配置' },

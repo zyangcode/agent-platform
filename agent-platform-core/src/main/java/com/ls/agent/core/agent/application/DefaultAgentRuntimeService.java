@@ -177,7 +177,7 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
             );
             saveMemory(command, context, spanId(runSpan), conversationId, finalAssistantMessage);
             safeFinishSpan(runSpan, "SUCCESS", null, null);
-            return new AgentRunResult(conversationId, finalAssistantMessage, modelResult.usage(), toolEvents);
+            return new AgentRunResult(conversationId, finalAssistantMessage, modelResult.usage(), toolEvents, context.ragSearchResults());
         } catch (Exception ex) {
             safeFinishSpan(runSpan, "FAILED", errorCode(ex), errorMessage(ex));
             throw ex;

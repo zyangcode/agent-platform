@@ -191,7 +191,8 @@ public class DefaultAgentContextBuilder implements AgentContextBuilder {
                 mcpTools,
                 snapshot.apiMessagesTokens(),
                 snapshot.truncated(),
-                snapshot
+                snapshot,
+                contextBlocks.ragResults()
         );
     }
 
@@ -366,6 +367,7 @@ public class DefaultAgentContextBuilder implements AgentContextBuilder {
             BuildAgentContextCommand command
     ) {
         ProfileSlotSource profileSlotSource = new ProfileSlotSource(profile);
+        RagSlotSource ragSlotSource = new RagSlotSource(ragSearchService, traceService);
         ContextSchema schema = new ContextSchema("single-agent-react", List.of(
                 ContextSlot.required(ContextSlotKind.PROFILE, Integer.MAX_VALUE),
                 ContextSlot.of(ContextSlotKind.TASK_MEMORY, memoryTokenBudget),
@@ -377,12 +379,12 @@ public class DefaultAgentContextBuilder implements AgentContextBuilder {
                 profileSlotSource,
                 new MemorySlotSource(memories),
                 new ExperienceSlotSource(experienceSkills),
-                new RagSlotSource(ragSearchService, traceService),
+                ragSlotSource,
                 new ToolsSlotSource(skills, mcpTools)
         )).assemble(schema, command);
         String platformSystem = profileSlotSource.buildPlatformSystemPrompt();
         String profileBlock = profileSlotSource.buildProfileBlock();
-        return new ContextBlocks(
+        return ContextBlocks.of(
                 assembled.systemPrompt(),
                 estimateTokens(platformSystem),
                 estimateTokens(profileBlock),
@@ -390,7 +392,8 @@ public class DefaultAgentContextBuilder implements AgentContextBuilder {
                 assembled.usedTokens(ContextSlotKind.TOOLS),
                 assembled.usedTokens(ContextSlotKind.EXPERIENCE),
                 assembled.usedTokens(ContextSlotKind.RAG_RECALL),
-                assembled.truncated(ContextSlotKind.RAG_RECALL)
+                assembled.truncated(ContextSlotKind.RAG_RECALL),
+                ragSlotSource.getLastResults()
         );
     }
 
@@ -625,8 +628,27 @@ public class DefaultAgentContextBuilder implements AgentContextBuilder {
             int toolsTokens,
             int experienceTokens,
             int ragTokens,
-            boolean ragTruncated
+            boolean ragTruncated,
+            List<com.ls.agent.core.rag.dto.RagSearchResultDTO> ragResults
     ) {
+        private static ContextBlocks of(
+                String systemPrompt,
+                int platformSystemTokens,
+                int profileTokens,
+                int memoryTokens,
+                int toolsTokens,
+                int experienceTokens,
+                int ragTokens,
+                boolean ragTruncated,
+                List<com.ls.agent.core.rag.dto.RagSearchResultDTO> ragResults
+        ) {
+            return new ContextBlocks(
+                    systemPrompt, platformSystemTokens, profileTokens,
+                    memoryTokens, toolsTokens, experienceTokens, ragTokens,
+                    ragTruncated,
+                    ragResults == null ? List.of() : ragResults
+            );
+        }
     }
 
     private record HistoryWindow(

@@ -1421,7 +1421,7 @@ class DefaultAgentRuntimeServiceTest {
         return new AgentContextDTO(
                 30001L,
                 profile(),
-                List.of(new ModelMessage("system", "You are AgentX"), new ModelMessage("user", "hello")),
+                List.of(new ModelMessage("system", "You are Nexus"), new ModelMessage("user", "hello")),
                 List.of(skill()),
                 List.of(mcpTool()),
                 20,
@@ -1433,7 +1433,7 @@ class DefaultAgentRuntimeServiceTest {
         return new AgentContextDTO(
                 30001L,
                 profileWithMemoryStrategy(mode),
-                List.of(new ModelMessage("system", "You are AgentX"), new ModelMessage("user", "hello")),
+                List.of(new ModelMessage("system", "You are Nexus"), new ModelMessage("user", "hello")),
                 List.of(skill()),
                 List.of(mcpTool()),
                 20,
@@ -1447,7 +1447,7 @@ class DefaultAgentRuntimeServiceTest {
                 profile(),
                 List.of(new ModelMessage("user", "hello")),
                 List.of(
-                        new ModelMessage("system", "You are AgentX\n[memory] Ada likes concise answers.\nTool specs\n[rag] private reference"),
+                        new ModelMessage("system", "You are Nexus\n[memory] Ada likes concise answers.\nTool specs\n[rag] private reference"),
                         new ModelMessage("user", "hello")
                 ),
                 List.of(skill()),
@@ -1461,7 +1461,7 @@ class DefaultAgentRuntimeServiceTest {
         return new AgentContextDTO(
                 30001L,
                 profile(),
-                List.of(new ModelMessage("system", "You are AgentX"), new ModelMessage("user", "hello")),
+                List.of(new ModelMessage("system", "You are Nexus"), new ModelMessage("user", "hello")),
                 List.of(),
                 List.of(),
                 20,
@@ -1473,8 +1473,8 @@ class DefaultAgentRuntimeServiceTest {
         return new AgentContextDTO(
                 30001L,
                 profile(),
-                List.of(new ModelMessage("system", "You are AgentX"), new ModelMessage("user", "重庆")),
-                List.of(new ModelMessage("system", "You are AgentX"), new ModelMessage("user", "重庆")),
+                List.of(new ModelMessage("system", "You are Nexus"), new ModelMessage("user", "重庆")),
+                List.of(new ModelMessage("system", "You are Nexus"), new ModelMessage("user", "重庆")),
                 List.of(weatherSkill()),
                 List.of(),
                 20,
@@ -1486,8 +1486,8 @@ class DefaultAgentRuntimeServiceTest {
         return new AgentContextDTO(
                 30001L,
                 profile(),
-                List.of(new ModelMessage("system", "You are AgentX"), new ModelMessage("user", "重庆")),
-                List.of(new ModelMessage("system", "You are AgentX"), new ModelMessage("user", "重庆")),
+                List.of(new ModelMessage("system", "You are Nexus"), new ModelMessage("user", "重庆")),
+                List.of(new ModelMessage("system", "You are Nexus"), new ModelMessage("user", "重庆")),
                 List.of(),
                 List.of(weatherMcpTool()),
                 20,
@@ -1499,7 +1499,7 @@ class DefaultAgentRuntimeServiceTest {
         return new AgentContextDTO(
                 30001L,
                 profile(executionMode),
-                List.of(new ModelMessage("system", "You are AgentX"), new ModelMessage("user", "hello")),
+                List.of(new ModelMessage("system", "You are Nexus"), new ModelMessage("user", "hello")),
                 List.of(skill()),
                 List.of(mcpTool()),
                 20,
@@ -1513,7 +1513,7 @@ class DefaultAgentRuntimeServiceTest {
                 profile(),
                 List.of(new ModelMessage("user", "hello")),
                 List.of(
-                        new ModelMessage("system", "You are AgentX"),
+                        new ModelMessage("system", "You are Nexus"),
                         new ModelMessage("assistant", "[rag] " + "r".repeat(1_200)),
                         new ModelMessage("assistant", "{\"items\":\"" + "j".repeat(1_200) + "\"}"),
                         new ModelMessage("tool", "[tool crash] " + "e".repeat(1_200)),

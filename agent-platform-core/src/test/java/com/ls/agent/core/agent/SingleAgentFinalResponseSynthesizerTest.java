@@ -30,17 +30,17 @@ class SingleAgentFinalResponseSynthesizerTest {
                 trace_id=tr_001 span_id=42 status=SUCCESS
                 spanId=43 model.invoke latencyMs=120
                 message_delta #0 null
-                I am AgentX, your AI assistant.
+                I am Nexus, your AI assistant.
                 """);
 
-        assertThat(answer).isEqualTo("I am AgentX, your AI assistant.");
+        assertThat(answer).isEqualTo("I am Nexus, your AI assistant.");
     }
 
     @Test
     void fallbackMessagesRemoveToolListingsAndAppendUserVisibleAnswerInstruction() {
         List<ModelMessage> messages = synthesizer.fallbackMessages(List.of(
                 new ModelMessage("system", """
-                        You are AgentX
+                        You are Nexus
                         Available skills:
                         - calculator: evaluate math
                         Available MCP tools:
@@ -52,7 +52,7 @@ class SingleAgentFinalResponseSynthesizerTest {
 
         assertThat(messages).hasSize(4);
         assertThat(messages.get(0).content())
-                .contains("You are AgentX")
+                .contains("You are Nexus")
                 .doesNotContain("Available skills", "Available MCP tools", "calculator", "read_file");
         assertThat(messages.get(3).role()).isEqualTo("user");
         assertThat(messages.get(3).content())

@@ -32,7 +32,7 @@ class ProfileSlotSourceTest {
         assertThat(source.supports(ContextSlotKind.HISTORY)).isFalse();
         assertThat(content.kind()).isEqualTo(ContextSlotKind.PROFILE);
         assertThat(content.content())
-                .contains("You are AgentX")
+                .contains("You are Nexus")
                 .contains("Tools only when needed")
                 .contains(LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE))
                 .contains("Profile Prompt:")

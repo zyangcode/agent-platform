@@ -3,6 +3,7 @@ package com.ls.agent.core.context.dto;
 import com.ls.agent.core.mcp.dto.McpToolDTO;
 import com.ls.agent.core.model.dto.ModelMessage;
 import com.ls.agent.core.profile.dto.ProfileDTO;
+import com.ls.agent.core.rag.dto.RagSearchResultDTO;
 import com.ls.agent.core.skill.dto.SkillDTO;
 
 import java.util.List;
@@ -16,7 +17,8 @@ public record AgentContextDTO(
         List<McpToolDTO> availableMcpTools,
         int estimatedTokens,
         boolean truncated,
-        ContextBudgetSnapshotDTO contextBudgetSnapshot
+        ContextBudgetSnapshotDTO contextBudgetSnapshot,
+        List<RagSearchResultDTO> ragSearchResults
 ) {
     public AgentContextDTO {
         conversationMessages = conversationMessages == null ? List.of() : List.copyOf(conversationMessages);
@@ -26,6 +28,7 @@ public record AgentContextDTO(
         contextBudgetSnapshot = contextBudgetSnapshot == null
                 ? ContextBudgetSnapshotDTO.minimal(0, estimatedTokens, truncated)
                 : contextBudgetSnapshot;
+        ragSearchResults = ragSearchResults == null ? List.of() : List.copyOf(ragSearchResults);
     }
 
     public AgentContextDTO(
@@ -38,15 +41,11 @@ public record AgentContextDTO(
             boolean truncated
     ) {
         this(
-                modelConfigId,
-                profile,
-                messages,
-                messages,
-                availableSkills,
-                availableMcpTools,
-                estimatedTokens,
-                truncated,
-                ContextBudgetSnapshotDTO.minimal(0, estimatedTokens, truncated)
+                modelConfigId, profile, messages, messages,
+                availableSkills, availableMcpTools,
+                estimatedTokens, truncated,
+                ContextBudgetSnapshotDTO.minimal(0, estimatedTokens, truncated),
+                List.of()
         );
     }
 
@@ -61,15 +60,11 @@ public record AgentContextDTO(
             boolean truncated
     ) {
         this(
-                modelConfigId,
-                profile,
-                conversationMessages,
-                apiMessages,
-                availableSkills,
-                availableMcpTools,
-                estimatedTokens,
-                truncated,
-                ContextBudgetSnapshotDTO.minimal(0, estimatedTokens, truncated)
+                modelConfigId, profile, conversationMessages, apiMessages,
+                availableSkills, availableMcpTools,
+                estimatedTokens, truncated,
+                ContextBudgetSnapshotDTO.minimal(0, estimatedTokens, truncated),
+                List.of()
         );
     }
 
