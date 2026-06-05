@@ -109,6 +109,23 @@ class TraceControllerTest {
         assertThat(captor.getValue().pageSize()).isEqualTo(100);
     }
 
+    @Test
+    void pageTracesNormalizesInvalidPaginationAtWebBoundary() throws Exception {
+        when(traceService.pageTraces(org.mockito.ArgumentMatchers.any(QueryTracePageCommand.class)))
+                .thenReturn(PageResult.empty(1, 20));
+
+        mockMvc.perform(get("/api/traces")
+                        .header("Authorization", bearerToken())
+                        .param("pageNo", "0")
+                        .param("pageSize", "0"))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<QueryTracePageCommand> captor = ArgumentCaptor.forClass(QueryTracePageCommand.class);
+        verify(traceService).pageTraces(captor.capture());
+        assertThat(captor.getValue().pageNo()).isEqualTo(1);
+        assertThat(captor.getValue().pageSize()).isEqualTo(20);
+    }
+
     private TraceDetailDTO traceDetail() {
         LocalDateTime now = LocalDateTime.of(2026, 5, 23, 10, 0);
         return new TraceDetailDTO(

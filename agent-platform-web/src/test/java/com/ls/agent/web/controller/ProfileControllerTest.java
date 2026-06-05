@@ -104,6 +104,21 @@ class ProfileControllerTest {
     }
 
     @Test
+    void listProfilesNormalizesInvalidPaginationAtWebBoundary() throws Exception {
+        when(profileService.pageProfiles(1L, 10001L, 20001L, 1, 20))
+                .thenReturn(PageResult.empty(1, 20));
+
+        mockMvc.perform(get("/api/profiles")
+                        .header("Authorization", bearerToken())
+                        .param("applicationId", "20001")
+                        .param("pageNo", "0")
+                        .param("pageSize", "0"))
+                .andExpect(status().isOk());
+
+        verify(profileService).pageProfiles(1L, 10001L, 20001L, 1, 20);
+    }
+
+    @Test
     void listProfilesReturnsBadRequestWhenApplicationIdMissing() throws Exception {
         mockMvc.perform(get("/api/profiles")
                         .header("Authorization", bearerToken()))

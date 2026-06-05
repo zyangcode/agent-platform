@@ -17,7 +17,14 @@ import { useI18n } from '@/lib/i18n/use-i18n'
 import { getTrace, listTraces, type TraceEntrypointFilter, type TraceStatusFilter } from './api'
 import { SpanDetailPanel } from './SpanDetailPanel'
 import { TraceTimeline } from './TraceTimeline'
-import { formatTraceStatus, formatTraceTokenCount, getTraceStatusVariant, sortTraceSpans } from './trace-utils'
+import {
+  findTokenUsageForSpan,
+  formatTraceStatus,
+  formatTraceTokenCount,
+  getTraceModelCallSummary,
+  getTraceStatusVariant,
+  sortTraceSpans,
+} from './trace-utils'
 
 type TraceListState =
   | {
@@ -436,6 +443,8 @@ function TraceDetailView({
   }
 
   const detail = detailState.detail
+  const selectedTokenUsage = findTokenUsageForSpan(selectedSpan, detail?.tokenUsages ?? [])
+  const modelCallSummary = detail ? getTraceModelCallSummary(detail.spans, detail.tokenUsages) : null
 
   if (!detail) {
     return (
@@ -488,6 +497,14 @@ function TraceDetailView({
             <Metric label={t('common.tokens')} value={formatTraceTokenCount(detail.totalTokens)} />
             <Metric label={t('trace.mode')} value={detail.agentMode || '-'} />
           </div>
+          {modelCallSummary ? (
+            <div className="grid gap-3 md:grid-cols-4">
+              <Metric label={t('trace.modelCallCount')} value={String(modelCallSummary.modelCallCount)} />
+              <Metric label={t('trace.modelTotalTokens')} value={formatTraceTokenCount(modelCallSummary.totalTokens)} />
+              <Metric label={t('trace.estimatedRatio')} value={`${modelCallSummary.estimatedRatio}%`} />
+              <Metric label={t('trace.slowestModelCall')} value={formatLatency(modelCallSummary.slowestLatencyMs)} />
+            </div>
+          ) : null}
 
           {detail.errorMessage ? (
             <Alert variant="danger">
@@ -502,6 +519,7 @@ function TraceDetailView({
               onSelectSpan={setSelectedSpan}
               selectedSpanId={selectedSpan?.id}
               spans={detail.spans}
+              tokenUsages={detail.tokenUsages}
             />
           </div>
 
@@ -530,7 +548,7 @@ function TraceDetailView({
         </CardContent>
       </Card>
 
-      <SpanDetailPanel span={selectedSpan} />
+      <SpanDetailPanel span={selectedSpan} tokenUsage={selectedTokenUsage} />
     </div>
   )
 }

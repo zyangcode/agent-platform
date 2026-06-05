@@ -1,5 +1,6 @@
 package com.ls.agent.core.agent.tool;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.ls.agent.core.context.dto.AgentContextDTO;
 import com.ls.agent.core.mcp.dto.McpToolDTO;
 import com.ls.agent.core.skill.dto.SkillDTO;
@@ -7,6 +8,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 @Service
 public class DefaultAgentToolResolver implements AgentToolResolver {
@@ -41,7 +43,9 @@ public class DefaultAgentToolResolver implements AgentToolResolver {
                 skill.description(),
                 AgentToolSourceType.SKILL,
                 skill.parameterSchema(),
-                AgentToolRiskLevel.LOW
+                riskLevel(skill.parameterSchema()),
+                readOnly(skill.parameterSchema()),
+                resourceKeys(skill.parameterSchema())
         );
     }
 
@@ -52,7 +56,40 @@ public class DefaultAgentToolResolver implements AgentToolResolver {
                 tool.description(),
                 AgentToolSourceType.MCP,
                 tool.parameterSchema(),
-                AgentToolRiskLevel.LOW
+                riskLevel(tool.parameterSchema()),
+                readOnly(tool.parameterSchema()),
+                resourceKeys(tool.parameterSchema())
         );
+    }
+
+    private boolean readOnly(JsonNode parameterSchema) {
+        return parameterSchema != null
+                && parameterSchema.has("x-readOnly")
+                && parameterSchema.get("x-readOnly").asBoolean(false);
+    }
+
+    private AgentToolRiskLevel riskLevel(JsonNode parameterSchema) {
+        if (parameterSchema == null || !parameterSchema.hasNonNull("x-riskLevel")) {
+            return AgentToolRiskLevel.LOW;
+        }
+        try {
+            return AgentToolRiskLevel.valueOf(parameterSchema.get("x-riskLevel").asText().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException ex) {
+            return AgentToolRiskLevel.LOW;
+        }
+    }
+
+    private List<String> resourceKeys(JsonNode parameterSchema) {
+        if (parameterSchema == null || !parameterSchema.has("x-resourceKeys") || !parameterSchema.get("x-resourceKeys").isArray()) {
+            return List.of();
+        }
+        List<String> keys = new ArrayList<>();
+        for (JsonNode item : parameterSchema.get("x-resourceKeys")) {
+            String key = item.asText("");
+            if (!key.isBlank()) {
+                keys.add(key);
+            }
+        }
+        return keys;
     }
 }

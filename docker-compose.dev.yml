@@ -16,5 +16,15 @@ services:
       timeout: 3s
       retries: 10
 
+  qdrant:
+    image: qdrant/qdrant:v1.12.6
+    container_name: agent-platform-dev-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - agent-platform-dev-qdrant-data:/qdrant/storage
+
 volumes:
   agent-platform-dev-postgres-data:
+  agent-platform-dev-qdrant-data:

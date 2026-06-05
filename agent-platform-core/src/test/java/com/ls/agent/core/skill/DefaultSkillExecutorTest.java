@@ -8,6 +8,8 @@ import com.ls.agent.core.skill.dto.SkillExecuteResult;
 import org.junit.jupiter.api.Test;
 
 import java.net.URI;
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -48,6 +50,43 @@ class DefaultSkillExecutorTest {
         assertThat(result.output().get("summary").asText())
                 .contains("Chongqing", "26.4C")
                 .doesNotContain("mock");
+    }
+
+    @Test
+    void weatherUsesLocalChineseCityFallbackBeforeGeocoding() {
+        List<URI> requests = new ArrayList<>();
+        DefaultSkillExecutor realExecutor = new DefaultSkillExecutor(objectMapper, uri -> {
+            requests.add(uri);
+            if ("geocoding-api.open-meteo.com".equals(uri.getHost())) {
+                throw new AssertionError("Chinese known city should not require remote geocoding");
+            }
+            if ("api.open-meteo.com".equals(uri.getHost())) {
+                return objectMapper.createObjectNode()
+                        .set("current", objectMapper.createObjectNode()
+                                .put("time", "2026-06-01T14:00")
+                                .put("temperature_2m", 29.8)
+                                .put("wind_speed_10m", 6.4)
+                                .put("weather_code", 1));
+            }
+            throw new IllegalArgumentException("Unexpected URI: " + uri);
+        });
+
+        SkillExecuteResult result = realExecutor.execute(new SkillExecuteCommand(
+                1L,
+                10001L,
+                "weather",
+                objectMapper.createObjectNode().put("city", "重庆")
+        ));
+
+        assertThat(result.success()).isTrue();
+        assertThat(result.output().get("city").asText()).isEqualTo("重庆");
+        assertThat(result.output().get("country").asText()).isEqualTo("China");
+        assertThat(result.output().get("temperatureC").asDouble()).isEqualTo(29.8);
+        assertThat(result.output().get("summary").asText()).contains("重庆", "29.8C");
+        assertThat(requests).singleElement().satisfies(uri -> {
+            assertThat(uri.getHost()).isEqualTo("api.open-meteo.com");
+            assertThat(uri.getQuery()).contains("latitude=29.56", "longitude=106.55");
+        });
     }
 
     @Test

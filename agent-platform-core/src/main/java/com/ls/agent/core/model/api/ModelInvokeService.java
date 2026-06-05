@@ -6,4 +6,8 @@ import com.ls.agent.core.model.dto.ModelInvokeResult;
 public interface ModelInvokeService {
 
     ModelInvokeResult invoke(ModelInvokeCommand command);
+
+    default ModelInvokeResult invoke(ModelInvokeCommand command, ModelStreamCallback streamCallback) {
+        return invoke(command);
+    }
 }

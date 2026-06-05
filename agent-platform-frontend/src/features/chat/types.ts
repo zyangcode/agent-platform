@@ -1,6 +1,6 @@
-import type { JsonValue } from '@/lib/api/types'
+import type { JsonValue, PendingToolCall } from '@/lib/api/types'
 
-export type AgentMode = 'agent' | 'none'
+export type AgentMode = 'agent' | 'team' | 'none'
 
 export type ChatRole = 'assistant' | 'user'
 
@@ -27,8 +27,10 @@ export type ChatStreamEvent = {
     | 'done'
     | 'error'
     | 'message'
+    | 'message_delta'
     | 'observation'
     | 'thinking'
+    | 'tool_confirm_required'
     | TeamStreamEventType
   traceId?: string | null
   conversationId?: number | null
@@ -40,6 +42,11 @@ export type ChatStreamEvent = {
   taskId?: string | null
   toolName?: string | null
   metadata?: JsonValue
+}
+
+export type PendingToolConfirmation = {
+  toolKey: string
+  pendingToolCall: PendingToolCall
 }
 
 export type RuntimeStatus = 'idle' | 'streaming' | 'done' | 'error'

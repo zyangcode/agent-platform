@@ -86,7 +86,7 @@ public class DirectModelRunService {
             return;
         }
         try {
-            traceService.finishSpan(new FinishTraceSpanCommand(span.id(), status, errorCode, errorMessage));
+            traceService.finishSpan(new FinishTraceSpanCommand(span.id(), status, errorCode, errorMessage, span.attributes()));
         } catch (Exception ex) {
             // Trace is diagnostic data; it must not break the direct model run.
         }

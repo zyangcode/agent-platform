@@ -27,6 +27,7 @@ class Stage1PersistenceStructureTest {
             Map.entry("com.ls.agent.core.profile.entity.ProfileMcpToolEntity", CreatedEntity.class),
             Map.entry("com.ls.agent.core.skill.entity.SkillEntity", BaseEntity.class),
             Map.entry("com.ls.agent.core.skill.entity.SkillVersionEntity", CreatedEntity.class),
+            Map.entry("com.ls.agent.core.skill.entity.SkillArtifactEntity", CreatedEntity.class),
             Map.entry("com.ls.agent.core.mcp.entity.McpServerEntity", BaseEntity.class),
             Map.entry("com.ls.agent.core.mcp.entity.McpToolEntity", BaseEntity.class),
             Map.entry("com.ls.agent.core.agent.entity.ConversationEntity", BaseEntity.class),
@@ -48,6 +49,7 @@ class Stage1PersistenceStructureTest {
             "com.ls.agent.core.profile.mapper.ProfileMcpToolMapper",
             "com.ls.agent.core.skill.mapper.SkillMapper",
             "com.ls.agent.core.skill.mapper.SkillVersionMapper",
+            "com.ls.agent.core.skill.mapper.SkillArtifactMapper",
             "com.ls.agent.core.mcp.mapper.McpServerMapper",
             "com.ls.agent.core.mcp.mapper.McpToolMapper",
             "com.ls.agent.core.agent.mapper.ConversationMapper",
@@ -93,6 +95,32 @@ class Stage1PersistenceStructureTest {
                 "Wikipedia OpenSearch skill",
                 "builtin:open-meteo-weather",
                 "builtin:wikipedia-opensearch"
+        );
+    }
+
+    @Test
+    void skillMigrationCreatesArtifactMetadataTable() throws IOException {
+        String skillSql = readMigration("db/migration/V012__init_skill_artifacts.sql");
+
+        assertThat(skillSql).contains(
+                "create table skill_artifacts",
+                "skill_version_id bigint not null references skill_versions (id)",
+                "artifact_type varchar(32) not null",
+                "storage_path varchar(512) not null",
+                "checksum varchar(128) not null",
+                "idx_skill_artifacts_version"
+        );
+    }
+
+    @Test
+    void mcpWeatherDemoMigrationRegistersBuiltinStdioServerAndTool() throws IOException {
+        String weatherMcpSql = readMigration("db/migration/V017__init_demo_weather_mcp.sql");
+
+        assertThat(weatherMcpSql).contains(
+                "Bundled Weather MCP",
+                "builtin-demo-weather-mcp",
+                "weather.current",
+                "Get current demo weather by city"
         );
     }
 

@@ -143,6 +143,8 @@ MVP 的 Developer = 配单 Agent Profile；阶段 4 的 Developer = 在 Profile 
 
 阶段 4 Agent Team 和后续 Agent Runtime 增强前，重点参考 MVP Claude Code 的 token 级流式输出、ToolDispatcher/ToolRegistry、子 Agent 工具隔离、上下文压缩和高危工具确认思路。该参考项目只作为 Agent Harness 设计来源，不引入 LangChain4j、Picocli、本地 File/Bash 裸工具能力或文件型 Memory。
 
+单 Agent 记忆系统与 RAG 增强按 `实际开发/优化阶段/单Agent优化/单Agent记忆与RAG设计方案.md` 执行：先 Memory v2 稳定化，再 Schema-driven Context，再 RAG MVP，再接 Qdrant，最后做 Elasticsearch / Neo4j / RRF 混合检索增强。长期记忆归 `core.memory` 和 `memories` 表，RAG 资料库归 `core.rag`、知识文档/chunk 表和 Qdrant；两者只在 `core.context` 的 Slot 注入层汇合。
+
 阶段 4 Agent Team 开发前必须阅读并按顺序对照：
 
 - `实际开发/阶段4/01-阶段4AgentTeam设计说明.md`
@@ -250,6 +252,15 @@ Git 提交与标签约定：
 
 项目2 飞书指令（/weather、/translate 等）有自己独立的轻量实现，不依赖项目1的 Skill 引擎。功能上重叠但代码不依赖。唯一跨项目调用：项目3 Gateway → 项目2 内部接口发飞书告警。
 
+## 飞书机器人开发策略
+
+feishu-bot 是独立工程，不放在 agent-platform Maven 多模块里：
+- 独立 Spring Boot 项目、独立仓库（或独立目录）、独立 PostgreSQL 库
+- 先独立开发、独立测试、独立跑通所有指令
+- 不 import agent-platform 任何模块（common 也不行）
+- 唯一对接点：暴露 `POST /internal/alert` 接口给项目 3 Gateway 调
+- 对接时只需双方约定 AlertPayload JSON 格式，各写各的 HTTP Client/Controller
+
 ## Agent Team 关键约束
 
 - 阶段 4 只做最小 Team Demo 闭环，不新增 Team 表，运行数据先写入 `trace_spans.attributes`
@@ -287,6 +298,8 @@ GatewayContext 用 ThreadLocal 贯穿，请求结束 finally 清理。
 - Profile 绑定 Skill/MCP 时，`core.profile` 只能调用 `core.skill.api.SkillQueryService` / `core.mcp.api.McpToolQueryService` 校验可绑定性，不能直接访问 `skill.mapper` 或 `mcp.mapper`。
 - Skill 状态流转：UPLOADED → VALIDATING → INSTALLED → ENABLED → LOADED（可到 DISABLED/FAILED/UNINSTALLED）
 - Skill 安全：配置型 Skill 普通 User 可上传；代码型 Jar Skill 主要由 Developer/Admin 上传，ClassLoader 只做依赖隔离，不等价于安全沙箱
+- Skill / MCP 边界：经验型 Skill 只做 Prompt/规则经验注入，不进入工具池；Jar Skill 定位为平台插件型 Skill，用于展示上传、校验、热加载、注册和运行时扩展能力；天气、搜索、文件系统、第三方 API 等外部工具优先作为 MCP Tool 接入，避免把外部工具 Demo 和 Jar 热加载 Demo 混在一起。
+- MCP 协议边界：消息层统一使用 JSON-RPC 2.0，和传输方式解耦；本地 MCP Server 优先使用 stdio，由平台启动子进程并通过 stdin/stdout 通信；远程 MCP Server 采用 2025-03-26 Streamable HTTP 兼容子集，默认单端点 `POST /mcp`，简单响应返回 JSON，长任务或流式结果返回 `text/event-stream` SSE。阶段内不再扩展旧 HTTP+SSE 双端点方案。
 - 敏感数据不入长期记忆原文
 - 敏感扫描范围：用户请求、Planner 输出、工具入参、Skill/MCP 返回、Reviewer 输出、最终响应、记忆写入、Trace/日志
 - OpenAI 兼容接口 TraceID：严格兼容模式用 `X-Trace-Id` 响应头，增强模式可在 body 额外返回 trace_id

@@ -136,6 +136,31 @@ export type Skill = {
   parameterSchema?: JsonValue
 }
 
+export type JarSkillRegistrationResult = {
+  skillId: number
+  skillVersionId: number
+  skillCode: string
+  status: string
+  versionStatus: string
+  validationMessage?: string | null
+}
+
+export type ExperienceSkill = {
+  experienceSkillId: number
+  code: string
+  name: string
+  domain?: string | null
+  content: string
+}
+
+export type McpServer = {
+  mcpServerId: number
+  name: string
+  serverType: string
+  connectionConfig?: JsonValue
+  status: string
+}
+
 export type McpTool = {
   mcpToolId: number
   mcpServerId: number
@@ -145,6 +170,41 @@ export type McpTool = {
   parameterSchema?: JsonValue
 }
 
+export type RagIngestResult = {
+  documentId: number
+  title: string
+  docHash: string
+  chunkCount: number
+  status: string
+}
+
+export type RagSearchResult = {
+  documentId: number
+  chunkId: number
+  title: string
+  content: string
+  sourceUri: string
+  score: number
+}
+
+export type MemoryRecord = {
+  id: number
+  applicationId?: number | null
+  profileId?: number | null
+  memoryType?: string | null
+  memoryCategory?: string | null
+  content: string
+  tags?: string[] | null
+  importance?: number | null
+  confidence?: number | null
+  accessCount?: number | null
+  lastAccessedAt?: string | null
+  createdAt?: string | null
+  updatedAt?: string | null
+  slotHint?: string | null
+  status?: string | null
+}
+
 export type ModelMessage = {
   role: string
   content: string
@@ -152,7 +212,7 @@ export type ModelMessage = {
 
 export type ChatStreamRequest = {
   applicationId?: number
-  agentMode?: 'agent' | 'none'
+  agentMode?: 'agent' | 'team' | 'none'
   profileId?: number
   conversationId?: number
   message?: string
@@ -162,6 +222,14 @@ export type ChatStreamRequest = {
   modelConfigId?: number
   messages?: ModelMessage[]
   stream?: boolean
+  confirmedToolKeys?: string[]
+  pendingToolCall?: PendingToolCall
+}
+
+export type PendingToolCall = {
+  sourceType: 'MCP' | 'SKILL'
+  toolName: string
+  arguments?: JsonValue
 }
 
 export type ConversationSummary = {

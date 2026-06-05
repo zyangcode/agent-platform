@@ -16,6 +16,7 @@ import com.ls.agent.core.trace.command.QueryTracePageCommand;
 import com.ls.agent.core.trace.command.StartTraceRootCommand;
 import com.ls.agent.core.trace.command.StartTraceSpanCommand;
 import com.ls.agent.core.trace.dto.TraceDetailDTO;
+import com.ls.agent.core.trace.dto.TraceSpanDTO;
 import com.ls.agent.core.trace.dto.TraceSummaryDTO;
 import com.ls.agent.core.trace.entity.TraceRootEntity;
 import com.ls.agent.core.trace.entity.TraceSpanEntity;
@@ -36,6 +37,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -102,7 +104,7 @@ class DefaultTraceServiceTest {
 
     @Test
     void startSpanAndFinishSpanUseTraceSpanMapper() {
-        service.startSpan(new StartTraceSpanCommand(
+        TraceSpanDTO startedSpan = service.startSpan(new StartTraceSpanCommand(
                 "tr_1",
                 null,
                 "model.invoke",
@@ -126,6 +128,39 @@ class DefaultTraceServiceTest {
         verify(spanMapper).update(finishCaptor.capture(), any(LambdaUpdateWrapper.class));
         assertThat(finishCaptor.getValue().getStatus()).isEqualTo("SUCCESS");
         assertThat(finishCaptor.getValue().getLatencyMs()).isEqualTo(750L);
+        assertThat(startedSpan.attributes().get("step").asInt()).isEqualTo(1);
+    }
+
+    @Test
+    void finishSpanPersistsMutatedAttributesFromStartedSpan() {
+        doAnswer(invocation -> {
+            TraceSpanEntity entity = invocation.getArgument(0);
+            entity.setId(200L);
+            return 1;
+        }).when(spanMapper).insert(any(TraceSpanEntity.class));
+        TraceSpanDTO startedSpan = service.startSpan(new StartTraceSpanCommand(
+                "tr_1",
+                null,
+                "api.messages.compose",
+                "CONTEXT",
+                "core",
+                objectMapper.createObjectNode().put("maxContextTokens", 4000)
+        ));
+        ((com.fasterxml.jackson.databind.node.ObjectNode) startedSpan.attributes())
+                .put("apiMessages", 3)
+                .put("estimatedTokens", 128)
+                .put("truncated", false);
+        TraceSpanEntity existing = traceSpan(startedSpan.id(), "api.messages.compose");
+        existing.setStartedAt(LocalDateTime.of(2026, 5, 23, 9, 59, 59, 250_000_000));
+        when(spanMapper.selectById(startedSpan.id())).thenReturn(existing);
+
+        service.finishSpan(new FinishTraceSpanCommand(startedSpan.id(), "SUCCESS", null, null, startedSpan.attributes()));
+
+        ArgumentCaptor<TraceSpanEntity> finishCaptor = ArgumentCaptor.forClass(TraceSpanEntity.class);
+        verify(spanMapper).update(finishCaptor.capture(), any(LambdaUpdateWrapper.class));
+        assertThat(finishCaptor.getValue().getAttributes().get("apiMessages").asInt()).isEqualTo(3);
+        assertThat(finishCaptor.getValue().getAttributes().get("estimatedTokens").asInt()).isEqualTo(128);
+        assertThat(finishCaptor.getValue().getAttributes().get("truncated").asBoolean()).isFalse();
     }
 
     @Test

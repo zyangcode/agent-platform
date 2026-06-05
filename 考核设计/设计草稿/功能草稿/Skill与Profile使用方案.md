@@ -55,23 +55,90 @@
 - 控制 Skill / Tool 权限边界。
 - 提高输出稳定性。
 
-## 3. 三类 Skill / Tool
+## 3. Skill / Tool 类型边界
 
-平台中的 Skill / Tool 分为三层。
+平台中的能力先按“形态”分清边界，再按“作用域”分全局、领域和用户私有。
 
-### 3.1 全局通用 Skill
+### 3.1 经验型 Skill / Prompt Skill
+
+经验型 Skill 不执行外部动作，也不进入工具池。它用于沉淀领域经验、回复风格、处理步骤、业务规则片段和案例方法论，由 Context Builder 按关键词、Profile、领域和 token budget 召回后注入 `apiMessages`。
+
+示例：
+
+- 客服退款沟通风格
+- 代码审查 checklist
+- 活动策划注意事项
+- 项目答辩口径
+
+特点：
+
+- 不需要 Jar 热加载。
+- 不走 ToolDispatcher。
+- 不产生外部副作用。
+- 适合做长期可复用经验注入。
+
+### 3.2 插件型 Skill / Jar Skill
+
+Jar Skill 是平台插件扩展能力，用于展示“不重启后端即可上传、校验、加载、注册并调用新的 Java 能力”。它适合封装本地纯计算、格式校验、规则审查、代码审查等平台内可控逻辑。
+
+推荐 Demo：
+
+- `TextAuditSkill`：文本质检、敏感词评分、风格检查。
+- `CodeReviewSkill`：输入 diff，输出审查建议。
+- `JsonFormatterSkill`：JSON 格式化和 Schema 校验。
+- `BusinessRuleSkill`：自定义业务规则校验。
+
+特点：
+
+- 由 Developer/Admin 优先上传和审核。
+- 通过 URLClassLoader 按版本隔离加载。
+- 加载成功后注册为可调用 SkillDefinition。
+- 运行时仍受 Profile 绑定、用户选择、风险等级和安全策略约束。
+
+### 3.3 MCP Tool
+
+MCP Tool 用于接入外部工具协议和第三方服务。天气、搜索、文件系统、外部 HTTP API、企业系统查询等更适合作为 MCP Tool，而不是为了 Demo Jar 热加载强行写成 Jar Skill。
+
+MCP 的设计边界：
+
+```text
+消息格式：JSON-RPC 2.0
+本地传输：stdio
+远程传输：Streamable HTTP
+```
+
+消息层和传输层解耦。stdio 适合本地工具：平台启动 MCP Server 子进程，通过 stdin/stdout 传输 JSON-RPC 消息，不走网络，延迟低。Streamable HTTP 适合远程工具：阶段内采用 2025-03-26 兼容子集，默认单端点 `POST /mcp`；简单操作返回 JSON，长任务或流式操作返回 `text/event-stream` SSE。旧的 HTTP+SSE 双端点方案不作为新实现目标。
+
+推荐 Demo：
+
+- `weather`：天气查询。
+- `filesystem.readonly`：只读文件系统示例。
+- `search`：外部搜索。
+- 企业业务系统查询。
+
+特点：
+
+- 展示平台对外部工具协议的接入能力。
+- 由 MCP Server 暴露工具，平台 MCP Client 发现和调用。
+- Runtime 通过统一 ToolResolver/Dispatcher 看到它，但实现归 `core.mcp`。
+- 与 Jar Skill 的“平台插件热加载”职责分离。
+
+## 4. Skill / Tool 作用域
+
+平台中的 Skill / Tool 按作用域分为三层。
+
+### 4.1 全局通用 Skill
 
 全局通用 Skill 由平台维护或 Admin 上架，适合低风险、高频、跨场景复用的能力。
 
 示例：
 
-- weather：天气查询
 - calculator：计算器
 - calendar：日历
 - translate：翻译
-- search：搜索
 - map：地图
 - file-summary：文件总结
+- text-audit：文本质检
 
 特点：
 
@@ -79,7 +146,7 @@
 - 通用模式和垂直模式都可复用。
 - 由 Admin 管理、审核、启用或禁用。
 
-### 3.2 垂直领域 Skill
+### 4.2 垂直领域 Skill
 
 垂直领域 Skill 绑定到某个垂直智能体或应用中，用于体现业务专业性。
 
@@ -112,7 +179,7 @@
 - 通常只在对应领域 Agent 中可见。
 - 普通用户使用该领域 Agent 时自动获得默认能力。
 
-### 3.3 用户自定义 Skill / Tool
+### 4.3 用户自定义 Skill / Tool
 
 用户自定义 Skill / Tool 是普通用户上传的个人扩展能力。
 
@@ -130,7 +197,7 @@
 - 不修改领域 Agent 的公共配置。
 - 必须经过安全检查、权限校验和热加载隔离。
 
-## 4. Skill 合成规则
+## 5. Skill 合成规则
 
 一次请求中，Agent 的可用 Skill 由当前模式决定。
 
@@ -164,7 +231,7 @@
 
 如果某些 Skill 是领域 Agent 的必选能力，则由系统自动启用；如果是可选能力，则允许用户在本次对话中勾选。
 
-## 5. Profile 的作用
+## 6. Profile 的作用
 
 Profile 是智能体配置，不是业务代码。
 
@@ -196,7 +263,7 @@ Profile
 + 权限和安全策略
 ```
 
-## 6. Prompt 分层
+## 7. Prompt 分层
 
 系统提示词不建议让普通用户完全覆盖。
 
@@ -209,7 +276,7 @@ Prompt 分为三层：
 + 用户本次请求
 ```
 
-### 6.1 核心 System Prompt
+### 7.1 核心 System Prompt
 
 由平台内置，用于固定角色职责和协作协议。
 
@@ -221,7 +288,7 @@ Prompt 分为三层：
 
 核心 System Prompt 可由 Admin 维护，不建议开放给普通用户修改。
 
-### 6.2 Profile 补充 Prompt
+### 7.2 Profile 补充 Prompt
 
 由 Developer 或高级用户配置，用于表达业务偏好、领域要求和输出风格。
 
@@ -231,7 +298,7 @@ Prompt 分为三层：
 处理活动策划任务时，优先考虑天气、预算、交通便利性。
 ```
 
-### 6.3 用户本次请求
+### 7.3 用户本次请求
 
 普通用户输入的具体任务。
 
@@ -241,7 +308,7 @@ Prompt 分为三层：
 帮我策划本周六下午在重庆适合 20 人的团建活动，预算 3000 元以内。
 ```
 
-## 7. 多 Agent Team 设计
+## 8. 多 Agent Team 设计
 
 平台内置 Planner、Executor、Reviewer 的协作逻辑。
 
@@ -263,9 +330,9 @@ Skill 统一绑定到当前任务、当前领域和当前用户，真正调用 S
 - Developer 只需要配置领域默认 Skill 和可选 Skill。
 - 平台负责把 Skill 权限传递给 Executor。
 
-## 8. 角色职责
+## 9. 角色职责
 
-### 8.1 Admin
+### 9.1 Admin
 
 Admin 是平台管理员，负责全局能力和安全治理。
 
@@ -280,7 +347,7 @@ Admin 是平台管理员，负责全局能力和安全治理。
 - 配置飞书告警。
 - 管理用户、应用和权限。
 
-### 8.2 Developer
+### 9.2 Developer
 
 Developer 是领域智能体或应用的配置者。
 
@@ -296,7 +363,7 @@ Developer 是领域智能体或应用的配置者。
 
 Developer 的价值是把复杂配置封装成领域智能体，降低普通用户使用成本。
 
-### 8.3 User
+### 9.3 User
 
 User 是普通使用者。
 
@@ -317,9 +384,11 @@ User 不能：
 - 启用未授权高危 Skill。
 - 绕过安全检查。
 
-## 9. Skill 热加载
+## 10. Skill 热加载
 
 热加载是指系统运行过程中，不重启后端服务，就能上传、校验、加载、注册和启用新的 Skill / Tool。
+
+本项目中热加载主要服务“插件型 Skill / Jar Skill”。经验型 Skill 通过数据库配置和上下文召回生效，不需要 ClassLoader；天气、搜索等外部服务优先通过 MCP Tool 接入，不作为 Jar Skill 热加载 Demo。
 
 基本流程：
 
@@ -350,7 +419,7 @@ UNINSTALLED   已卸载
 
 垂直领域 Skill 不需要用户下载到本地，应由服务端统一管理。用户选择某个垂直 Agent 时，平台根据配置按需启用和加载对应 Skill。
 
-## 10. 整体流程图
+## 11. 整体流程图
 
 ```mermaid
 flowchart TD
@@ -387,7 +456,7 @@ flowchart TD
     MODEL --> TEAM
 ```
 
-## 11. 最终总结
+## 12. 最终总结
 
 本方案采用三层 Skill 能力模型和两种使用模式。
 
@@ -397,6 +466,14 @@ flowchart TD
 全局通用 Skill
 + 垂直领域 Skill
 + 用户自定义 Skill
+```
+
+能力形态边界：
+
+```text
+经验型 Skill：注入上下文，不执行工具
+Jar Skill：插件热加载，展示平台扩展能力
+MCP Tool：外部工具协议接入，天气等外部服务优先放这里
 ```
 
 两种使用模式：
@@ -414,4 +491,3 @@ Developer 封装垂直领域智能体。
 User 使用智能体并进行个人增强。
 平台统一负责运行、权限、安全、Trace、Token、告警和热加载。
 ```
-

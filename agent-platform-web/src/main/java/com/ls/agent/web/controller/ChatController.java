@@ -53,7 +53,9 @@ public class ChatController {
                 request.clientRequestId(),
                 request.modelConfigId(),
                 request.messages(),
-                request.stream()
+                request.stream(),
+                request.confirmedToolKeys(),
+                request.pendingToolCall()
         );
         return sse(output -> gatewayClient.chatStream(internalRequest, output));
     }

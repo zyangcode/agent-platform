@@ -4,18 +4,19 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import type { TraceSpan } from '@/lib/api/types'
+import type { TokenUsage, TraceSpan } from '@/lib/api/types'
 import { copyTextToClipboard } from '@/lib/clipboard'
 import { formatDateTime, formatLatency } from '@/lib/format/date'
 import { useI18n } from '@/lib/i18n/use-i18n'
 import { getTraceSpanFacts, getTraceSpanTitle } from './trace-labels'
-import { formatTraceStatus, getTraceStatusVariant } from './trace-utils'
+import { formatTraceStatus, formatTraceTokenCount, getTraceStatusVariant } from './trace-utils'
 
 type SpanDetailPanelProps = {
   span: TraceSpan | null
+  tokenUsage?: TokenUsage | null
 }
 
-export function SpanDetailPanel({ span }: SpanDetailPanelProps) {
+export function SpanDetailPanel({ span, tokenUsage = null }: SpanDetailPanelProps) {
   const { locale, t } = useI18n()
   const [copiedValue, setCopiedValue] = useState<string | null>(null)
 
@@ -91,6 +92,23 @@ export function SpanDetailPanel({ span }: SpanDetailPanelProps) {
             <AlertTitle>{t('trace.spanError')}</AlertTitle>
             <AlertDescription className="break-words">{span.errorMessage}</AlertDescription>
           </Alert>
+        ) : null}
+
+        {tokenUsage ? (
+          <div className="min-w-0 rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+            <p className="text-sm font-medium text-white">{t('trace.modelTokenUsage')}</p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <FactField label={t('trace.modelName')} value={tokenUsage.modelName || '-'} />
+              <FactField label={t('trace.providerType')} value={tokenUsage.providerType || '-'} />
+              <FactField label={t('trace.promptTokens')} value={formatTraceTokenCount(tokenUsage.promptTokens)} />
+              <FactField label={t('trace.completionTokens')} value={formatTraceTokenCount(tokenUsage.completionTokens)} />
+              <FactField label={t('trace.totalTokens')} value={formatTraceTokenCount(tokenUsage.totalTokens)} />
+              <FactField
+                label={t('trace.usageSource')}
+                value={tokenUsage.estimated ? t('common.estimated') : t('common.real')}
+              />
+            </div>
+          </div>
         ) : null}
 
         <div className="min-w-0 rounded-2xl border border-white/10 bg-zinc-950/60 p-4">

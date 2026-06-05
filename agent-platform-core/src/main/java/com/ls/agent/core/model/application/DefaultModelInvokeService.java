@@ -3,6 +3,7 @@ package com.ls.agent.core.model.application;
 import com.ls.agent.common.error.BizException;
 import com.ls.agent.common.error.ErrorCode;
 import com.ls.agent.core.model.api.ModelInvokeService;
+import com.ls.agent.core.model.api.ModelStreamCallback;
 import com.ls.agent.core.model.command.ModelInvokeCommand;
 import com.ls.agent.core.model.dto.ModelInvokeResult;
 import com.ls.agent.core.model.entity.ModelConfigEntity;
@@ -34,6 +35,11 @@ public class DefaultModelInvokeService implements ModelInvokeService {
 
     @Override
     public ModelInvokeResult invoke(ModelInvokeCommand command) {
+        return invoke(command, null);
+    }
+
+    @Override
+    public ModelInvokeResult invoke(ModelInvokeCommand command, ModelStreamCallback streamCallback) {
         Long modelConfigId = ModelValidation.requireNonNull(command.modelConfigId(), "modelConfigId");
         ModelConfigEntity config = configMapper.selectById(modelConfigId);
         if (config == null || !ModelConstants.STATUS_ACTIVE.equals(config.getStatus())) {
@@ -44,14 +50,15 @@ public class DefaultModelInvokeService implements ModelInvokeService {
             throw new BizException(ErrorCode.MODEL_INVOKE_FAILED, "Model provider is unavailable");
         }
         ModelProvider modelProvider = providerRegistry.resolve(config, provider);
-        ProviderResponse response = modelProvider.invoke(new ProviderRequest(config, provider, command));
+        ProviderResponse response = modelProvider.invoke(new ProviderRequest(config, provider, command), streamCallback);
         return new ModelInvokeResult(
                 config.getId(),
                 provider.getId(),
                 provider.getProviderType(),
                 config.getModelName(),
                 response.assistantMessage(),
-                response.usage()
+                response.usage(),
+                response.toolCalls()
         );
     }
 }

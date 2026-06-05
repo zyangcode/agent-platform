@@ -543,7 +543,7 @@ public class DefaultTeamRuntimeService implements TeamRuntimeService {
             return;
         }
         try {
-            traceService.finishSpan(new FinishTraceSpanCommand(span.id(), status, errorCode, errorMessage));
+            traceService.finishSpan(new FinishTraceSpanCommand(span.id(), status, errorCode, errorMessage, span.attributes()));
         } catch (Exception ex) {
             // Trace is diagnostic data; it must not break the team run.
         }

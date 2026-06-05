@@ -111,6 +111,20 @@ class ApplicationControllerTest {
     }
 
     @Test
+    void listApplicationsNormalizesInvalidPaginationAtWebBoundary() throws Exception {
+        when(applicationService.pageApplications(1L, 10001L, 1, 20))
+                .thenReturn(PageResult.empty(1, 20));
+
+        mockMvc.perform(get("/api/applications")
+                        .header("Authorization", bearerToken())
+                        .param("pageNo", "0")
+                        .param("pageSize", "0"))
+                .andExpect(status().isOk());
+
+        verify(applicationService).pageApplications(1L, 10001L, 1, 20);
+    }
+
+    @Test
     void updateApplicationDelegatesWithCurrentUserAndApplicationId() throws Exception {
         when(applicationService.updateApplication(org.mockito.ArgumentMatchers.any(UpdateApplicationCommand.class)))
                 .thenReturn(new ApplicationDTO(

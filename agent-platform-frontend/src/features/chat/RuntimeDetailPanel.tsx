@@ -1,15 +1,18 @@
-import { Activity, AlertTriangle, CheckCircle2, CircleDashed, TimerReset } from 'lucide-react'
+import { Activity, AlertTriangle, CheckCircle2, CircleDashed, ShieldCheck, TimerReset } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useI18n } from '@/lib/i18n/use-i18n'
 import { TeamRunPanel } from './TeamRunPanel'
 import { buildTeamRunSummary } from './team-run-utils'
-import type { ChatStreamEvent, RuntimeStatus } from './types'
+import type { JsonObject, JsonValue } from '@/lib/api/types'
+import type { ChatStreamEvent, PendingToolConfirmation, RuntimeStatus } from './types'
 
 type RuntimeDetailPanelProps = {
   error: string | null
   events: ChatStreamEvent[]
+  onConfirmTool?: (confirmation: PendingToolConfirmation) => void
   status: RuntimeStatus
 }
 
@@ -49,7 +52,77 @@ function getConversationId(events: ChatStreamEvent[]) {
   return events.find((event) => event.conversationId)?.conversationId ?? '-'
 }
 
-export function RuntimeDetailPanel({ error, events, status }: RuntimeDetailPanelProps) {
+function toolKey(event: ChatStreamEvent) {
+  const metadataToolKey =
+    event.metadata && typeof event.metadata === 'object' && !Array.isArray(event.metadata)
+      ? event.metadata.toolKey
+      : null
+  if (typeof metadataToolKey === 'string' && metadataToolKey.length > 0) {
+    return metadataToolKey
+  }
+  const metadataToolType =
+    event.metadata && typeof event.metadata === 'object' && !Array.isArray(event.metadata)
+      ? event.metadata.toolType
+      : null
+  const metadataToolName =
+    event.metadata && typeof event.metadata === 'object' && !Array.isArray(event.metadata)
+      ? event.metadata.toolName
+      : null
+  const toolType = typeof metadataToolType === 'string' ? metadataToolType : null
+  const toolName = typeof metadataToolName === 'string' ? metadataToolName : event.toolName
+  if (toolType && toolName) {
+    return `${toolType}:${toolName}`
+  }
+  return null
+}
+
+function isJsonObject(value: unknown): value is JsonObject {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function isJsonValue(value: unknown): value is JsonValue {
+  if (value === null) {
+    return true
+  }
+  if (['boolean', 'number', 'string'].includes(typeof value)) {
+    return true
+  }
+  if (Array.isArray(value)) {
+    return value.every(isJsonValue)
+  }
+  if (isJsonObject(value)) {
+    return Object.values(value).every(isJsonValue)
+  }
+  return false
+}
+
+function pendingToolConfirmation(event: ChatStreamEvent): PendingToolConfirmation | null {
+  const key = toolKey(event)
+  if (!key || !isJsonObject(event.metadata)) {
+    return null
+  }
+  const pendingToolCall = event.metadata.pendingToolCall
+  if (!isJsonObject(pendingToolCall)) {
+    return null
+  }
+  if (pendingToolCall.sourceType !== 'SKILL' && pendingToolCall.sourceType !== 'MCP') {
+    return null
+  }
+  if (typeof pendingToolCall.toolName !== 'string' || pendingToolCall.toolName.length === 0) {
+    return null
+  }
+  const args = isJsonValue(pendingToolCall.arguments) ? pendingToolCall.arguments : undefined
+  return {
+    toolKey: key,
+    pendingToolCall: {
+      arguments: args,
+      sourceType: pendingToolCall.sourceType,
+      toolName: pendingToolCall.toolName,
+    },
+  }
+}
+
+export function RuntimeDetailPanel({ error, events, onConfirmTool, status }: RuntimeDetailPanelProps) {
   const { t } = useI18n()
   const teamSummary = buildTeamRunSummary(events)
 
@@ -124,6 +197,18 @@ export function RuntimeDetailPanel({ error, events, status }: RuntimeDetailPanel
                   </div>
                   {event.content ? (
                     <p className="mt-2 line-clamp-4 text-xs leading-5 text-zinc-400">{event.content}</p>
+                  ) : null}
+                  {event.type === 'tool_confirm_required' && pendingToolConfirmation(event) && status !== 'streaming' ? (
+                    <Button
+                      className="mt-3"
+                      onClick={() => onConfirmTool?.(pendingToolConfirmation(event)!)}
+                      size="sm"
+                      type="button"
+                      variant="secondary"
+                    >
+                      <ShieldCheck className="h-4 w-4" strokeWidth={1.75} />
+                      {t('runtime.confirmTool')}
+                    </Button>
                   ) : null}
                 </div>
               ))}

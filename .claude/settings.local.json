@@ -47,7 +47,19 @@
       "Bash(mvn.cmd -s .mvn/settings.xml -pl agent-platform-core test -Dtest=\"TaskPlanValidatorTest,DefaultProfileServiceTest\" -Dsurefire.failIfNoSpecifiedTests=false)",
       "Bash(git clone *)",
       "Bash(cp *)",
-      "Bash(mvn -s .mvn/settings.xml test)"
+      "Bash(mvn -s .mvn/settings.xml test)",
+      "Read(//d/study/蓝山最终考核项目/feishu-bot/**)",
+      "Bash(mvn -s \"D:\\\\study\\\\蓝山最终考核项目\\\\agent-platform\\\\.mvn\\\\settings.xml\" test)",
+      "Bash(netstat -ano)",
+      "Bash(mvn -s \"D:\\\\study\\\\蓝山最终考核项目\\\\agent-platform\\\\.mvn\\\\settings.xml\" package -DskipTests -q)",
+      "Bash(java -jar target/feishu-bot-1.0.0-SNAPSHOT.jar)",
+      "Bash(curl -s http://localhost:8082/feishu/webhook -X POST -H \"Content-Type: application/json\" -d '{\"challenge\":\"verify_test\"}')",
+      "Bash(curl -s http://localhost:8082/feishu/webhook -X POST -H \"Content-Type: application/json\" -d '{\"challenge\":\"verify_123\"}')",
+      "Bash(curl -s http://localhost:8082/internal/alert -X POST -H \"Content-Type: application/json\" -d '{\"traceId\":\"tr_abc\",\"level\":\"WARN\",\"type\":\"TOKEN_EXCEEDED\",\"message\":\"配额超限\",\"suggestion\":\"提升配额\"}')",
+      "Bash(curl -s http://localhost:8082/feishu/webhook -X POST -H \"Content-Type: application/json\" -d '{\"header\":{\"event_type\":\"message\"},\"event\":{\"sender\":{\"sender_id\":\"user1\"},\"message\":{\"chat_id\":\"chat1\",\"content\":\"{\\\\\"text\\\\\":\\\\\"/help\\\\\"}\"}}}')",
+      "Bash(curl *)",
+      "Bash(mvn test *)",
+      "Bash(sed 's/<[^>]*>//g')"
     ]
   },
   "hooks": {

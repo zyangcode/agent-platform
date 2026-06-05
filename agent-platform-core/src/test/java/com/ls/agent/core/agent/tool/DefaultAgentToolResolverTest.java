@@ -63,6 +63,40 @@ class DefaultAgentToolResolverTest {
         assertThat(resolver.resolve(context)).isEmpty();
     }
 
+    @Test
+    void resolvesExecutionPlanningMetadataFromParameterSchemaExtensions() {
+        SkillDTO skill = new SkillDTO(
+                1L,
+                "search",
+                "Search",
+                "Search public docs.",
+                "BUILTIN",
+                "GLOBAL",
+                "ENABLED",
+                objectMapper.createObjectNode()
+                        .put("type", "object")
+                        .put("x-readOnly", true)
+                        .put("x-riskLevel", "MEDIUM")
+                        .set("x-resourceKeys", objectMapper.createArrayNode().add("web:docs"))
+        );
+        AgentContextDTO context = new AgentContextDTO(
+                30001L,
+                null,
+                List.of(),
+                List.of(skill),
+                List.of(),
+                120,
+                false
+        );
+
+        List<AgentToolDTO> tools = resolver.resolve(context);
+
+        assertThat(tools).hasSize(1);
+        assertThat(tools.get(0).readOnly()).isTrue();
+        assertThat(tools.get(0).riskLevel()).isEqualTo(AgentToolRiskLevel.MEDIUM);
+        assertThat(tools.get(0).resourceKeys()).containsExactly("web:docs");
+    }
+
     private SkillDTO skill() {
         return new SkillDTO(
                 1L,

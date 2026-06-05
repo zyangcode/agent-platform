@@ -13,11 +13,13 @@ import org.springframework.context.annotation.Configuration;
 @ConditionalOnProperty(prefix = "spring.datasource", name = "url")
 @MapperScan({
         "com.ls.agent.core.agent.mapper",
+        "com.ls.agent.core.experience.mapper",
         "com.ls.agent.core.identity.mapper",
         "com.ls.agent.core.memory.mapper",
         "com.ls.agent.core.mcp.mapper",
         "com.ls.agent.core.model.mapper",
         "com.ls.agent.core.profile.mapper",
+        "com.ls.agent.core.rag.mapper",
         "com.ls.agent.core.skill.mapper",
         "com.ls.agent.core.trace.mapper",
         "com.ls.agent.core.quota.mapper",

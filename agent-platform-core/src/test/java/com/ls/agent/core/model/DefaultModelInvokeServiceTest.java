@@ -1,6 +1,8 @@
 package com.ls.agent.core.model;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ls.agent.core.model.dto.ModelToolCallDTO;
+import com.ls.agent.core.model.dto.ModelToolSpecDTO;
 import com.ls.agent.core.model.application.DefaultModelInvokeService;
 import com.ls.agent.core.model.command.ModelInvokeCommand;
 import com.ls.agent.core.model.dto.ModelInvokeResult;
@@ -25,9 +27,13 @@ import java.math.BigDecimal;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -70,6 +76,24 @@ class DefaultModelInvokeServiceTest {
         assertThat(result.usage().completionTokens()).isGreaterThan(0);
         assertThat(result.usage().totalTokens()).isGreaterThan(0);
         assertThat(result.modelConfigId()).isEqualTo(1L);
+    }
+
+    @Test
+    void mockChatStreamsAssistantTextToCallbackAndStillReturnsFullResult() {
+        when(configMapper.selectById(1L)).thenReturn(mockConfig());
+        when(providerMapper.selectById(1L)).thenReturn(mockProvider());
+        List<String> tokens = new ArrayList<>();
+
+        ModelInvokeResult result = service.invoke(new ModelInvokeCommand(
+                1L,
+                List.of(new ModelMessage("user", "hello stream")),
+                BigDecimal.valueOf(0.7),
+                false
+        ), tokens::add);
+
+        assertThat(tokens).containsExactly("[mock-chat] Echo: hello stream");
+        assertThat(result.assistantMessage()).isEqualTo("[mock-chat] Echo: hello stream");
+        assertThat(result.usage().totalTokens()).isGreaterThan(0);
     }
 
     @Test
@@ -155,6 +179,320 @@ class DefaultModelInvokeServiceTest {
         } finally {
             server.stop(0);
             executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void openAiCompatibleModelSendsFunctionToolsAndParsesToolCalls() throws Exception {
+        List<String> requestBodies = new ArrayList<>();
+        HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        server.createContext("/v1/chat/completions", exchange -> {
+            requestBodies.add(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            writeJson(exchange, 200, """
+                    {
+                      "choices": [
+                        {
+                          "message": {
+                            "role": "assistant",
+                            "content": null,
+                            "tool_calls": [
+                              {
+                                "id": "call_weather",
+                                "type": "function",
+                                "function": {
+                                  "name": "skill__weather",
+                                  "arguments": "{\\"city\\":\\"重庆\\"}"
+                                }
+                              }
+                            ]
+                          },
+                          "finish_reason": "tool_calls"
+                        }
+                      ],
+                      "usage": {
+                        "prompt_tokens": 12,
+                        "completion_tokens": 4,
+                        "total_tokens": 16
+                      }
+                    }
+                    """);
+        });
+        server.setExecutor(executor);
+        server.start();
+        try {
+            when(configMapper.selectById(2L)).thenReturn(realConfig());
+            when(providerMapper.selectById(2L)).thenReturn(realProvider(server.getAddress().getPort()));
+            when(secretEncryptor.decrypt("encrypted-key")).thenReturn("sk-test");
+
+            ModelInvokeResult result = service.invoke(new ModelInvokeCommand(
+                    2L,
+                    List.of(new ModelMessage("user", "查重庆天气")),
+                    BigDecimal.valueOf(0.2),
+                    false,
+                    List.of(new ModelToolSpecDTO(
+                            "SKILL",
+                            "weather",
+                            "Return current weather.",
+                            objectMapper.createObjectNode()
+                                    .put("type", "object")
+                                    .set("properties", objectMapper.createObjectNode()
+                                            .set("city", objectMapper.createObjectNode()
+                                                    .put("type", "string")))
+                    ))
+            ));
+
+            assertThat(result.toolCalls()).containsExactly(new ModelToolCallDTO(
+                    "SKILL",
+                    "weather",
+                    objectMapper.createObjectNode().put("city", "重庆")
+            ));
+            assertThat(result.assistantMessage()).isEmpty();
+            assertThat(requestBodies).singleElement()
+                    .satisfies(body -> {
+                        assertThat(body).contains("\"tools\"");
+                        assertThat(body).contains("\"type\":\"function\"");
+                        assertThat(body).contains("\"name\":\"skill__weather\"");
+                        assertThat(body).contains("\"tool_choice\":\"auto\"");
+                        assertThat(body).contains("\"city\"");
+                    });
+        } finally {
+            server.stop(0);
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void openAiCompatibleModelEncodesDottedMcpToolNamesAndRestoresToolCalls() throws Exception {
+        List<String> requestBodies = new ArrayList<>();
+        HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        server.createContext("/v1/chat/completions", exchange -> {
+            requestBodies.add(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            writeJson(exchange, 200, """
+                    {
+                      "choices": [
+                        {
+                          "message": {
+                            "role": "assistant",
+                            "content": null,
+                            "tool_calls": [
+                              {
+                                "id": "call_weather",
+                                "type": "function",
+                                "function": {
+                                  "name": "mcp__b64_d2VhdGhlci5jdXJyZW50",
+                                  "arguments": "{\\"city\\":\\"重庆\\"}"
+                                }
+                              }
+                            ]
+                          },
+                          "finish_reason": "tool_calls"
+                        }
+                      ],
+                      "usage": {
+                        "prompt_tokens": 12,
+                        "completion_tokens": 4,
+                        "total_tokens": 16
+                      }
+                    }
+                    """);
+        });
+        server.setExecutor(executor);
+        server.start();
+        try {
+            when(configMapper.selectById(2L)).thenReturn(realConfig());
+            when(providerMapper.selectById(2L)).thenReturn(realProvider(server.getAddress().getPort()));
+            when(secretEncryptor.decrypt("encrypted-key")).thenReturn("sk-test");
+
+            ModelInvokeResult result = service.invoke(new ModelInvokeCommand(
+                    2L,
+                    List.of(new ModelMessage("user", "查重庆天气")),
+                    BigDecimal.valueOf(0.2),
+                    false,
+                    List.of(new ModelToolSpecDTO(
+                            "MCP",
+                            "weather.current",
+                            "Get current demo weather by city.",
+                            objectMapper.createObjectNode()
+                                    .put("type", "object")
+                                    .set("properties", objectMapper.createObjectNode()
+                                            .set("city", objectMapper.createObjectNode()
+                                                    .put("type", "string")))
+                    ))
+            ));
+
+            assertThat(result.toolCalls()).containsExactly(new ModelToolCallDTO(
+                    "MCP",
+                    "weather.current",
+                    objectMapper.createObjectNode().put("city", "重庆")
+            ));
+            assertThat(requestBodies).singleElement()
+                    .satisfies(body -> {
+                        assertThat(body).contains("\"name\":\"mcp__b64_d2VhdGhlci5jdXJyZW50\"");
+                        assertThat(body).doesNotContain("\"name\":\"mcp__weather.current\"");
+                    });
+        } finally {
+            server.stop(0);
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void openAiCompatibleModelStreamsChunksToCallbackAndReturnsFullMessage() throws Exception {
+        List<String> requestBodies = new ArrayList<>();
+        HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        server.createContext("/v1/chat/completions", exchange -> {
+            requestBodies.add(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            writeSse(exchange, """
+                    data: {"choices":[{"delta":{"content":"hel"}}]}
+
+                    data: {"choices":[{"delta":{"content":"lo"}}]}
+
+                    data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":5,"completion_tokens":2,"total_tokens":7}}
+
+                    data: [DONE]
+
+                    """);
+        });
+        server.setExecutor(executor);
+        server.start();
+        try {
+            when(configMapper.selectById(2L)).thenReturn(realConfig());
+            when(providerMapper.selectById(2L)).thenReturn(realProvider(server.getAddress().getPort()));
+            when(secretEncryptor.decrypt("encrypted-key")).thenReturn("sk-test");
+            List<String> tokens = new ArrayList<>();
+
+            ModelInvokeResult result = service.invoke(new ModelInvokeCommand(
+                    2L,
+                    List.of(new ModelMessage("user", "hello stream")),
+                    BigDecimal.valueOf(0.2),
+                    true
+            ), tokens::add);
+
+            assertThat(tokens).containsExactly("hel", "lo");
+            assertThat(result.assistantMessage()).isEqualTo("hello");
+            assertThat(result.usage().promptTokens()).isEqualTo(5);
+            assertThat(result.usage().completionTokens()).isEqualTo(2);
+            assertThat(result.usage().totalTokens()).isEqualTo(7);
+            assertThat(result.usage().estimated()).isFalse();
+            assertThat(requestBodies).singleElement()
+                    .satisfies(body -> assertThat(body).contains("\"stream\":true"));
+        } finally {
+            server.stop(0);
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void openAiCompatibleModelIgnoresNullStreamContentChunks() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        server.createContext("/v1/chat/completions", exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            writeSse(exchange, """
+                    data: {"choices":[{"delta":{"role":"assistant","content":null}}]}
+
+                    data: {"choices":[{"delta":{"content":"real"}}]}
+
+                    data: {"choices":[{"delta":{"content":" answer"}}]}
+
+                    data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":5,"completion_tokens":2,"total_tokens":7}}
+
+                    data: [DONE]
+
+                    """);
+        });
+        server.setExecutor(executor);
+        server.start();
+        try {
+            when(configMapper.selectById(2L)).thenReturn(realConfig());
+            when(providerMapper.selectById(2L)).thenReturn(realProvider(server.getAddress().getPort()));
+            when(secretEncryptor.decrypt("encrypted-key")).thenReturn("sk-test");
+            List<String> tokens = new ArrayList<>();
+
+            ModelInvokeResult result = service.invoke(new ModelInvokeCommand(
+                    2L,
+                    List.of(new ModelMessage("user", "hello stream")),
+                    BigDecimal.valueOf(0.2),
+                    true
+            ), tokens::add);
+
+            assertThat(tokens).containsExactly("real", " answer");
+            assertThat(result.assistantMessage()).isEqualTo("real answer");
+        } finally {
+            server.stop(0);
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void openAiCompatibleModelCallsBackBeforeStreamingResponseCompletes() throws Exception {
+        CountDownLatch firstChunkFlushed = new CountDownLatch(1);
+        CountDownLatch allowStreamToFinish = new CountDownLatch(1);
+        HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+        ExecutorService serverExecutor = Executors.newSingleThreadExecutor();
+        ExecutorService clientExecutor = Executors.newSingleThreadExecutor();
+        server.createContext("/v1/chat/completions", exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            exchange.getResponseHeaders().set("Content-Type", "text/event-stream");
+            exchange.sendResponseHeaders(200, 0);
+            exchange.getResponseBody().write("""
+                    data: {"choices":[{"delta":{"content":"hel"}}]}
+
+                    """.getBytes(StandardCharsets.UTF_8));
+            exchange.getResponseBody().flush();
+            firstChunkFlushed.countDown();
+            try {
+                allowStreamToFinish.await(2, TimeUnit.SECONDS);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+            }
+            exchange.getResponseBody().write("""
+                    data: {"choices":[{"delta":{"content":"lo"}}]}
+
+                    data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":5,"completion_tokens":2,"total_tokens":7}}
+
+                    data: [DONE]
+
+                    """.getBytes(StandardCharsets.UTF_8));
+            exchange.close();
+        });
+        server.setExecutor(serverExecutor);
+        server.start();
+        try {
+            when(configMapper.selectById(2L)).thenReturn(realConfig());
+            when(providerMapper.selectById(2L)).thenReturn(realProvider(server.getAddress().getPort()));
+            when(secretEncryptor.decrypt("encrypted-key")).thenReturn("sk-test");
+            CountDownLatch firstTokenReceived = new CountDownLatch(1);
+            List<String> tokens = Collections.synchronizedList(new ArrayList<>());
+
+            CompletableFuture<ModelInvokeResult> resultFuture = CompletableFuture.supplyAsync(() -> service.invoke(
+                    new ModelInvokeCommand(
+                            2L,
+                            List.of(new ModelMessage("user", "hello stream")),
+                            BigDecimal.valueOf(0.2),
+                            true
+                    ),
+                    token -> {
+                        tokens.add(token);
+                        firstTokenReceived.countDown();
+                    }
+            ), clientExecutor);
+
+            assertThat(firstChunkFlushed.await(1, TimeUnit.SECONDS)).isTrue();
+            assertThat(firstTokenReceived.await(300, TimeUnit.MILLISECONDS)).isTrue();
+            allowStreamToFinish.countDown();
+
+            ModelInvokeResult result = resultFuture.get(1, TimeUnit.SECONDS);
+            assertThat(tokens).containsExactly("hel", "lo");
+            assertThat(result.assistantMessage()).isEqualTo("hello");
+        } finally {
+            allowStreamToFinish.countDown();
+            server.stop(0);
+            serverExecutor.shutdownNow();
+            clientExecutor.shutdownNow();
         }
     }
 
@@ -338,6 +676,14 @@ class DefaultModelInvokeServiceTest {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set("Content-Type", "application/json");
         exchange.sendResponseHeaders(status, bytes.length);
+        exchange.getResponseBody().write(bytes);
+        exchange.close();
+    }
+
+    private static void writeSse(HttpExchange exchange, String body) throws IOException {
+        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().set("Content-Type", "text/event-stream");
+        exchange.sendResponseHeaders(200, bytes.length);
         exchange.getResponseBody().write(bytes);
         exchange.close();
     }

@@ -39,8 +39,8 @@ public class TokenUsageController {
                 applicationId,
                 modelConfigId,
                 providerId,
-                pageNo,
-                Math.min(pageSize, 100)
+                PageRequestNormalizer.pageNo(pageNo),
+                PageRequestNormalizer.pageSize(pageSize)
         )));
     }
 

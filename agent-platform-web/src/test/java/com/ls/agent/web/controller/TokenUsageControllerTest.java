@@ -89,6 +89,23 @@ class TokenUsageControllerTest {
     }
 
     @Test
+    void pageTokenUsagesNormalizesInvalidPaginationAtWebBoundary() throws Exception {
+        when(tokenUsageService.pageTokenUsages(any(QueryTokenUsagePageCommand.class)))
+                .thenReturn(PageResult.empty(1, 20));
+
+        mockMvc.perform(get("/api/token-usages")
+                        .header("Authorization", bearerToken())
+                        .param("pageNo", "0")
+                        .param("pageSize", "0"))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<QueryTokenUsagePageCommand> captor = ArgumentCaptor.forClass(QueryTokenUsagePageCommand.class);
+        verify(tokenUsageService).pageTokenUsages(captor.capture());
+        assertThat(captor.getValue().pageNo()).isEqualTo(1);
+        assertThat(captor.getValue().pageSize()).isEqualTo(20);
+    }
+
+    @Test
     void summarizeTokenUsagesDelegatesWithCurrentUserAndDateRange() throws Exception {
         when(tokenUsageService.summarizeTokenUsages(any(QueryTokenUsageSummaryCommand.class)))
                 .thenReturn(new TokenUsageSummaryDTO(

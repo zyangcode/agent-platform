@@ -49,8 +49,8 @@ public class TraceController {
                 modelConfigId,
                 status,
                 entrypoint,
-                pageNo,
-                Math.min(pageSize, 100)
+                PageRequestNormalizer.pageNo(pageNo),
+                PageRequestNormalizer.pageSize(pageSize)
         )));
     }
 }

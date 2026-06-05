@@ -1,19 +1,26 @@
 import { AlertTriangle, CheckCircle2, CircleDashed } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
-import type { TraceSpan } from '@/lib/api/types'
+import type { TokenUsage, TraceSpan } from '@/lib/api/types'
 import { formatDateTime, formatLatency } from '@/lib/format/date'
 import { useI18n } from '@/lib/i18n/use-i18n'
 import { getTraceSpanFacts, getTraceSpanTitle } from './trace-labels'
-import { formatTraceStatus, getTraceStatusVariant, sortTraceSpans } from './trace-utils'
+import {
+  findTokenUsageForSpan,
+  formatTraceStatus,
+  getTokenUsageTimelineFacts,
+  getTraceStatusVariant,
+  sortTraceSpans,
+} from './trace-utils'
 
 type TraceTimelineProps = {
   onSelectSpan: (span: TraceSpan) => void
   selectedSpanId?: number | null
   spans: TraceSpan[]
+  tokenUsages?: TokenUsage[]
 }
 
-export function TraceTimeline({ onSelectSpan, selectedSpanId, spans }: TraceTimelineProps) {
+export function TraceTimeline({ onSelectSpan, selectedSpanId, spans, tokenUsages = [] }: TraceTimelineProps) {
   const { locale, t } = useI18n()
   const sortedSpans = sortTraceSpans(spans)
 
@@ -31,7 +38,8 @@ export function TraceTimeline({ onSelectSpan, selectedSpanId, spans }: TraceTime
       {sortedSpans.map((span, index) => {
         const isSelected = selectedSpanId === span.id
         const isFailed = getTraceStatusVariant(span.status) === 'danger'
-        const spanFacts = getTraceSpanFacts(span, locale)
+        const tokenUsageFacts = getTokenUsageTimelineFacts(findTokenUsageForSpan(span, tokenUsages), locale)
+        const spanFacts = [...tokenUsageFacts, ...getTraceSpanFacts(span, locale)]
         const spanTitle = getTraceSpanTitle(span, locale)
 
         return (

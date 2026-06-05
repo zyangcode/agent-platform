@@ -88,8 +88,8 @@ public class ApplicationController {
         return ApiResponse.success(applicationService.pageApplications(
                 currentUser.tenantId(),       // 租户过滤
                 currentUser.userId(),         // 用户过滤
-                pageNo,                       // 当前页码
-                Math.min(pageSize, 100)       // 限制最大每页条数为 100，防止性能问题
+                PageRequestNormalizer.pageNo(pageNo),
+                PageRequestNormalizer.pageSize(pageSize)
         ));
     }
 

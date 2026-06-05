@@ -17,6 +17,11 @@ import type { ConversationSummary } from '@/lib/api/types'
 import { useI18n } from '@/lib/i18n/use-i18n'
 import { loadLastSelectedProfileId, saveLastSelectedProfileId } from '@/lib/profile-selection-storage'
 import { streamChat } from './api'
+import {
+  isAssistantContentEvent,
+  nextAssistantContent,
+  shouldShowRuntimeTimelineEvent,
+} from './chat-stream-event-utils'
 import { ChatHistoryPanel } from './ChatHistoryPanel'
 import { conversationMessagesToChatMessages } from './chat-history-utils'
 import { isRunnableProfile, selectRunnableProfileId } from './chat-profile-selection-utils'
@@ -25,7 +30,7 @@ import { nextConversationId } from './chat-session-utils'
 import { ConversationPanel } from './ConversationPanel'
 import { archiveConversation, listConversationMessages, listConversations } from './history-api'
 import { RuntimeDetailPanel } from './RuntimeDetailPanel'
-import type { AgentMode, ChatMessage, ChatStreamEvent, RuntimeStatus } from './types'
+import type { AgentMode, ChatMessage, ChatStreamEvent, PendingToolConfirmation, RuntimeStatus } from './types'
 
 type ResourceState =
   | {
@@ -139,7 +144,7 @@ export function ChatPage() {
     if (!selectedApplication) {
       return t('chat.applicationRequired')
     }
-    if (agentMode === 'agent' && !selectedProfile) {
+    if (agentMode !== 'none' && !selectedProfile) {
       return t('chat.disabledNoProfile')
     }
     if (agentMode === 'none' && !selectedModelConfig) {
@@ -301,14 +306,16 @@ export function ChatPage() {
   }
 
   function handleEvent(event: ChatStreamEvent, assistantMessageId: string) {
-    setRuntimeEvents((current) => [...current, event])
+    if (shouldShowRuntimeTimelineEvent(event)) {
+      setRuntimeEvents((current) => [...current, event])
+    }
     setConversationId((current) => nextConversationId(current, event))
 
-    if (event.type === 'message' && event.content) {
+    if (isAssistantContentEvent(event)) {
       setMessages((current) =>
         current.map((message) =>
           message.id === assistantMessageId
-            ? { ...message, content: `${message.content}${event.content}` }
+            ? { ...message, content: nextAssistantContent(message.content, event) }
             : message,
         ),
       )
@@ -317,15 +324,33 @@ export function ChatPage() {
     if (event.type === 'error') {
       setRuntimeStatus('error')
       setRuntimeError(event.content ?? t('chat.streamFailed'))
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === assistantMessageId && message.content.trim().length === 0
+            ? { ...message, content: event.content ?? t('chat.streamFailedBeforeMessage') }
+            : message,
+        ),
+      )
     }
 
     if (event.type === 'done') {
       setRuntimeStatus('done')
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === assistantMessageId && message.content.trim().length === 0
+            ? { ...message, content: t('chat.streamFailedBeforeMessage') }
+            : message,
+        ),
+      )
     }
   }
 
-  async function sendMessage() {
-    const trimmedInput = input.trim()
+  async function sendMessage(
+    confirmedToolKeys: string[] = [],
+    overrideInput?: string,
+    pendingConfirmation?: PendingToolConfirmation,
+  ) {
+    const trimmedInput = (overrideInput ?? input).trim()
 
     if (!trimmedInput || !selectedApplication || disabledReason || runtimeStatus === 'streaming') {
       return
@@ -339,11 +364,13 @@ export function ChatPage() {
     setRuntimeError(null)
     setRuntimeEvents([])
     setRuntimeStatus('streaming')
-    setMessages((current) => [
-      ...current,
-      { content: trimmedInput, id: nextId('user'), role: 'user' },
-      { content: '', id: assistantMessageId, role: 'assistant' },
-    ])
+    setMessages((current) => {
+      const assistant = { content: '', id: assistantMessageId, role: 'assistant' as const }
+      if (pendingConfirmation) {
+        return [...current, assistant]
+      }
+      return [...current, { content: trimmedInput, id: nextId('user'), role: 'user' }, assistant]
+    })
 
     try {
       await streamChat(
@@ -351,8 +378,8 @@ export function ChatPage() {
           agentMode,
           applicationId: selectedApplication.applicationId,
           clientRequestId: nextId('web'),
-          conversationId: agentMode === 'agent' ? conversationId ?? undefined : undefined,
-          message: agentMode === 'agent' ? trimmedInput : undefined,
+          conversationId: agentMode !== 'none' ? conversationId ?? undefined : undefined,
+          message: agentMode !== 'none' ? trimmedInput : undefined,
           messages:
             agentMode === 'none'
               ? [
@@ -362,9 +389,11 @@ export function ChatPage() {
                   },
                 ]
               : undefined,
-          profileId: agentMode === 'agent' ? selectedProfile?.profileId : undefined,
+          profileId: agentMode !== 'none' ? selectedProfile?.profileId : undefined,
           modelConfigId: agentMode === 'none' ? selectedModelConfig?.modelConfigId : undefined,
           stream: true,
+          confirmedToolKeys,
+          pendingToolCall: pendingConfirmation?.pendingToolCall,
         },
         {
           onEvent: (event) => handleEvent(event, assistantMessageId),
@@ -392,6 +421,10 @@ export function ChatPage() {
     } finally {
       abortControllerRef.current = null
     }
+  }
+
+  function confirmTool(confirmation: PendingToolConfirmation) {
+    void sendMessage([confirmation.toolKey], input || 'continue', confirmation)
   }
 
   function stopStreaming() {
@@ -566,6 +599,7 @@ export function ChatPage() {
                   <SelectContent>
                     {[
                       ['agent', t('chat.agentMode')],
+                      ['team', t('chat.teamMode')],
                       ['none', t('chat.directModelMode')],
                     ].map(([value, label]) => (
                       <SelectItem key={value} value={value}>
@@ -607,7 +641,7 @@ export function ChatPage() {
               <div className="space-y-2">
                 <Label>{t('chat.modelConfig')}</Label>
                 <Select
-                  disabled={state.modelConfigs.length === 0 || agentMode === 'agent'}
+                  disabled={state.modelConfigs.length === 0 || agentMode !== 'none'}
                   onValueChange={(value) => {
                     setSelectedModelConfigId(Number(value))
                     const cleared = clearCurrentChatSession()
@@ -662,7 +696,12 @@ export function ChatPage() {
           onSubmit={sendMessage}
           status={runtimeStatus}
         />
-        <RuntimeDetailPanel error={runtimeError} events={runtimeEvents} status={runtimeStatus} />
+        <RuntimeDetailPanel
+          error={runtimeError}
+          events={runtimeEvents}
+          onConfirmTool={confirmTool}
+          status={runtimeStatus}
+        />
       </div>
     </section>
   )

@@ -57,6 +57,9 @@ public class DefaultMcpToolQueryService implements McpToolQueryService, McpToolR
 
     @Override
     public List<McpToolDTO> listAvailableTools(Long tenantId, List<Long> mcpToolIds) {
+        if (mcpToolIds != null && mcpToolIds.isEmpty()) {
+            return List.of();
+        }
         List<Long> serverIds = activeServerIds(tenantId);
         if (serverIds.isEmpty()) {
             return List.of();

@@ -146,6 +146,9 @@ public class DefaultTraceService implements TraceService {
         entity.setErrorMessage(command.errorMessage());
         entity.setEndedAt(endedAt);
         entity.setLatencyMs(latencyMillis(startedAt, endedAt));
+        if (command.attributes() != null) {
+            entity.setAttributes(TraceValidation.objectOrEmpty(command.attributes(), objectMapper));
+        }
         try {
             spanMapper.update(entity, new LambdaUpdateWrapper<TraceSpanEntity>()
                     .eq(TraceSpanEntity::getId, command.spanId()));

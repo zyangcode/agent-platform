@@ -20,23 +20,60 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Map;
 
 @Service
 public class DefaultSkillExecutor implements SkillExecutor {
 
     private static final Duration HTTP_TIMEOUT = Duration.ofSeconds(8);
+    private static final Map<String, JsonLocation> LOCAL_CITY_LOCATIONS = Map.ofEntries(
+            Map.entry("重庆", new JsonLocation("重庆", "China", 29.56, 106.55)),
+            Map.entry("重庆市", new JsonLocation("重庆", "China", 29.56, 106.55)),
+            Map.entry("北京", new JsonLocation("北京", "China", 39.90, 116.41)),
+            Map.entry("北京市", new JsonLocation("北京", "China", 39.90, 116.41)),
+            Map.entry("上海", new JsonLocation("上海", "China", 31.23, 121.47)),
+            Map.entry("上海市", new JsonLocation("上海", "China", 31.23, 121.47)),
+            Map.entry("广州", new JsonLocation("广州", "China", 23.13, 113.26)),
+            Map.entry("广州市", new JsonLocation("广州", "China", 23.13, 113.26)),
+            Map.entry("深圳", new JsonLocation("深圳", "China", 22.54, 114.06)),
+            Map.entry("深圳市", new JsonLocation("深圳", "China", 22.54, 114.06)),
+            Map.entry("成都", new JsonLocation("成都", "China", 30.67, 104.07)),
+            Map.entry("成都市", new JsonLocation("成都", "China", 30.67, 104.07)),
+            Map.entry("杭州", new JsonLocation("杭州", "China", 30.27, 120.16)),
+            Map.entry("杭州市", new JsonLocation("杭州", "China", 30.27, 120.16)),
+            Map.entry("南京", new JsonLocation("南京", "China", 32.06, 118.78)),
+            Map.entry("南京市", new JsonLocation("南京", "China", 32.06, 118.78)),
+            Map.entry("武汉", new JsonLocation("武汉", "China", 30.59, 114.31)),
+            Map.entry("武汉市", new JsonLocation("武汉", "China", 30.59, 114.31)),
+            Map.entry("西安", new JsonLocation("西安", "China", 34.34, 108.94)),
+            Map.entry("西安市", new JsonLocation("西安", "China", 34.34, 108.94))
+    );
 
     private final ObjectMapper objectMapper;
     private final HttpJsonClient httpJsonClient;
+    private final JarSkillRuntimeRegistry jarSkillRuntimeRegistry;
 
     @Autowired
+    public DefaultSkillExecutor(ObjectMapper objectMapper, JarSkillRuntimeRegistry jarSkillRuntimeRegistry) {
+        this(objectMapper, new JdkHttpJsonClient(objectMapper), jarSkillRuntimeRegistry);
+    }
+
     public DefaultSkillExecutor(ObjectMapper objectMapper) {
-        this(objectMapper, new JdkHttpJsonClient(objectMapper));
+        this(objectMapper, new JdkHttpJsonClient(objectMapper), new JarSkillRuntimeRegistry());
     }
 
     public DefaultSkillExecutor(ObjectMapper objectMapper, HttpJsonClient httpJsonClient) {
+        this(objectMapper, httpJsonClient, new JarSkillRuntimeRegistry());
+    }
+
+    public DefaultSkillExecutor(
+            ObjectMapper objectMapper,
+            HttpJsonClient httpJsonClient,
+            JarSkillRuntimeRegistry jarSkillRuntimeRegistry
+    ) {
         this.objectMapper = objectMapper;
         this.httpJsonClient = httpJsonClient;
+        this.jarSkillRuntimeRegistry = jarSkillRuntimeRegistry;
     }
 
     @Override
@@ -50,6 +87,10 @@ public class DefaultSkillExecutor implements SkillExecutor {
         }
         if ("search".equals(code)) {
             return search(command);
+        }
+        var jarHandler = jarSkillRuntimeRegistry.find(code);
+        if (jarHandler.isPresent()) {
+            return jarHandler.get().execute(command);
         }
         throw new BizException(ErrorCode.SKILL_EXECUTE_FAILED, "Unsupported skill: " + code);
     }
@@ -104,6 +145,10 @@ public class DefaultSkillExecutor implements SkillExecutor {
     }
 
     private JsonLocation geocode(String city) throws IOException, InterruptedException {
+        JsonLocation localLocation = LOCAL_CITY_LOCATIONS.get(normalizeCity(city));
+        if (localLocation != null) {
+            return localLocation;
+        }
         URI uri = URI.create("https://geocoding-api.open-meteo.com/v1/search"
                 + "?name=" + encode(city)
                 + "&count=1&language=en&format=json");
@@ -119,6 +164,10 @@ public class DefaultSkillExecutor implements SkillExecutor {
                 first.path("latitude").asDouble(),
                 first.path("longitude").asDouble()
         );
+    }
+
+    private String normalizeCity(String city) {
+        return city == null ? "" : city.strip();
     }
 
     private SkillExecuteResult search(SkillExecuteCommand command) {

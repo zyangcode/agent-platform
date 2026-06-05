@@ -26,6 +26,8 @@ class JsonNodeMappingTest {
             com.ls.agent.core.skill.entity.SkillVersionEntity.class,
             com.ls.agent.core.mcp.entity.McpServerEntity.class,
             com.ls.agent.core.mcp.entity.McpToolEntity.class,
+            com.ls.agent.core.rag.entity.KnowledgeDocumentEntity.class,
+            com.ls.agent.core.rag.entity.KnowledgeChunkEntity.class,
             com.ls.agent.core.trace.entity.TraceRootEntity.class,
             com.ls.agent.core.trace.entity.TraceSpanEntity.class
     );

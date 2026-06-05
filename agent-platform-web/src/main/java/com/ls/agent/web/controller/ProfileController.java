@@ -60,8 +60,8 @@ public class ProfileController {
                 currentUser.tenantId(),
                 currentUser.userId(),
                 applicationId,
-                pageNo,
-                Math.min(pageSize, 100)
+                PageRequestNormalizer.pageNo(pageNo),
+                PageRequestNormalizer.pageSize(pageSize)
         ));
     }
 

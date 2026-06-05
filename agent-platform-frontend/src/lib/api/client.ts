@@ -5,7 +5,7 @@ import type { ApiResponse } from './types'
 type RequestMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 
 type ApiRequestOptions = Omit<RequestInit, 'body' | 'method'> & {
-  body?: unknown
+  body?: BodyInit | unknown
   method?: RequestMethod
   query?: Record<string, boolean | number | string | null | undefined>
 }
@@ -50,11 +50,12 @@ async function readJsonSafely(response: Response) {
 function createHeaders(options?: ApiRequestOptions) {
   const headers = new Headers(options?.headers)
   const token = getAccessToken()
+  const isFormDataBody = typeof FormData !== 'undefined' && options?.body instanceof FormData
 
   if (!headers.has('Accept')) {
     headers.set('Accept', 'application/json')
   }
-  if (options?.body !== undefined && !headers.has('Content-Type')) {
+  if (options?.body !== undefined && !isFormDataBody && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json')
   }
   if (token && !headers.has('Authorization')) {
@@ -66,13 +67,14 @@ function createHeaders(options?: ApiRequestOptions) {
 
 export async function apiRequest<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
   const { body, method = 'GET', query, ...fetchOptions } = options
+  const isFormDataBody = typeof FormData !== 'undefined' && body instanceof FormData
 
   let response: Response
 
   try {
     response = await fetch(buildUrl(path, query), {
       ...fetchOptions,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body === undefined ? undefined : isFormDataBody ? body : JSON.stringify(body),
       headers: createHeaders(options),
       method,
     })
@@ -128,6 +130,8 @@ export const apiClient = {
     apiRequest<T>(path, { ...options, body, method: 'POST' }),
   put: <T>(path: string, body?: unknown, options?: Omit<ApiRequestOptions, 'body' | 'method'>) =>
     apiRequest<T>(path, { ...options, body, method: 'PUT' }),
+  patch: <T>(path: string, body?: unknown, options?: Omit<ApiRequestOptions, 'body' | 'method'>) =>
+    apiRequest<T>(path, { ...options, body, method: 'PATCH' }),
   delete: <T>(path: string, options?: Omit<ApiRequestOptions, 'body' | 'method'>) =>
     apiRequest<T>(path, { ...options, method: 'DELETE' }),
 }

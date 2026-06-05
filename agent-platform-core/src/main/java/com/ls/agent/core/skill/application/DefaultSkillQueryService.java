@@ -54,7 +54,10 @@ public class DefaultSkillQueryService implements SkillQueryService, SkillRegistr
 
     @Override
     public List<SkillDTO> listAvailableSkills(Long tenantId, List<Long> skillIds) {
-        if (skillIds == null || skillIds.isEmpty()) {
+        if (skillIds != null && skillIds.isEmpty()) {
+            return List.of();
+        }
+        if (skillIds == null) {
             return listSkills(tenantId, "GLOBAL", STATUS_ENABLED);
         }
         List<SkillEntity> skills = skillMapper.selectList(new LambdaQueryWrapper<SkillEntity>()

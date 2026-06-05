@@ -2,36 +2,56 @@ package com.ls.agent.core.agent.application;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.ls.agent.common.error.BizException;
 import com.ls.agent.common.error.ErrorCode;
-import com.ls.agent.core.agent.api.ConversationRepository;
 import com.ls.agent.core.agent.api.AgentRuntimeService;
+import com.ls.agent.core.agent.api.ConversationRepository;
 import com.ls.agent.core.agent.command.AgentRunCommand;
+import com.ls.agent.core.agent.command.PendingToolCallCommand;
 import com.ls.agent.core.agent.dto.AgentRunResult;
 import com.ls.agent.core.agent.dto.AgentToolEventDTO;
 import com.ls.agent.core.agent.entity.ConversationEntity;
 import com.ls.agent.core.agent.entity.ConversationMessageEntity;
+import com.ls.agent.core.agent.hook.AgentRuntimeHook;
+import com.ls.agent.core.agent.hook.FinalAnswerHookContext;
+import com.ls.agent.core.agent.hook.ModelHookContext;
+import com.ls.agent.core.agent.hook.ToolHookContext;
+import com.ls.agent.core.agent.tool.AgentToolCall;
+import com.ls.agent.core.agent.tool.AgentToolCallValidator;
+import com.ls.agent.core.agent.tool.AgentToolDTO;
+import com.ls.agent.core.agent.tool.AgentToolDispatchCommand;
+import com.ls.agent.core.agent.tool.AgentToolDispatchResult;
+import com.ls.agent.core.agent.tool.AgentToolDispatcher;
+import com.ls.agent.core.agent.tool.AgentToolResolver;
+import com.ls.agent.core.agent.tool.AgentToolRiskLevel;
+import com.ls.agent.core.agent.tool.AgentToolSourceType;
+import com.ls.agent.core.agent.tool.AgentToolValidationResult;
+import com.ls.agent.core.agent.tool.ToolExecutionPlan;
+import com.ls.agent.core.agent.tool.ToolExecutionPlanner;
 import com.ls.agent.core.context.api.AgentContextBuilder;
+import com.ls.agent.core.context.api.MicroCompactService;
 import com.ls.agent.core.context.command.BuildAgentContextCommand;
 import com.ls.agent.core.context.dto.AgentContextDTO;
-import com.ls.agent.core.mcp.api.McpToolExecutor;
-import com.ls.agent.core.mcp.command.McpToolExecuteCommand;
-import com.ls.agent.core.mcp.dto.McpToolExecuteResult;
+import com.ls.agent.core.context.dto.ContextBudgetSnapshotDTO;
+import com.ls.agent.core.context.dto.MicroCompactResult;
 import com.ls.agent.core.memory.api.MemoryWriteService;
+import com.ls.agent.core.memory.application.PreferenceExtractor;
 import com.ls.agent.core.memory.command.RecordMemoryCommand;
 import com.ls.agent.core.model.api.ModelInvokeService;
+import com.ls.agent.core.model.api.ModelStreamCallback;
 import com.ls.agent.core.model.command.ModelInvokeCommand;
 import com.ls.agent.core.model.dto.ModelInvokeResult;
 import com.ls.agent.core.model.dto.ModelMessage;
-import com.ls.agent.core.skill.api.SkillExecutor;
-import com.ls.agent.core.skill.command.SkillExecuteCommand;
-import com.ls.agent.core.skill.dto.SkillExecuteResult;
+import com.ls.agent.core.model.dto.ModelToolCallDTO;
+import com.ls.agent.core.model.dto.ModelToolSpecDTO;
 import com.ls.agent.core.quota.api.TokenUsageService;
+import com.ls.agent.core.quota.command.RecordTokenUsageCommand;
+import com.ls.agent.core.profile.dto.ProfileDTO;
 import com.ls.agent.core.team.api.TeamEventSink;
 import com.ls.agent.core.team.api.TeamRuntimeService;
 import com.ls.agent.core.trace.api.TraceService;
 import com.ls.agent.core.trace.command.FinishTraceSpanCommand;
-import com.ls.agent.core.quota.command.RecordTokenUsageCommand;
 import com.ls.agent.core.trace.command.StartTraceSpanCommand;
 import com.ls.agent.core.trace.dto.TraceSpanDTO;
 import org.springframework.stereotype.Service;
@@ -39,9 +59,12 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Locale;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 @Service
 public class DefaultAgentRuntimeService implements AgentRuntimeService {
@@ -51,59 +74,80 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
     private static final String MEMORY_TYPE_SUMMARY = "SUMMARY";
     private static final int TITLE_MAX_LENGTH = 60;
     private static final int MAX_AGENT_STEPS = 3;
-    private static final Pattern ARITHMETIC_EXPRESSION_PATTERN = Pattern.compile(
-            "(?<![\\w.])-?\\d+(?:\\.\\d+)?(?:\\s*[+\\-*/]\\s*-?\\d+(?:\\.\\d+)?)+"
-    );
+    private static final int MAX_PARALLEL_TOOLS = 4;
 
     private final AgentContextBuilder contextBuilder;
+    private final MicroCompactService microCompactService;
     private final ModelInvokeService modelInvokeService;
-    private final SkillExecutor skillExecutor;
-    private final McpToolExecutor mcpToolExecutor;
+    private final AgentToolResolver agentToolResolver;
+    private final AgentToolDispatcher agentToolDispatcher;
+    private final AgentToolCallValidator agentToolCallValidator;
+    private final ToolExecutionPlanner toolExecutionPlanner;
     private final TeamRuntimeService teamRuntimeService;
+    private final SingleAgentFinalResponseSynthesizer finalResponseSynthesizer;
     private final ConversationRepository conversationRepository;
     private final MemoryWriteService memoryWriteService;
+    private final PreferenceExtractor preferenceExtractor;
     private final TraceService traceService;
     private final TokenUsageService tokenUsageService;
     private final ObjectMapper objectMapper;
+    private final List<AgentRuntimeHook> runtimeHooks;
 
     public DefaultAgentRuntimeService(
             AgentContextBuilder contextBuilder,
+            MicroCompactService microCompactService,
             ModelInvokeService modelInvokeService,
-            SkillExecutor skillExecutor,
-            McpToolExecutor mcpToolExecutor,
+            AgentToolResolver agentToolResolver,
+            AgentToolDispatcher agentToolDispatcher,
+            AgentToolCallValidator agentToolCallValidator,
+            ToolExecutionPlanner toolExecutionPlanner,
             TeamRuntimeService teamRuntimeService,
+            SingleAgentFinalResponseSynthesizer finalResponseSynthesizer,
             ConversationRepository conversationRepository,
             MemoryWriteService memoryWriteService,
+            PreferenceExtractor preferenceExtractor,
             TraceService traceService,
             TokenUsageService tokenUsageService,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            List<AgentRuntimeHook> runtimeHooks
     ) {
         this.contextBuilder = contextBuilder;
+        this.microCompactService = microCompactService;
         this.modelInvokeService = modelInvokeService;
-        this.skillExecutor = skillExecutor;
-        this.mcpToolExecutor = mcpToolExecutor;
+        this.agentToolResolver = agentToolResolver;
+        this.agentToolDispatcher = agentToolDispatcher;
+        this.agentToolCallValidator = agentToolCallValidator;
+        this.toolExecutionPlanner = toolExecutionPlanner;
         this.teamRuntimeService = teamRuntimeService;
+        this.finalResponseSynthesizer = finalResponseSynthesizer;
         this.conversationRepository = conversationRepository;
         this.memoryWriteService = memoryWriteService;
+        this.preferenceExtractor = preferenceExtractor;
         this.traceService = traceService;
         this.tokenUsageService = tokenUsageService;
         this.objectMapper = objectMapper;
+        this.runtimeHooks = runtimeHooks == null ? List.of() : List.copyOf(runtimeHooks);
     }
 
     @Override
     public AgentRunResult run(AgentRunCommand command) {
-        return run(command, null);
+        return run(command, null, null);
     }
 
     @Override
     public AgentRunResult run(AgentRunCommand command, TeamEventSink teamEventSink) {
+        return run(command, teamEventSink, null);
+    }
+
+    @Override
+    public AgentRunResult run(AgentRunCommand command, TeamEventSink teamEventSink, ModelStreamCallback streamCallback) {
         validate(command);
         TraceSpanDTO runSpan = safeStartSpan(command.traceId(), null, "agent_runtime.run", "AGENT",
                 objectMapper.createObjectNode().put("profileId", command.profileId()));
         try {
             Long conversationId = ensureConversation(command);
-            AgentContextDTO context = buildContext(command, conversationId, runSpan == null ? null : runSpan.id());
-            if (isTeamMode(context)) {
+            AgentContextDTO context = buildContext(command, conversationId, spanId(runSpan));
+            if (isTeamMode(command, context)) {
                 saveMessage(conversationId, command.traceId(), "user", command.userInput(), null);
                 safeFinishSpan(runSpan, "SUCCESS", null, null);
                 AgentRunResult result = teamRuntimeService.run(withConversationId(command, conversationId), teamEventSink);
@@ -114,23 +158,24 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
                         result.assistantMessage(),
                         result.usage() == null ? null : result.usage().completionTokens()
                 );
-                saveMemory(command, conversationId, result.assistantMessage());
+                saveMemory(command, context, spanId(runSpan), conversationId, result.assistantMessage());
                 return result;
             }
 
             saveMessage(conversationId, command.traceId(), "user", command.userInput(), null);
             List<AgentToolEventDTO> toolEvents = new ArrayList<>();
-            ModelInvokeResult modelResult = runModelLoop(command, context, runSpan == null ? null : runSpan.id(), toolEvents);
+            ModelInvokeResult modelResult = runModelLoop(command, context, spanId(runSpan), toolEvents, streamCallback);
+            String finalAssistantMessage = buildFinalAnswer(command, spanId(runSpan), modelResult.assistantMessage());
             saveMessage(
                     conversationId,
                     command.traceId(),
                     "assistant",
-                    modelResult.assistantMessage(),
+                    finalAssistantMessage,
                     modelResult.usage() == null ? null : modelResult.usage().completionTokens()
             );
-            saveMemory(command, conversationId, modelResult.assistantMessage());
+            saveMemory(command, context, spanId(runSpan), conversationId, finalAssistantMessage);
             safeFinishSpan(runSpan, "SUCCESS", null, null);
-            return new AgentRunResult(conversationId, modelResult.assistantMessage(), modelResult.usage(), toolEvents);
+            return new AgentRunResult(conversationId, finalAssistantMessage, modelResult.usage(), toolEvents);
         } catch (Exception ex) {
             safeFinishSpan(runSpan, "FAILED", errorCode(ex), errorMessage(ex));
             throw ex;
@@ -152,8 +197,11 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
                     command.userInput(),
                     command.maxContextTokens(),
                     command.selectedSkillIds(),
-                    command.selectedMcpToolIds()
+                    command.selectedMcpToolIds(),
+                    command.traceId(),
+                    spanId(span)
             ));
+            recordContextBudgetSnapshot(command, spanId(span), context);
             safeFinishSpan(span, "SUCCESS", null, null);
             return context;
         } catch (Exception ex) {
@@ -166,88 +214,185 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
             AgentRunCommand command,
             AgentContextDTO context,
             Long parentSpanId,
-            List<AgentToolEventDTO> toolEvents
+            List<AgentToolEventDTO> toolEvents,
+            ModelStreamCallback streamCallback
     ) {
-        List<ModelMessage> messages = new ArrayList<>(context.messages());
-        ToolCall preselectedToolCall = detectDirectToolCall(command.userInput(), context);
-        if (preselectedToolCall != null) {
-            String toolOutput = executeTool(command, context, preselectedToolCall, parentSpanId, 0);
-            recordToolEvents(toolEvents, preselectedToolCall, toolOutput);
-            messages.add(new ModelMessage("assistant", formatToolCall(preselectedToolCall)));
-            messages.add(new ModelMessage("tool", toolOutput));
+        List<ModelMessage> messages = new ArrayList<>(context.apiMessages());
+        List<AgentToolDTO> availableTools = safeTools(agentToolResolver.resolve(context));
+        ModelInvokeResult resumedResult = resumePendingToolCallIfPresent(
+                command,
+                context,
+                messages,
+                availableTools,
+                parentSpanId,
+                toolEvents,
+                streamCallback
+        );
+        if (resumedResult != null) {
+            return resumedResult;
         }
-        ModelInvokeResult result = null;
         for (int step = 0; step < MAX_AGENT_STEPS; step++) {
-            result = invokeModel(command, context, messages, parentSpanId, step + 1);
-            ToolCall toolCall;
+            messages = compactMessages(command, parentSpanId, messages);
+            boolean planningWithTools = !availableTools.isEmpty();
+            BufferedStreamCallback bufferedStream = streamCallback == null || planningWithTools
+                    ? null
+                    : new BufferedStreamCallback();
+            ModelInvokeResult result = invokeModel(
+                    command,
+                    context,
+                    messages,
+                    availableTools,
+                    parentSpanId,
+                    step + 1,
+                    bufferedStream
+            );
+            ToolRequestBatch toolRequestBatch;
             try {
-                toolCall = parseToolCall(result.assistantMessage());
+                toolRequestBatch = toolRequestBatchFrom(result);
             } catch (Exception ex) {
-                // Model produced invalid tool-call format; record as observation and let it retry
                 messages.add(new ModelMessage("assistant", result.assistantMessage()));
-                messages.add(new ModelMessage("tool", "[tool call parse error] " + ex.getMessage()));
+                messages.add(new ModelMessage("tool", "[tool call parse error] " + errorMessage(ex)));
                 continue;
             }
-            if (toolCall == null) {
+            if (toolRequestBatch.isEmpty()) {
+                ToolRequestBatch repairedToolRequestBatch = repairMissingToolRequestBatch(
+                        command,
+                        result.assistantMessage(),
+                        availableTools
+                );
+                if (!repairedToolRequestBatch.isEmpty()) {
+                    messages.add(new ModelMessage("assistant", result.assistantMessage()));
+                    for (ToolExecutionResult toolResult : executeToolBatch(command, repairedToolRequestBatch, availableTools, parentSpanId, step + 1)) {
+                        recordToolEvents(toolEvents, toolResult.toolCall(), toolResult.output());
+                        messages.add(new ModelMessage("tool", compactMessage(command, parentSpanId, "tool", toolResult.output())));
+                    }
+                    return fallbackDirectAnswer(command, context, messages, parentSpanId, streamCallback);
+                }
+                if (streamCallback == null) {
+                    return result;
+                }
+                flushBufferedVisibleAnswer(streamCallback, result.assistantMessage(), bufferedStream);
                 return result;
             }
-            String toolOutput = executeTool(command, context, toolCall, parentSpanId, step + 1);
-            recordToolEvents(toolEvents, toolCall, toolOutput);
             messages.add(new ModelMessage("assistant", result.assistantMessage()));
-            messages.add(new ModelMessage("tool", toolOutput));
+            List<AgentToolValidationResult> validations = validateToolRequestBatch(
+                    command,
+                    parentSpanId,
+                    toolRequestBatch,
+                    availableTools
+            );
+            if (hasInvalidToolCall(validations)) {
+                for (AgentToolValidationResult validation : validations) {
+                    if (!validation.valid()) {
+                        messages.add(new ModelMessage("tool", compactMessage(command, parentSpanId, "tool", validation.observation())));
+                    }
+                }
+                return fallbackDirectAnswer(command, context, messages, parentSpanId, streamCallback);
+            }
+            for (ToolExecutionResult toolResult : executeToolBatch(command, toolRequestBatch, availableTools, parentSpanId, step + 1)) {
+                recordToolEvents(toolEvents, toolResult.toolCall(), toolResult.output());
+                messages.add(new ModelMessage("tool", compactMessage(command, parentSpanId, "tool", toolResult.output())));
+            }
+            return fallbackDirectAnswer(command, context, messages, parentSpanId, streamCallback);
         }
-        return fallbackDirectAnswer(command, context, messages, parentSpanId);
+        return fallbackDirectAnswer(command, context, messages, parentSpanId, streamCallback);
     }
 
-    /**
-     * When the ReAct loop exceeds max steps, downgrade to a direct model call without tool
-     * declarations, asking the model to synthesize a best-effort answer from gathered context.
-     * If even the fallback call fails, return a graceful Chinese apology message.
-     */
+    private void flushBufferedVisibleAnswer(
+            ModelStreamCallback streamCallback,
+            String assistantMessage,
+            BufferedStreamCallback bufferedStream
+    ) {
+        if (streamCallback == null) {
+            return;
+        }
+        if (bufferedStream != null && !bufferedStream.tokens().isEmpty()) {
+            for (String token : bufferedStream.tokens()) {
+                streamCallback.onToken(token);
+            }
+            return;
+        }
+        if (assistantMessage != null && !assistantMessage.isBlank()) {
+            streamCallback.onToken(assistantMessage);
+        }
+    }
+
+    private List<AgentToolDTO> safeTools(List<AgentToolDTO> availableTools) {
+        return availableTools == null ? List.of() : availableTools;
+    }
+
+    private List<ModelToolSpecDTO> modelToolSpecs(List<AgentToolDTO> availableTools) {
+        if (availableTools == null || availableTools.isEmpty()) {
+            return List.of();
+        }
+        return availableTools.stream()
+                .filter(tool -> tool != null)
+                .map(tool -> new ModelToolSpecDTO(
+                        tool.sourceType().name(),
+                        tool.name(),
+                        tool.description(),
+                        tool.parameterSchema()
+                ))
+                .toList();
+    }
+
+    private ModelInvokeResult resumePendingToolCallIfPresent(
+            AgentRunCommand command,
+            AgentContextDTO context,
+            List<ModelMessage> messages,
+            List<AgentToolDTO> availableTools,
+            Long parentSpanId,
+            List<AgentToolEventDTO> toolEvents,
+            ModelStreamCallback streamCallback
+    ) {
+        PendingToolCallCommand pendingToolCall = command.pendingToolCall();
+        if (pendingToolCall == null) {
+            return null;
+        }
+        ToolCall toolCall = new ToolCall(
+                pendingToolCall.sourceType(),
+                pendingToolCall.toolName(),
+                pendingToolCall.arguments()
+        );
+        AgentToolCall call = new AgentToolCall(toolCall.sourceType(), toolCall.name(), toolCall.arguments());
+        if (!command.confirmedToolKeys().contains(toolKey(call))) {
+            messages.add(new ModelMessage("tool", "[tool confirm required] "
+                    + call.sourceType().name().toLowerCase() + ":" + call.toolName() + " risk=HIGH"));
+            return fallbackDirectAnswer(command, context, messages, parentSpanId, streamCallback);
+        }
+        String toolOutput = executeTool(command, toolCall, availableTools, parentSpanId, 1);
+        recordToolEvents(toolEvents, toolCall, toolOutput);
+        messages.add(new ModelMessage("assistant", formatToolCall(toolCall)));
+        messages.add(new ModelMessage("tool", compactMessage(command, parentSpanId, "tool", toolOutput)));
+        return invokeModel(command, context, messages, List.of(), parentSpanId, 2, streamCallback);
+    }
+
     private ModelInvokeResult fallbackDirectAnswer(
             AgentRunCommand command,
             AgentContextDTO context,
             List<ModelMessage> accumulatedMessages,
-            Long parentSpanId
+            Long parentSpanId,
+            ModelStreamCallback streamCallback
     ) {
-        List<ModelMessage> fallbackMessages = new ArrayList<>();
-        for (ModelMessage msg : accumulatedMessages) {
-            if ("system".equals(msg.role())) {
-                fallbackMessages.add(new ModelMessage("system", stripToolListings(msg.content())));
-            } else {
-                fallbackMessages.add(msg);
-            }
-        }
-        fallbackMessages.add(new ModelMessage("user",
-                "You were unable to fully resolve the request using tools within the allowed steps. "
-                        + "Based on all the information gathered above, please provide the best possible answer "
-                        + "to the original question. Do NOT output tool-call format like @skill: or @mcp:. "
-                        + "If you still cannot answer, honestly state what information is missing."));
+        List<ModelMessage> fallbackMessages = finalResponseSynthesizer.fallbackMessages(accumulatedMessages);
 
         try {
-            return invokeModel(command, context, fallbackMessages, parentSpanId, MAX_AGENT_STEPS + 1);
+            return invokeModel(command, context, fallbackMessages, List.of(), parentSpanId, MAX_AGENT_STEPS + 1, streamCallback);
         } catch (Exception ex) {
             return new ModelInvokeResult(
-                    context.modelConfigId(), null, null, null,
-                    "抱歉，我暂时无法回答这个问题。请尝试换个方式提问，或提供更多信息。",
+                    context.modelConfigId(),
+                    null,
+                    null,
+                    null,
+                    "Sorry, I cannot answer this request right now. Please try again with more details.",
                     null
             );
         }
     }
 
-    /** Remove tool availability sections from the system prompt so the fallback model won't attempt tool calls. */
-    private String stripToolListings(String systemPrompt) {
-        if (systemPrompt == null) {
-            return "";
-        }
-        return systemPrompt
-                .replaceAll("(?m)^Available skills:.*(\\n(?:- .*\\n)*)?", "")
-                .replaceAll("(?m)^Available MCP tools:.*(\\n(?:- .*\\n)*)?", "")
-                .strip();
-    }
-
-    private boolean isTeamMode(AgentContextDTO context) {
-        return context != null
+    private boolean isTeamMode(AgentRunCommand command, AgentContextDTO context) {
+        return command != null && "team".equalsIgnoreCase(command.agentMode())
+                || context != null
                 && context.profile() != null
                 && "TEAM".equalsIgnoreCase(context.profile().executionMode());
     }
@@ -266,7 +411,10 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
                 command.traceId(),
                 command.selectedSkillIds(),
                 command.selectedMcpToolIds(),
-                command.maxContextTokens()
+                command.maxContextTokens(),
+                command.agentMode(),
+                command.confirmedToolKeys(),
+                command.pendingToolCall()
         );
     }
 
@@ -277,131 +425,218 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
             Long parentSpanId,
             int step
     ) {
-        TraceSpanDTO span = safeStartSpan(command.traceId(), parentSpanId, "model.invoke", "MODEL",
-                objectMapper.createObjectNode()
-                        .put("modelConfigId", context.modelConfigId())
-                        .put("step", step));
+        return invokeModel(command, context, messages, List.of(), parentSpanId, step, null);
+    }
+
+    private ModelInvokeResult invokeModel(
+            AgentRunCommand command,
+            AgentContextDTO context,
+            List<ModelMessage> messages,
+            List<AgentToolDTO> availableTools,
+            Long parentSpanId,
+            int step,
+            ModelStreamCallback streamCallback
+    ) {
+        ObjectNode attributes = objectMapper.createObjectNode()
+                .put("modelConfigId", context.modelConfigId())
+                .put("step", step)
+                .put("messageCount", messages == null ? 0 : messages.size())
+                .put("toolSpecCount", availableTools == null ? 0 : availableTools.size())
+                .put("stream", streamCallback != null);
+        TraceSpanDTO span = safeStartSpan(command.traceId(), parentSpanId, "model.invoke", "MODEL", attributes);
+        ModelHookContext hookContext = new ModelHookContext(
+                command.traceId(),
+                command.tenantId(),
+                command.applicationId(),
+                command.userId(),
+                command.profileId(),
+                context.modelConfigId(),
+                step,
+                messages == null ? 0 : messages.size(),
+                availableTools == null ? 0 : availableTools.size(),
+                streamCallback != null
+        );
         try {
-            ModelInvokeResult result = modelInvokeService.invoke(new ModelInvokeCommand(
+            ModelInvokeCommand invokeCommand = new ModelInvokeCommand(
                     context.modelConfigId(),
                     messages,
                     BigDecimal.valueOf(0.7),
-                    false
-            ));
-            safeRecordTokenUsage(command, result, span == null ? null : span.id());
-            safeFinishSpan(span, "SUCCESS", null, null);
+                    streamCallback != null,
+                    modelToolSpecs(availableTools)
+            );
+            notifyPreModelCall(hookContext);
+            ModelInvokeResult result = streamCallback == null
+                    ? modelInvokeService.invoke(invokeCommand)
+                    : modelInvokeService.invoke(invokeCommand, streamCallback);
+            notifyPostModelCall(hookContext, result, null);
+            recordModelSpanResult(attributes, result);
+            safeRecordTokenUsage(command, result, spanId(span));
+            safeFinishSpan(span, "SUCCESS", null, null, attributes);
             return result;
         } catch (Exception ex) {
-            safeFinishSpan(span, "FAILED", errorCode(ex), errorMessage(ex));
+            notifyPostModelCall(hookContext, null, ex);
+            safeFinishSpan(span, "FAILED", errorCode(ex), errorMessage(ex), attributes);
             throw ex;
         }
     }
 
-    private ToolCall detectDirectToolCall(String userInput, AgentContextDTO context) {
-        if (userInput == null || userInput.isBlank() || context.availableSkills().isEmpty()) {
-            return null;
-        }
-
-        String normalized = userInput.toLowerCase(Locale.ROOT);
-        if (isSkillAvailable(context, "calculator")) {
-            Matcher matcher = ARITHMETIC_EXPRESSION_PATTERN.matcher(userInput);
-            if (matcher.find() && looksLikeCalculationRequest(normalized)) {
-                return new ToolCall(
-                        "skill",
-                        "calculator",
-                        objectMapper.createObjectNode().put("expression", matcher.group().replaceAll("\\s+", ""))
-                );
-            }
-        }
-        if (isSkillAvailable(context, "weather") && looksLikeWeatherRequest(normalized)) {
-            String city = extractAfterKeyword(userInput, List.of("天气", "weather in", "weather"));
-            if (!city.isBlank()) {
-                return new ToolCall("skill", "weather", objectMapper.createObjectNode().put("city", city));
-            }
-        }
-        if (isSkillAvailable(context, "search") && looksLikeSearchRequest(normalized)) {
-            return new ToolCall("skill", "search", objectMapper.createObjectNode().put("query", userInput.strip()));
-        }
-        return null;
-    }
-
-    private boolean isSkillAvailable(AgentContextDTO context, String skillCode) {
-        return context.availableSkills().stream().anyMatch(skill -> skillCode.equals(skill.code()));
-    }
-
-    private boolean looksLikeCalculationRequest(String normalized) {
-        return normalized.contains("计算")
-                || normalized.contains("算")
-                || normalized.contains("等于")
-                || normalized.contains("calculate")
-                || normalized.contains("what is");
-    }
-
-    private boolean looksLikeWeatherRequest(String normalized) {
-        return normalized.contains("天气") || normalized.contains("weather");
-    }
-
-    private boolean looksLikeSearchRequest(String normalized) {
-        return normalized.contains("搜索")
-                || normalized.contains("查询")
-                || normalized.contains("查一下")
-                || normalized.contains("search");
-    }
-
-    private String extractAfterKeyword(String text, List<String> keywords) {
-        String stripped = text == null ? "" : text.strip();
-        String normalized = stripped.toLowerCase(Locale.ROOT);
-        for (String keyword : keywords) {
-            int index = normalized.indexOf(keyword.toLowerCase(Locale.ROOT));
-            if (index >= 0) {
-                String candidate = stripped.substring(index + keyword.length())
-                        .replace("?", "")
-                        .replace("？", "")
-                        .replace("怎么样", "")
-                        .replace("如何", "")
-                        .strip();
-                if (!candidate.isBlank()) {
-                    return candidate;
-                }
-            }
-        }
-        return stripped;
-    }
-
-    private String formatToolCall(ToolCall toolCall) {
-        return "@" + toolCall.type() + ":" + toolCall.name() + " " + toolCall.arguments();
-    }
-
-    private void recordToolEvents(List<AgentToolEventDTO> toolEvents, ToolCall toolCall, String toolOutput) {
-        toolEvents.add(new AgentToolEventDTO(
-                "action",
-                toolCall.type(),
-                toolCall.name(),
-                formatToolCall(toolCall)
-        ));
-        toolEvents.add(new AgentToolEventDTO(
-                "observation",
-                toolCall.type(),
-                toolCall.name(),
-                toolOutput
-        ));
-    }
-
-    private ToolCall parseToolCall(String assistantMessage) {
+    private ToolRequestBatch parseToolRequestBatch(String assistantMessage) {
         if (assistantMessage == null) {
-            return null;
+            return ToolRequestBatch.empty();
         }
         String trimmed = assistantMessage.strip();
-        if (trimmed.startsWith("@skill:")) {
-            return parseToolCall(trimmed, "@skill:", "skill");
+        if (trimmed.isEmpty()) {
+            return ToolRequestBatch.empty();
         }
-        if (trimmed.startsWith("@mcp:")) {
-            return parseToolCall(trimmed, "@mcp:", "mcp");
+        List<ToolCall> toolCalls = new ArrayList<>();
+        for (String line : trimmed.split("\\R")) {
+            String candidate = line.strip();
+            if (candidate.isEmpty()) {
+                continue;
+            }
+            ToolCall toolCall = parseToolCallLine(candidate);
+            if (toolCall == null) {
+                if (toolCalls.isEmpty()) {
+                    return ToolRequestBatch.empty();
+                }
+                throw new BizException(ErrorCode.REQUEST_INVALID, "Invalid tool call batch");
+            }
+            toolCalls.add(toolCall);
+        }
+        return new ToolRequestBatch(toolCalls);
+    }
+
+    private ToolRequestBatch toolRequestBatchFrom(ModelInvokeResult result) {
+        if (result != null && result.toolCalls() != null && !result.toolCalls().isEmpty()) {
+            return new ToolRequestBatch(result.toolCalls().stream()
+                    .map(this::toolCallFromModel)
+                    .toList());
+        }
+        return parseToolRequestBatch(result == null ? null : result.assistantMessage());
+    }
+
+    private ToolCall toolCallFromModel(ModelToolCallDTO call) {
+        AgentToolSourceType sourceType = AgentToolSourceType.valueOf(call.sourceType());
+        return new ToolCall(sourceType, call.name(), call.arguments());
+    }
+
+    private ToolRequestBatch repairMissingToolRequestBatch(
+            AgentRunCommand command,
+            String assistantMessage,
+            List<AgentToolDTO> availableTools
+    ) {
+        if (!looksLikeWeatherToolRequired(command.userInput(), assistantMessage)) {
+            return ToolRequestBatch.empty();
+        }
+        String city = extractWeatherCity(command.userInput());
+        if (city.isBlank()) {
+            return ToolRequestBatch.empty();
+        }
+        if (hasTool(availableTools, AgentToolSourceType.MCP, "weather.current")) {
+            return new ToolRequestBatch(List.of(new ToolCall(
+                    AgentToolSourceType.MCP,
+                    "weather.current",
+                    objectMapper.createObjectNode().put("city", city)
+            )));
+        }
+        if (!hasTool(availableTools, AgentToolSourceType.SKILL, "weather")) {
+            return ToolRequestBatch.empty();
+        }
+        return new ToolRequestBatch(List.of(new ToolCall(
+                AgentToolSourceType.SKILL,
+                "weather",
+                objectMapper.createObjectNode().put("city", city)
+        )));
+    }
+
+    private boolean looksLikeWeatherToolRequired(String userInput, String assistantMessage) {
+        return looksLikeExplicitWeatherRequest(userInput) || looksLikeWeatherLookupPromise(assistantMessage);
+    }
+
+    private boolean looksLikeExplicitWeatherRequest(String userInput) {
+        if (userInput == null || userInput.isBlank()) {
+            return false;
+        }
+        String normalized = userInput.toLowerCase(Locale.ROOT);
+        boolean weatherIntent = normalized.contains("天气") || normalized.contains("weather");
+        boolean lookupIntent = normalized.contains("查")
+                || normalized.contains("查询")
+                || normalized.contains("看看")
+                || normalized.contains("获取")
+                || normalized.contains("后回答")
+                || normalized.contains("lookup")
+                || normalized.contains("check")
+                || normalized.contains("query");
+        boolean decisionNeedsWeather = normalized.contains("适合")
+                && (normalized.contains("打篮球")
+                || normalized.contains("运动")
+                || normalized.contains("出门")
+                || normalized.contains("跑步"));
+        return weatherIntent && (lookupIntent || decisionNeedsWeather);
+    }
+
+    private boolean hasTool(List<AgentToolDTO> availableTools, AgentToolSourceType sourceType, String toolName) {
+        if (availableTools == null || availableTools.isEmpty()) {
+            return false;
+        }
+        return availableTools.stream()
+                .anyMatch(tool -> tool != null
+                        && sourceType.equals(tool.sourceType())
+                        && toolName.equals(tool.name()));
+    }
+
+    private boolean looksLikeWeatherLookupPromise(String assistantMessage) {
+        if (assistantMessage == null || assistantMessage.isBlank()) {
+            return false;
+        }
+        String normalized = assistantMessage.toLowerCase(Locale.ROOT);
+        boolean weatherIntent = normalized.contains("天气") || normalized.contains("weather");
+        boolean lookupPromise = normalized.contains("查")
+                || normalized.contains("查询")
+                || normalized.contains("马上")
+                || normalized.contains("让我")
+                || normalized.contains("lookup")
+                || normalized.contains("check")
+                || normalized.contains("query");
+        return weatherIntent && lookupPromise;
+    }
+
+    private String extractWeatherCity(String userInput) {
+        if (userInput == null || userInput.isBlank()) {
+            return "";
+        }
+        String normalized = userInput.strip()
+                .replaceAll("[，。！？、,.!?;；:：\\s]+$", "")
+                .replaceAll("^(城市|地区|地点|位置)[:：\\s]*", "");
+        if (normalized.length() <= 12 && !normalized.isBlank()) {
+            return normalized;
+        }
+        java.util.regex.Matcher cityBeforeTimeMatcher = java.util.regex.Pattern
+                .compile("([\\p{IsHan}A-Za-z]{2,20})(?:今天|明天|现在|当前)")
+                .matcher(normalized);
+        if (cityBeforeTimeMatcher.find()) {
+            return cityBeforeTimeMatcher.group(1);
+        }
+        java.util.regex.Matcher matcher = java.util.regex.Pattern
+                .compile("([\\p{IsHan}A-Za-z]{2,20})(?:今天|明天|现在|当前|的)?天气")
+                .matcher(normalized);
+        if (matcher.find()) {
+            return matcher.group(1);
+        }
+        return "";
+    }
+
+    private ToolCall parseToolCallLine(String text) {
+        if (text.startsWith("@skill:")) {
+            return parseToolCall(text, "@skill:", AgentToolSourceType.SKILL);
+        }
+        if (text.startsWith("@mcp:")) {
+            return parseToolCall(text, "@mcp:", AgentToolSourceType.MCP);
         }
         return null;
     }
 
-    private ToolCall parseToolCall(String text, String prefix, String type) {
+    private ToolCall parseToolCall(String text, String prefix, AgentToolSourceType sourceType) {
         String payload = text.substring(prefix.length()).strip();
         int jsonStart = payload.indexOf('{');
         if (jsonStart <= 0) {
@@ -410,7 +645,7 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
         String name = payload.substring(0, jsonStart).strip();
         String json = payload.substring(jsonStart);
         try {
-            return new ToolCall(type, name, objectMapper.readTree(json));
+            return new ToolCall(sourceType, name, objectMapper.readTree(json));
         } catch (Exception ex) {
             throw new BizException(ErrorCode.REQUEST_INVALID, "Invalid tool call arguments");
         }
@@ -418,52 +653,256 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
 
     private String executeTool(
             AgentRunCommand command,
-            AgentContextDTO context,
             ToolCall toolCall,
+            List<AgentToolDTO> availableTools,
             Long parentSpanId,
             int step
     ) {
-        TraceSpanDTO span = safeStartSpan(command.traceId(), parentSpanId, "tool.execute", "TOOL",
-                objectMapper.createObjectNode()
-                        .put("toolType", toolCall.type())
-                        .put("toolName", toolCall.name())
-                        .put("step", step));
+        AgentToolValidationResult validation = validateToolCall(toolCall, availableTools);
+        ObjectNode attributes = toolSpanAttributes(toolCall, validation, step);
+        TraceSpanDTO span = safeStartSpan(command.traceId(), parentSpanId, "tool.execute", "TOOL", attributes);
+        ToolHookContext hookContext = toolHookContext(command, toolCall, validation, step, attributes);
         try {
-            String output = doExecuteTool(command, context, toolCall);
-            safeFinishSpan(span, "SUCCESS", null, null);
+            notifyPreToolCall(hookContext);
+            String output = doExecuteTool(command, validation);
+            notifyPostToolCall(hookContext, output, null);
+            recordToolSpanResult(attributes, output);
+            safeFinishSpan(span, "SUCCESS", null, null, attributes);
             return output;
+        } catch (Exception ex) {
+            notifyPostToolCall(hookContext, null, ex);
+            attributes.put("success", false);
+            safeFinishSpan(span, "FAILED", errorCode(ex), errorMessage(ex), attributes);
+            throw ex;
+        }
+    }
+
+    private ObjectNode toolSpanAttributes(ToolCall toolCall, AgentToolValidationResult validation, int step) {
+        ObjectNode attributes = objectMapper.createObjectNode()
+                .put("toolType", toolCall.sourceType().name())
+                .put("toolName", toolCall.name())
+                .put("step", step)
+                .put("argumentsSummary", summarizeJson(toolCall.arguments()));
+        if (validation != null && validation.tool() != null) {
+            attributes.put("riskLevel", validation.tool().riskLevel().name());
+            attributes.put("readOnly", validation.tool().readOnly());
+            attributes.set("resourceKeys", objectMapper.valueToTree(validation.tool().resourceKeys()));
+        }
+        return attributes;
+    }
+
+    private List<ToolExecutionResult> executeToolBatch(
+            AgentRunCommand command,
+            ToolRequestBatch toolRequestBatch,
+            List<AgentToolDTO> availableTools,
+            Long parentSpanId,
+            int step
+    ) {
+        List<ToolExecutionPlan.Item> items = new ArrayList<>();
+        for (ToolCall toolCall : toolRequestBatch.toolCalls()) {
+            AgentToolValidationResult validation = validateToolCall(toolCall, availableTools);
+            items.add(new ToolExecutionPlan.Item(
+                    toolCall.sourceType(),
+                    toolCall.name(),
+                    toolCall.arguments(),
+                    validation.tool()
+            ));
+        }
+        ToolExecutionPlan plan = planToolExecution(command, parentSpanId, items);
+        List<ToolExecutionResult> results = new ArrayList<>();
+        for (ToolExecutionPlan.Group group : plan.groups()) {
+            if (group.parallel()) {
+                results.addAll(executeParallelToolGroup(command, group, availableTools, parentSpanId, step));
+            } else {
+                for (ToolExecutionPlan.Item item : group.items()) {
+                    ToolCall toolCall = new ToolCall(item.sourceType(), item.toolName(), item.arguments());
+                    results.add(new ToolExecutionResult(
+                            toolCall,
+                            executeTool(command, toolCall, availableTools, parentSpanId, step)
+                    ));
+                }
+            }
+        }
+        return results;
+    }
+
+    private ToolExecutionPlan planToolExecution(
+            AgentRunCommand command,
+            Long parentSpanId,
+            List<ToolExecutionPlan.Item> items
+    ) {
+        ObjectNode attributes = objectMapper.createObjectNode()
+                .put("toolCount", items == null ? 0 : items.size())
+                .put("maxParallelTools", MAX_PARALLEL_TOOLS);
+        TraceSpanDTO span = safeStartSpan(command.traceId(), parentSpanId, "tool.plan", "TOOL", attributes);
+        try {
+            ToolExecutionPlan plan = toolExecutionPlanner.plan(items, MAX_PARALLEL_TOOLS);
+            attributes.put("groupCount", plan.groups().size());
+            attributes.put("parallelGroupCount", plan.groups().stream()
+                    .filter(ToolExecutionPlan.Group::parallel)
+                    .count());
+            safeFinishSpan(span, "SUCCESS", null, null);
+            return plan;
         } catch (Exception ex) {
             safeFinishSpan(span, "FAILED", errorCode(ex), errorMessage(ex));
             throw ex;
         }
     }
 
-    private String doExecuteTool(AgentRunCommand command, AgentContextDTO context, ToolCall toolCall) {
-        if ("skill".equals(toolCall.type())) {
-            if (context.availableSkills().stream().noneMatch(skill -> toolCall.name().equals(skill.code()))) {
-                throw new BizException(ErrorCode.REQUEST_INVALID, "Skill is not available in current context");
+    private List<AgentToolValidationResult> validateToolRequestBatch(
+            AgentRunCommand command,
+            Long parentSpanId,
+            ToolRequestBatch toolRequestBatch,
+            List<AgentToolDTO> availableTools
+    ) {
+        TraceSpanDTO span = null;
+        try {
+            List<AgentToolValidationResult> validations = toolRequestBatch.toolCalls().stream()
+                    .map(toolCall -> validateToolCall(toolCall, availableTools))
+                    .toList();
+            ObjectNode attributes = objectMapper.createObjectNode()
+                    .put("batchSize", validations.size())
+                    .put("invalidCount", validations.stream()
+                            .filter(validation -> !validation.valid())
+                            .count());
+            attributes.set("toolKeys", objectMapper.valueToTree(validations.stream()
+                    .map(validation -> toolKey(validation.call()))
+                    .toList()));
+            span = safeStartSpan(command.traceId(), parentSpanId, "tool.validate", "TOOL", attributes);
+            safeFinishSpan(span, "SUCCESS", null, null);
+            return validations;
+        } catch (Exception ex) {
+            safeFinishSpan(span, "FAILED", errorCode(ex), errorMessage(ex));
+            throw ex;
+        }
+    }
+
+    private boolean hasInvalidToolCall(List<AgentToolValidationResult> validations) {
+        return validations.stream().anyMatch(validation -> !validation.valid());
+    }
+
+    private List<ToolExecutionResult> executeParallelToolGroup(
+            AgentRunCommand command,
+            ToolExecutionPlan.Group group,
+            List<AgentToolDTO> availableTools,
+            Long parentSpanId,
+            int step
+    ) {
+        ExecutorService executor = Executors.newFixedThreadPool(Math.min(MAX_PARALLEL_TOOLS, group.items().size()));
+        try {
+            List<Callable<ToolExecutionResult>> tasks = group.items().stream()
+                    .map(item -> (Callable<ToolExecutionResult>) () -> {
+                        ToolCall toolCall = new ToolCall(item.sourceType(), item.toolName(), item.arguments());
+                        return new ToolExecutionResult(
+                                toolCall,
+                                executeTool(command, toolCall, availableTools, parentSpanId, step)
+                        );
+                    })
+                    .toList();
+            List<Future<ToolExecutionResult>> futures = executor.invokeAll(tasks);
+            List<ToolExecutionResult> results = new ArrayList<>(futures.size());
+            for (Future<ToolExecutionResult> future : futures) {
+                results.add(future.get());
             }
-            SkillExecuteResult result = skillExecutor.execute(new SkillExecuteCommand(
-                    command.tenantId(),
-                    command.userId(),
-                    toolCall.name(),
-                    toolCall.arguments()
-            ));
-            return result.success() ? result.output().toString() : result.errorMessage();
+            return results;
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new BizException(ErrorCode.INTERNAL_ERROR, "Tool batch execution interrupted");
+        } catch (Exception ex) {
+            throw new BizException(ErrorCode.INTERNAL_ERROR, errorMessage(ex));
+        } finally {
+            executor.shutdownNow();
         }
-        if (context.availableMcpTools().stream().noneMatch(tool -> toolCall.name().equals(tool.name()))) {
-            throw new BizException(ErrorCode.REQUEST_INVALID, "MCP tool is not available in current context");
+    }
+
+    private String doExecuteTool(AgentRunCommand command, AgentToolValidationResult validation) {
+        if (!validation.valid()) {
+            return validation.observation();
         }
-        McpToolExecuteResult result = mcpToolExecutor.execute(new McpToolExecuteCommand(
+        if (validation.tool().riskLevel() == AgentToolRiskLevel.HIGH && !isConfirmed(command, validation)) {
+            return "[tool confirm required] "
+                    + validation.call().sourceType().name().toLowerCase()
+                    + ":" + validation.call().toolName()
+                    + " risk=HIGH";
+        }
+        AgentToolDispatchResult result = agentToolDispatcher.dispatch(new AgentToolDispatchCommand(
                 command.tenantId(),
                 command.userId(),
-                toolCall.name(),
-                toolCall.arguments()
+                validation.call().toolName(),
+                validation.call().sourceType(),
+                validation.call().arguments()
         ));
-        return result.success() ? result.output().toString() : result.errorMessage();
+        if (!result.success()) {
+            return result.errorMessage() == null || result.errorMessage().isBlank()
+                    ? "[tool failed] " + validation.call().toolName()
+                    : result.errorMessage();
+        }
+        return result.output() == null || result.output().isNull() ? "[empty]" : result.output().toString();
+    }
+
+    private boolean isConfirmed(AgentRunCommand command, AgentToolValidationResult validation) {
+        if (command.confirmedToolKeys() == null || command.confirmedToolKeys().isEmpty()) {
+            return false;
+        }
+        return command.confirmedToolKeys().contains(toolKey(validation.call()));
+    }
+
+    private String toolKey(AgentToolCall call) {
+        return call.sourceType().name().toLowerCase() + ":" + call.toolName();
+    }
+
+    private AgentToolValidationResult validateToolCall(ToolCall toolCall, List<AgentToolDTO> availableTools) {
+        AgentToolCall call = new AgentToolCall(toolCall.sourceType(), toolCall.name(), toolCall.arguments());
+        return agentToolCallValidator.validate(call, availableTools);
+    }
+
+    private String formatToolCall(ToolCall toolCall) {
+        return "@" + toolCall.sourceType().name().toLowerCase() + ":" + toolCall.name() + " " + toolCall.arguments();
+    }
+
+    private void recordToolEvents(List<AgentToolEventDTO> toolEvents, ToolCall toolCall, String toolOutput) {
+        toolEvents.add(new AgentToolEventDTO(
+                "action",
+                toolCall.sourceType().name().toLowerCase(),
+                toolCall.name(),
+                formatToolCall(toolCall)
+        ));
+        toolEvents.add(new AgentToolEventDTO(
+                toolEventType(toolOutput),
+                toolCall.sourceType().name().toLowerCase(),
+                toolCall.name(),
+                toolOutput,
+                toolEventMetadata(toolCall, toolOutput)
+        ));
+    }
+
+    private String toolEventType(String toolOutput) {
+        return toolOutput != null && toolOutput.startsWith("[tool confirm required]")
+                ? "tool_confirm_required"
+                : "observation";
+    }
+
+    private Map<String, Object> toolEventMetadata(ToolCall toolCall, String toolOutput) {
+        if (!"tool_confirm_required".equals(toolEventType(toolOutput))) {
+            return Map.of();
+        }
+        String sourceType = toolCall.sourceType().name().toLowerCase();
+        return Map.of(
+                "toolType", sourceType,
+                "toolName", toolCall.name(),
+                "toolKey", sourceType + ":" + toolCall.name(),
+                "pendingToolCall", Map.of(
+                        "sourceType", toolCall.sourceType().name(),
+                        "toolName", toolCall.name(),
+                        "arguments", toolCall.arguments()
+                )
+        );
     }
 
     private void validate(AgentRunCommand command) {
+        if (command == null) {
+            throw new BizException(ErrorCode.REQUEST_INVALID, "command is required");
+        }
         requireNonNull(command.tenantId(), "tenantId");
         requireNonNull(command.userId(), "userId");
         requireNonNull(command.applicationId(), "applicationId");
@@ -509,16 +948,53 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
         conversationRepository.touchConversation(conversationId);
     }
 
-    private void saveMemory(AgentRunCommand command, Long conversationId, String assistantMessage) {
-        memoryWriteService.record(new RecordMemoryCommand(
+    private void saveMemory(AgentRunCommand command, AgentContextDTO context, Long parentSpanId, Long conversationId, String assistantMessage) {
+        if (!shouldWritePersistentMemory(context)) {
+            return;
+        }
+        List<RecordMemoryCommand> preferences = preferenceExtractor.extract(
                 command.tenantId(),
                 command.userId(),
                 command.applicationId(),
                 command.profileId(),
-                MEMORY_TYPE_SUMMARY,
-                "User: " + command.userInput() + "\nAssistant: " + assistantMessage,
-                conversationId
-        ));
+                conversationId,
+                command.userInput()
+        );
+        TraceSpanDTO span = safeStartSpan(command.traceId(), parentSpanId, "memory.write", "MEMORY",
+                objectMapper.createObjectNode()
+                        .put("summaryCount", 1)
+                        .put("preferenceCount", preferences.size()));
+        try {
+            memoryWriteService.record(new RecordMemoryCommand(
+                    command.tenantId(),
+                    command.userId(),
+                    command.applicationId(),
+                    command.profileId(),
+                    MEMORY_TYPE_SUMMARY,
+                    "User: " + command.userInput() + "\nAssistant: " + assistantMessage,
+                    conversationId
+            ));
+            for (RecordMemoryCommand preference : preferences) {
+                memoryWriteService.record(preference);
+            }
+            safeFinishSpan(span, "SUCCESS", null, null);
+        } catch (Exception ex) {
+            safeFinishSpan(span, "FAILED", errorCode(ex), errorMessage(ex));
+            throw ex;
+        }
+    }
+
+    private boolean shouldWritePersistentMemory(AgentContextDTO context) {
+        String mode = memoryStrategyMode(context.profile());
+        return "READ_WRITE".equals(mode);
+    }
+
+    private String memoryStrategyMode(ProfileDTO profile) {
+        if (profile == null || profile.memoryStrategy() == null || !profile.memoryStrategy().hasNonNull("mode")) {
+            return "READ_WRITE";
+        }
+        String mode = profile.memoryStrategy().get("mode").asText("READ_WRITE");
+        return mode == null || mode.isBlank() ? "READ_WRITE" : mode.strip().toUpperCase(Locale.ROOT);
     }
 
     private String titleFrom(String userInput) {
@@ -554,14 +1030,146 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
     }
 
     private void safeFinishSpan(TraceSpanDTO span, String status, String errorCode, String errorMessage) {
+        safeFinishSpan(span, status, errorCode, errorMessage, span == null ? null : span.attributes());
+    }
+
+    private void safeFinishSpan(TraceSpanDTO span, String status, String errorCode, String errorMessage, JsonNode attributes) {
         if (span == null || span.id() == null) {
             return;
         }
         try {
-            traceService.finishSpan(new FinishTraceSpanCommand(span.id(), status, errorCode, errorMessage));
+            traceService.finishSpan(new FinishTraceSpanCommand(span.id(), status, errorCode, errorMessage, attributes));
         } catch (Exception ex) {
             // Trace is diagnostic data; it must not break the agent run.
         }
+    }
+
+    private void notifyPreModelCall(ModelHookContext context) {
+        for (AgentRuntimeHook hook : runtimeHooks) {
+            try {
+                hook.preModelCall(context);
+            } catch (Exception ex) {
+                // Hooks are observational extension points; they must not control the runtime.
+            }
+        }
+    }
+
+    private void notifyPostModelCall(ModelHookContext context, ModelInvokeResult result, Exception error) {
+        for (AgentRuntimeHook hook : runtimeHooks) {
+            try {
+                hook.postModelCall(context, result, error);
+            } catch (Exception ex) {
+                // Hooks are observational extension points; they must not control the runtime.
+            }
+        }
+    }
+
+    private void notifyPreToolCall(ToolHookContext context) {
+        for (AgentRuntimeHook hook : runtimeHooks) {
+            try {
+                hook.preToolCall(context);
+            } catch (Exception ex) {
+                // Hooks are observational extension points; they must not control the runtime.
+            }
+        }
+    }
+
+    private void notifyPostToolCall(ToolHookContext context, String output, Exception error) {
+        for (AgentRuntimeHook hook : runtimeHooks) {
+            try {
+                hook.postToolCall(context, output, error);
+            } catch (Exception ex) {
+                // Hooks are observational extension points; they must not control the runtime.
+            }
+        }
+    }
+
+    private void notifyPostFinalAnswer(FinalAnswerHookContext context) {
+        for (AgentRuntimeHook hook : runtimeHooks) {
+            try {
+                hook.postFinalAnswer(context);
+            } catch (Exception ex) {
+                // Hooks are observational extension points; they must not control the runtime.
+            }
+        }
+    }
+
+    private void recordModelSpanResult(ObjectNode attributes, ModelInvokeResult result) {
+        if (attributes == null || result == null) {
+            return;
+        }
+        attributes.put("providerId", result.providerId() == null ? 0L : result.providerId());
+        attributes.put("providerType", result.providerType() == null ? "" : result.providerType());
+        attributes.put("modelName", result.modelName() == null ? "" : result.modelName());
+        attributes.put("assistantChars", result.assistantMessage() == null ? 0 : result.assistantMessage().length());
+        attributes.put("toolCallCount", result.toolCalls() == null ? 0 : result.toolCalls().size());
+        if (result.usage() != null) {
+            attributes.put("promptTokens", result.usage().promptTokens());
+            attributes.put("completionTokens", result.usage().completionTokens());
+            attributes.put("totalTokens", result.usage().totalTokens());
+            attributes.put("estimatedTokens", result.usage().estimated());
+        }
+    }
+
+    private void recordToolSpanResult(ObjectNode attributes, String output) {
+        if (attributes == null) {
+            return;
+        }
+        attributes.put("success", !isToolFailureOutput(output));
+        attributes.put("resultSummary", summarizeText(output));
+        attributes.put("resultChars", output == null ? 0 : output.length());
+    }
+
+    private ToolHookContext toolHookContext(
+            AgentRunCommand command,
+            ToolCall toolCall,
+            AgentToolValidationResult validation,
+            int step,
+            ObjectNode attributes
+    ) {
+        AgentToolRiskLevel riskLevel = validation == null || validation.tool() == null
+                ? AgentToolRiskLevel.LOW
+                : validation.tool().riskLevel();
+        boolean readOnly = validation != null && validation.tool() != null && validation.tool().readOnly();
+        List<String> resourceKeys = validation == null || validation.tool() == null
+                ? List.of()
+                : validation.tool().resourceKeys();
+        return new ToolHookContext(
+                command.traceId(),
+                command.tenantId(),
+                command.applicationId(),
+                command.userId(),
+                command.profileId(),
+                step,
+                toolCall.sourceType(),
+                toolCall.name(),
+                riskLevel,
+                readOnly,
+                resourceKeys,
+                attributes == null ? "" : attributes.path("argumentsSummary").asText("")
+        );
+    }
+
+    private boolean isToolFailureOutput(String output) {
+        return output != null && (output.startsWith("[tool failed]")
+                || output.startsWith("[tool confirm required]")
+                || output.startsWith("[tool call rejected]"));
+    }
+
+    private String summarizeJson(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return "";
+        }
+        return summarizeText(node.toString());
+    }
+
+    private String summarizeText(String text) {
+        if (text == null || text.isBlank()) {
+            return "";
+        }
+        String normalized = text.replaceAll("\\s+", " ").strip();
+        int maxChars = 240;
+        return normalized.length() <= maxChars ? normalized : normalized.substring(0, maxChars);
     }
 
     private void safeRecordTokenUsage(AgentRunCommand command, ModelInvokeResult result, Long spanId) {
@@ -590,6 +1198,90 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
         }
     }
 
+    private void recordContextBudgetSnapshot(AgentRunCommand command, Long parentSpanId, AgentContextDTO context) {
+        ContextBudgetSnapshotDTO snapshot = context.contextBudgetSnapshot();
+        if (snapshot.maxContextTokens() <= 0 && command.maxContextTokens() != null && command.maxContextTokens() > 0) {
+            snapshot = snapshot.withMaxContextTokens(command.maxContextTokens());
+        }
+        TraceSpanDTO span = safeStartSpan(command.traceId(), parentSpanId, "context.budget.snapshot", "CONTEXT",
+                objectMapper.createObjectNode()
+                        .set("contextBudgetSnapshot", contextBudgetSnapshotNode(snapshot)));
+        safeFinishSpan(span, "SUCCESS", null, null);
+    }
+
+    private String buildFinalAnswer(AgentRunCommand command, Long parentSpanId, String rawAssistantMessage) {
+        ObjectNode attributes = objectMapper.createObjectNode()
+                .put("rawChars", rawAssistantMessage == null ? 0 : rawAssistantMessage.length());
+        TraceSpanDTO span = null;
+        try {
+            String finalAnswer = finalResponseSynthesizer.cleanUserVisibleAnswer(rawAssistantMessage);
+            attributes.put("finalChars", finalAnswer == null ? 0 : finalAnswer.length());
+            attributes.put("changed", !java.util.Objects.equals(rawAssistantMessage, finalAnswer));
+            span = safeStartSpan(command.traceId(), parentSpanId, "final.answer.build", "AGENT", attributes);
+            notifyPostFinalAnswer(new FinalAnswerHookContext(
+                    command.traceId(),
+                    command.tenantId(),
+                    command.applicationId(),
+                    command.userId(),
+                    command.profileId(),
+                    rawAssistantMessage == null ? 0 : rawAssistantMessage.length(),
+                    finalAnswer == null ? 0 : finalAnswer.length(),
+                    !java.util.Objects.equals(rawAssistantMessage, finalAnswer)
+            ));
+            safeFinishSpan(span, "SUCCESS", null, null);
+            return finalAnswer;
+        } catch (Exception ex) {
+            safeFinishSpan(span, "FAILED", errorCode(ex), errorMessage(ex));
+            throw ex;
+        }
+    }
+
+    private String compactMessage(AgentRunCommand command, Long parentSpanId, String role, String content) {
+        MicroCompactResult result = microCompactService.compact(role, content);
+        if (!result.compacted()) {
+            return result.content();
+        }
+        TraceSpanDTO span = safeStartSpan(command.traceId(), parentSpanId, "compact.micro", "CONTEXT",
+                objectMapper.createObjectNode()
+                        .put("role", role)
+                        .put("originalChars", result.originalChars())
+                        .put("compactedChars", result.compactedChars()));
+        safeFinishSpan(span, "SUCCESS", null, null);
+        return result.content();
+    }
+
+    private List<ModelMessage> compactMessages(AgentRunCommand command, Long parentSpanId, List<ModelMessage> messages) {
+        if (messages == null || messages.isEmpty()) {
+            return List.of();
+        }
+        List<ModelMessage> compacted = new ArrayList<>(messages.size());
+        for (ModelMessage message : messages) {
+            String content = compactMessage(command, parentSpanId, message.role(), message.content());
+            compacted.add(new ModelMessage(message.role(), content));
+        }
+        return compacted;
+    }
+
+    private ObjectNode contextBudgetSnapshotNode(ContextBudgetSnapshotDTO snapshot) {
+        return objectMapper.createObjectNode()
+                .put("maxContextTokens", snapshot.maxContextTokens())
+                .put("systemTokens", snapshot.systemTokens())
+                .put("profileTokens", snapshot.profileTokens())
+                .put("historyTokens", snapshot.historyTokens())
+                .put("memoryTokens", snapshot.memoryTokens())
+                .put("toolsTokens", snapshot.toolsTokens())
+                .put("experienceTokens", snapshot.experienceTokens())
+                .put("ragTokens", snapshot.ragTokens())
+                .put("currentInputTokens", snapshot.currentInputTokens())
+                .put("apiMessagesTokens", snapshot.apiMessagesTokens())
+                .put("remainingTokens", snapshot.remainingTokens())
+                .put("truncated", snapshot.truncated());
+    }
+
+    private Long spanId(TraceSpanDTO span) {
+        return span == null ? null : span.id();
+    }
+
     private String errorCode(Exception ex) {
         return ex instanceof BizException bizException ? bizException.getCode() : ErrorCode.INTERNAL_ERROR.getCode();
     }
@@ -598,6 +1290,40 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
         return ex.getMessage() == null ? "Agent runtime failed" : ex.getMessage();
     }
 
-    private record ToolCall(String type, String name, JsonNode arguments) {
+    private record ToolCall(AgentToolSourceType sourceType, String name, JsonNode arguments) {
+    }
+
+    private record ToolExecutionResult(ToolCall toolCall, String output) {
+    }
+
+    private static final class BufferedStreamCallback implements ModelStreamCallback {
+
+        private final List<String> tokens = new ArrayList<>();
+
+        @Override
+        public void onToken(String token) {
+            if (token != null && !token.isEmpty()) {
+                tokens.add(token);
+            }
+        }
+
+        private List<String> tokens() {
+            return tokens;
+        }
+    }
+
+    private record ToolRequestBatch(List<ToolCall> toolCalls) {
+
+        private ToolRequestBatch {
+            toolCalls = toolCalls == null ? List.of() : List.copyOf(toolCalls);
+        }
+
+        private static ToolRequestBatch empty() {
+            return new ToolRequestBatch(List.of());
+        }
+
+        private boolean isEmpty() {
+            return toolCalls.isEmpty();
+        }
     }
 }

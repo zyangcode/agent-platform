@@ -1,4 +1,4 @@
-import type { TraceSpan } from '@/lib/api/types'
+import type { TokenUsage, TraceSpan } from '@/lib/api/types'
 import type { Locale } from '@/lib/i18n/i18n-context-value'
 
 const statusLabels: Record<string, Record<Locale, string>> = {
@@ -50,4 +50,50 @@ export function formatTraceTokenCount(totalTokens?: number | null) {
   }
 
   return new Intl.NumberFormat('en-US').format(totalTokens)
+}
+
+export function findTokenUsageForSpan(span: TraceSpan | null | undefined, tokenUsages: TokenUsage[]) {
+  if (!span || !span.id || tokenUsages.length === 0) {
+    return null
+  }
+
+  return tokenUsages.find((usage) => usage.spanId === span.id) ?? null
+}
+
+export function getTokenUsageTimelineFacts(tokenUsage: TokenUsage | null | undefined, locale: Locale) {
+  if (!tokenUsage) {
+    return []
+  }
+
+  return [
+    { label: locale === 'zh' ? '模型' : 'Model', value: tokenUsage.modelName || '-' },
+    { label: 'Token', value: formatTraceTokenCount(tokenUsage.totalTokens) },
+    { label: locale === 'zh' ? '来源' : 'Source', value: tokenUsage.estimated ? estimatedLabel(locale) : realLabel(locale) },
+  ]
+}
+
+function estimatedLabel(locale: Locale) {
+  return locale === 'zh' ? '估算' : 'estimated'
+}
+
+function realLabel(locale: Locale) {
+  return locale === 'zh' ? '真实' : 'real'
+}
+
+export function getTraceModelCallSummary(spans: TraceSpan[], tokenUsages: TokenUsage[]) {
+  const modelSpans = spans.filter((span) => span.spanName === 'model.invoke')
+  const linkedUsages = modelSpans
+    .map((span) => findTokenUsageForSpan(span, tokenUsages))
+    .filter((usage): usage is TokenUsage => usage != null)
+  const totalTokens = linkedUsages.reduce((sum, usage) => sum + usage.totalTokens, 0)
+  const estimatedCount = linkedUsages.filter((usage) => usage.estimated).length
+  const slowestLatencyMs = modelSpans.reduce((max, span) => Math.max(max, span.latencyMs ?? 0), 0)
+
+  return {
+    estimatedCount,
+    estimatedRatio: linkedUsages.length === 0 ? 0 : Math.round((estimatedCount / linkedUsages.length) * 100),
+    modelCallCount: modelSpans.length,
+    slowestLatencyMs,
+    totalTokens,
+  }
 }

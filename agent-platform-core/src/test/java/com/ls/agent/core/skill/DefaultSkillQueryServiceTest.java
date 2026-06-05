@@ -15,6 +15,8 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class DefaultSkillQueryServiceTest {
@@ -37,6 +39,15 @@ class DefaultSkillQueryServiceTest {
         assertThat(result.get(0).skillId()).isEqualTo(1L);
         assertThat(result.get(0).code()).isEqualTo("calculator");
         assertThat(result.get(0).parameterSchema().get("properties").has("expression")).isTrue();
+    }
+
+    @Test
+    void listAvailableSkillsWithExplicitEmptyIdsReturnsNoSkills() {
+        List<SkillDTO> result = service.listAvailableSkills(1L, List.of());
+
+        assertThat(result).isEmpty();
+        verify(skillMapper, never()).selectList(any(Wrapper.class));
+        verify(skillVersionMapper, never()).selectBatchIds(any());
     }
 
     private SkillEntity skill(Long id, String code, String name, String scope, String status, Long versionId) {

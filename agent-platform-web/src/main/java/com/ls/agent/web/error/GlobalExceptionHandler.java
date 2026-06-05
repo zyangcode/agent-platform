@@ -3,12 +3,15 @@ package com.ls.agent.web.error;
 import com.ls.agent.common.error.BizException;
 import com.ls.agent.common.error.ErrorCode;
 import com.ls.agent.common.response.ApiResponse;
+import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.MediaType;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.context.request.async.AsyncRequestTimeoutException;
 import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -59,12 +62,44 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.failure("NOT_FOUND", "Resource not found"));
     }
 
+    @ExceptionHandler(AsyncRequestTimeoutException.class)
+    public ResponseEntity<Void> handleAsyncRequestTimeout(
+            AsyncRequestTimeoutException exception,
+            HttpServletResponse response
+    ) {
+        log.warn("Async web request timed out");
+        ResponseEntity.BodyBuilder builder = ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE);
+        if (isSseOrCommitted(response)) {
+            builder.contentType(MediaType.TEXT_EVENT_STREAM);
+        }
+        return builder.build();
+    }
+
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ApiResponse<Void>> handleUnexpectedException(Exception exception) {
+    public ResponseEntity<ApiResponse<Void>> handleUnexpectedException(
+            Exception exception,
+            HttpServletResponse response
+    ) {
         log.error("Unexpected web request failure", exception);
         ErrorCode errorCode = ErrorCode.INTERNAL_ERROR;
+        if (isSseOrCommitted(response)) {
+            return ResponseEntity
+                    .status(errorCode.getHttpStatus())
+                    .contentType(MediaType.TEXT_EVENT_STREAM)
+                    .build();
+        }
         return ResponseEntity
                 .status(errorCode.getHttpStatus())
+                .contentType(MediaType.APPLICATION_JSON)
                 .body(ApiResponse.failure(errorCode.getCode(), errorCode.getMessage()));
+    }
+
+    private boolean isSseOrCommitted(HttpServletResponse response) {
+        if (response == null) {
+            return false;
+        }
+        String contentType = response.getContentType();
+        return response.isCommitted()
+                || (contentType != null && contentType.startsWith(MediaType.TEXT_EVENT_STREAM_VALUE));
     }
 }

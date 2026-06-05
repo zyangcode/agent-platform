@@ -1,5 +1,6 @@
 package com.ls.agent.core.context.application;
 
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.ls.agent.common.error.BizException;
 import com.ls.agent.common.error.ErrorCode;
 import com.ls.agent.core.agent.api.MessageHistoryService;
@@ -7,23 +8,35 @@ import com.ls.agent.core.agent.dto.ConversationMessageDTO;
 import com.ls.agent.core.context.api.AgentContextBuilder;
 import com.ls.agent.core.context.command.BuildAgentContextCommand;
 import com.ls.agent.core.context.dto.AgentContextDTO;
+import com.ls.agent.core.context.dto.ContextBudgetSnapshotDTO;
+import com.ls.agent.core.context.dto.ContextSchema;
+import com.ls.agent.core.context.dto.ContextSlot;
+import com.ls.agent.core.context.dto.ContextSlotContent;
+import com.ls.agent.core.context.dto.ContextSlotKind;
+import com.ls.agent.core.experience.api.ExperienceSkillResolver;
+import com.ls.agent.core.experience.dto.ExperienceSkillDTO;
 import com.ls.agent.core.mcp.api.McpToolRegistry;
 import com.ls.agent.core.mcp.dto.McpToolDTO;
 import com.ls.agent.core.memory.api.MemoryRecallService;
 import com.ls.agent.core.memory.dto.MemoryDTO;
+import com.ls.agent.core.memory.dto.MemoryRecallFilter;
 import com.ls.agent.core.model.api.ModelConfigService;
 import com.ls.agent.core.model.dto.ModelConfigDTO;
 import com.ls.agent.core.model.dto.ModelMessage;
 import com.ls.agent.core.profile.api.ProfileService;
 import com.ls.agent.core.profile.dto.ProfileDTO;
+import com.ls.agent.core.rag.api.RagSearchService;
 import com.ls.agent.core.skill.api.SkillRegistry;
 import com.ls.agent.core.skill.dto.SkillDTO;
+import com.ls.agent.core.trace.api.TraceService;
+import com.ls.agent.core.trace.command.FinishTraceSpanCommand;
+import com.ls.agent.core.trace.command.StartTraceSpanCommand;
+import com.ls.agent.core.trace.dto.TraceSpanDTO;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 @Service
 public class DefaultAgentContextBuilder implements AgentContextBuilder {
@@ -31,14 +44,20 @@ public class DefaultAgentContextBuilder implements AgentContextBuilder {
     private static final int DEFAULT_MAX_CONTEXT_TOKENS = 4_000;
     private static final int HISTORY_LIMIT = 20;
     private static final int MEMORY_LIMIT = 5;
-    private static final int MEMORY_TOKEN_BUDGET = 300;
+    private static final int EXPERIENCE_LIMIT = 3;
+    private static final int MIN_MEMORY_TOKEN_BUDGET = 80;
+    private static final int MAX_MEMORY_TOKEN_BUDGET = 1_200;
+    private static final int MIN_EXPERIENCE_TOKEN_BUDGET = 80;
+    private static final int MAX_EXPERIENCE_TOKEN_BUDGET = 1_600;
+    private static final int MIN_RAG_TOKEN_BUDGET = 120;
+    private static final int MAX_RAG_TOKEN_BUDGET = 2_000;
+    private static final int MIN_AUTO_COMPACT_CHARS = 180;
+    private static final int MAX_AUTO_COMPACT_CHARS = 1_200;
+    private static final int MIN_AUTO_COMPACT_SAMPLE_CHARS = 40;
+    private static final int MAX_AUTO_COMPACT_SAMPLE_CHARS = 240;
+    private static final int RECENT_HISTORY_RAW_MESSAGES = 2;
     private static final String PROFILE_STATUS_DRAFT = "DRAFT";
     private static final String PROFILE_STATUS_PUBLISHED = "PUBLISHED";
-    private static final String PLATFORM_SYSTEM_PROMPT = """
-            You are AgentX, a helpful AI agent platform assistant.
-            Follow the user's profile prompt and only use listed tools when needed.
-            Current date: %s.
-            """;
 
     private final ProfileService profileService;
     private final SkillRegistry skillRegistry;
@@ -46,6 +65,9 @@ public class DefaultAgentContextBuilder implements AgentContextBuilder {
     private final MessageHistoryService messageHistoryService;
     private final MemoryRecallService memoryRecallService;
     private final ModelConfigService modelConfigService;
+    private final ExperienceSkillResolver experienceSkillResolver;
+    private final RagSearchService ragSearchService;
+    private final TraceService traceService;
 
     public DefaultAgentContextBuilder(
             ProfileService profileService,
@@ -53,7 +75,10 @@ public class DefaultAgentContextBuilder implements AgentContextBuilder {
             McpToolRegistry mcpToolRegistry,
             MessageHistoryService messageHistoryService,
             MemoryRecallService memoryRecallService,
-            ModelConfigService modelConfigService
+            ModelConfigService modelConfigService,
+            ExperienceSkillResolver experienceSkillResolver,
+            RagSearchService ragSearchService,
+            TraceService traceService
     ) {
         this.profileService = profileService;
         this.skillRegistry = skillRegistry;
@@ -61,6 +86,9 @@ public class DefaultAgentContextBuilder implements AgentContextBuilder {
         this.messageHistoryService = messageHistoryService;
         this.memoryRecallService = memoryRecallService;
         this.modelConfigService = modelConfigService;
+        this.experienceSkillResolver = experienceSkillResolver;
+        this.ragSearchService = ragSearchService;
+        this.traceService = traceService;
     }
 
     @Override
@@ -79,14 +107,8 @@ public class DefaultAgentContextBuilder implements AgentContextBuilder {
         List<Long> mcpToolIds = resolveMcpToolIds(profile, command.selectedMcpToolIds());
         List<SkillDTO> skills = skillRegistry.listAvailableSkills(command.tenantId(), skillIds);
         List<McpToolDTO> mcpTools = mcpToolRegistry.listAvailableTools(command.tenantId(), mcpToolIds);
-        List<MemoryDTO> memories = memoryRecallService.recall(
-                command.tenantId(),
-                command.applicationId(),
-                command.userId(),
-                command.profileId(),
-                command.userInput(),
-                MEMORY_LIMIT
-        );
+        List<MemoryDTO> memories = shouldRecallMemory(profile) ? recallMemories(command) : List.of();
+        List<ExperienceSkillDTO> experienceSkills = resolveExperienceSkills(command, profile);
         List<ConversationMessageDTO> history = messageHistoryService.listRecentMessages(
                 command.tenantId(),
                 command.applicationId(),
@@ -96,24 +118,181 @@ public class DefaultAgentContextBuilder implements AgentContextBuilder {
                 HISTORY_LIMIT
         );
 
-        String systemPrompt = buildSystemPrompt(profile, skills, mcpTools, memories, MEMORY_TOKEN_BUDGET);
-        int reservedTokens = estimateTokens(systemPrompt) + estimateTokens(command.userInput());
-        List<ModelMessage> keptHistory = trimHistory(history, maxTokens - reservedTokens);
-        boolean truncated = keptHistory.size() < history.size();
+        ContextBudgetPolicy budgetPolicy = ContextBudgetPolicy.from(maxTokens);
+        TraceSpanDTO composeSpan = safeStartSpan(command.traceId(), command.parentSpanId(), "api.messages.compose", "CONTEXT",
+                attributes().put("maxContextTokens", maxTokens));
+        ContextBlocks contextBlocks;
+        HistoryWindow historyWindow;
+        List<ModelMessage> conversationMessages;
+        List<ModelMessage> apiMessages;
+        ContextBudgetSnapshotDTO snapshot;
+        try {
+            contextBlocks = buildContextBlocks(
+                    profile,
+                    skills,
+                    mcpTools,
+                    memories,
+                    experienceSkills,
+                    budgetPolicy.memoryTokenBudget(),
+                    budgetPolicy.experienceTokenBudget(),
+                    budgetPolicy.ragTokenBudget(),
+                    command
+            );
+            String systemPrompt = contextBlocks.systemPrompt();
+            int reservedTokens = estimateTokens(systemPrompt) + estimateTokens(command.userInput());
+            historyWindow = compactHistory(history, maxTokens - reservedTokens, budgetPolicy);
+            List<ModelMessage> keptHistory = historyWindow.messages();
+            boolean truncated = historyWindow.truncated();
 
-        List<ModelMessage> messages = new ArrayList<>();
-        messages.add(new ModelMessage("system", systemPrompt));
-        messages.addAll(keptHistory);
-        messages.add(new ModelMessage("user", command.userInput()));
+            conversationMessages = new ArrayList<>(keptHistory);
+            conversationMessages.add(new ModelMessage("user", command.userInput()));
+
+            apiMessages = new ArrayList<>();
+            apiMessages.add(new ModelMessage("system", systemPrompt));
+            apiMessages.addAll(conversationMessages);
+            int estimatedTokens = estimateMessagesTokens(apiMessages);
+            snapshot = new ContextBudgetSnapshotDTO(
+                    maxTokens,
+                    contextBlocks.platformSystemTokens(),
+                    contextBlocks.profileTokens(),
+                    historyWindow.tokens(),
+                    contextBlocks.memoryTokens(),
+                    contextBlocks.toolsTokens(),
+                    contextBlocks.experienceTokens(),
+                    contextBlocks.ragTokens(),
+                    estimateTokens(command.userInput()),
+                    estimatedTokens,
+                    Math.max(0, maxTokens - estimatedTokens),
+                    truncated
+            );
+            if (composeSpan != null && composeSpan.attributes() instanceof ObjectNode attributes) {
+                attributes.put("apiMessages", apiMessages.size());
+                attributes.put("conversationMessages", conversationMessages.size());
+                attributes.put("estimatedTokens", estimatedTokens);
+                attributes.put("truncated", truncated);
+            }
+            recordSlotSpan(command, ContextSlotKind.PROFILE, estimateTokens(ProfileSlotSource.PLATFORM_SYSTEM_PROMPT) + budgetPolicy.memoryTokenBudget(), contextBlocks.platformSystemTokens() + contextBlocks.profileTokens(), false);
+            recordSlotSpan(command, ContextSlotKind.TASK_MEMORY, budgetPolicy.memoryTokenBudget(), contextBlocks.memoryTokens(), contextBlocks.memoryTokens() > budgetPolicy.memoryTokenBudget());
+            recordSlotSpan(command, ContextSlotKind.EXPERIENCE, budgetPolicy.experienceTokenBudget(), contextBlocks.experienceTokens(), contextBlocks.experienceTokens() > budgetPolicy.experienceTokenBudget());
+            recordSlotSpan(command, ContextSlotKind.RAG_RECALL, budgetPolicy.ragTokenBudget(), contextBlocks.ragTokens(), contextBlocks.ragTruncated());
+            recordSlotSpan(command, ContextSlotKind.TOOLS, maxTokens, contextBlocks.toolsTokens(), false);
+            recordSlotSpan(command, ContextSlotKind.HISTORY, Math.max(0, maxTokens - reservedTokens), historyWindow.tokens(), historyWindow.truncated());
+            safeFinishSpan(composeSpan, "SUCCESS", null, null);
+        } catch (Exception ex) {
+            safeFinishSpan(composeSpan, "FAILED", errorCode(ex), errorMessage(ex));
+            throw ex;
+        }
         return new AgentContextDTO(
                 profile.modelConfigId(),
                 profile,
-                messages,
+                conversationMessages,
+                apiMessages,
                 skills,
                 mcpTools,
-                estimateMessagesTokens(messages),
-                truncated
+                snapshot.apiMessagesTokens(),
+                snapshot.truncated(),
+                snapshot
         );
+    }
+
+    private List<ExperienceSkillDTO> resolveExperienceSkills(BuildAgentContextCommand command, ProfileDTO profile) {
+        TraceSpanDTO span = safeStartSpan(command.traceId(), command.parentSpanId(), "experience.resolve", "CONTEXT",
+                attributes()
+                        .put("profileType", nullToEmpty(profile.profileType()))
+                        .put("limit", EXPERIENCE_LIMIT));
+        try {
+            List<ExperienceSkillDTO> skills = experienceSkillResolver.resolve(
+                command.tenantId(),
+                command.applicationId(),
+                command.userId(),
+                command.profileId(),
+                profile.profileType(),
+                command.userInput(),
+                EXPERIENCE_LIMIT
+            );
+            if (span != null && span.attributes() instanceof ObjectNode attributes) {
+                attributes.put("resolvedCount", skills == null ? 0 : skills.size());
+            }
+            safeFinishSpan(span, "SUCCESS", null, null);
+            return skills == null ? List.of() : skills;
+        } catch (Exception ex) {
+            safeFinishSpan(span, "FAILED", errorCode(ex), errorMessage(ex));
+            throw ex;
+        }
+    }
+
+    private List<MemoryDTO> recallMemories(BuildAgentContextCommand command) {
+        MemoryRecallFilter filter = MemoryRecallFilter.builder()
+                .categories(List.of("summary", "preference", "fact"))
+                .topK(MEMORY_LIMIT)
+                .build();
+        ObjectNode attributes = attributes()
+                .put("limit", MEMORY_LIMIT);
+        attributes.set("categories", com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.arrayNode()
+                .add("summary")
+                .add("preference")
+                .add("fact"));
+        TraceSpanDTO span = safeStartSpan(command.traceId(), command.parentSpanId(), "memory.recall", "CONTEXT", attributes);
+        try {
+            List<MemoryDTO> memories;
+            if (command.traceId() == null || command.traceId().isBlank()) {
+                memories = memoryRecallService.recall(
+                        command.tenantId(),
+                        command.applicationId(),
+                        command.userId(),
+                        command.profileId(),
+                        command.userInput(),
+                        filter
+                );
+            } else {
+                memories = memoryRecallService.recall(
+                        command.tenantId(),
+                        command.applicationId(),
+                        command.userId(),
+                        command.profileId(),
+                        command.userInput(),
+                        filter,
+                        command.traceId(),
+                        span == null ? command.parentSpanId() : span.id()
+                );
+            }
+            List<MemoryDTO> result = memories == null ? List.of() : memories;
+            attributes.put("recalledCount", result.size());
+            safeFinishSpan(span, "SUCCESS", null, null);
+            return result;
+        } catch (Exception ex) {
+            safeFinishSpan(span, "FAILED", errorCode(ex), errorMessage(ex));
+            throw ex;
+        }
+    }
+
+    private boolean shouldRecallMemory(ProfileDTO profile) {
+        String mode = memoryStrategyMode(profile);
+        return !"DISABLED".equals(mode) && !"SESSION_ONLY".equals(mode);
+    }
+
+    private String memoryStrategyMode(ProfileDTO profile) {
+        if (profile == null || profile.memoryStrategy() == null || !profile.memoryStrategy().hasNonNull("mode")) {
+            return "READ_WRITE";
+        }
+        String mode = profile.memoryStrategy().get("mode").asText("READ_WRITE");
+        return mode == null || mode.isBlank() ? "READ_WRITE" : mode.strip().toUpperCase(Locale.ROOT);
+    }
+
+    private void recordSlotSpan(
+            BuildAgentContextCommand command,
+            ContextSlotKind slotKind,
+            int tokenBudget,
+            int usedTokens,
+            boolean truncated
+    ) {
+        TraceSpanDTO span = safeStartSpan(command.traceId(), command.parentSpanId(), "context.slot.compose", "CONTEXT",
+                attributes()
+                        .put("slotKind", slotKind.name())
+                        .put("tokenBudget", Math.max(0, tokenBudget))
+                        .put("usedTokens", Math.max(0, usedTokens))
+                        .put("truncated", truncated));
+        safeFinishSpan(span, "SUCCESS", null, null);
     }
 
     private boolean isRunnableProfile(ProfileDTO profile) {
@@ -175,51 +354,113 @@ public class DefaultAgentContextBuilder implements AgentContextBuilder {
                 .toList();
     }
 
-    private String buildSystemPrompt(
+    private ContextBlocks buildContextBlocks(
             ProfileDTO profile,
             List<SkillDTO> skills,
             List<McpToolDTO> mcpTools,
             List<MemoryDTO> memories,
-            int memoryTokenBudget
+            List<ExperienceSkillDTO> experienceSkills,
+            int memoryTokenBudget,
+            int experienceTokenBudget,
+            int ragTokenBudget,
+            BuildAgentContextCommand command
     ) {
-        StringBuilder builder = new StringBuilder();
-        builder.append(String.format(PLATFORM_SYSTEM_PROMPT.strip(), LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE))).append("\n\n");
-        if (profile.promptExtra() != null && !profile.promptExtra().isBlank()) {
-            builder.append("Profile Prompt:\n").append(profile.promptExtra().strip()).append("\n\n");
+        ProfileSlotSource profileSlotSource = new ProfileSlotSource(profile);
+        ContextSchema schema = new ContextSchema("single-agent-react", List.of(
+                ContextSlot.required(ContextSlotKind.PROFILE, Integer.MAX_VALUE),
+                ContextSlot.of(ContextSlotKind.TASK_MEMORY, memoryTokenBudget),
+                ContextSlot.of(ContextSlotKind.EXPERIENCE, experienceTokenBudget),
+                ContextSlot.of(ContextSlotKind.RAG_RECALL, ragTokenBudget),
+                ContextSlot.of(ContextSlotKind.TOOLS, Integer.MAX_VALUE)
+        ));
+        ContextSchemaAssembler.AssembledContext assembled = new ContextSchemaAssembler(List.of(
+                profileSlotSource,
+                new MemorySlotSource(memories),
+                new ExperienceSlotSource(experienceSkills),
+                new RagSlotSource(ragSearchService, traceService),
+                new ToolsSlotSource(skills, mcpTools)
+        )).assemble(schema, command);
+        String platformSystem = profileSlotSource.buildPlatformSystemPrompt();
+        String profileBlock = profileSlotSource.buildProfileBlock();
+        return new ContextBlocks(
+                assembled.systemPrompt(),
+                estimateTokens(platformSystem),
+                estimateTokens(profileBlock),
+                assembled.usedTokens(ContextSlotKind.TASK_MEMORY),
+                assembled.usedTokens(ContextSlotKind.TOOLS),
+                assembled.usedTokens(ContextSlotKind.EXPERIENCE),
+                assembled.usedTokens(ContextSlotKind.RAG_RECALL),
+                assembled.truncated(ContextSlotKind.RAG_RECALL)
+        );
+    }
+
+    private HistoryWindow compactHistory(
+            List<ConversationMessageDTO> history,
+            int remainingTokens,
+            ContextBudgetPolicy budgetPolicy
+    ) {
+        if (history == null || history.isEmpty() || remainingTokens <= 0) {
+            return new HistoryWindow(List.of(), 0, history != null && !history.isEmpty());
         }
-        if (!memories.isEmpty()) {
-            builder.append("Long-term memories:\n");
-            int used = 0;
-            for (MemoryDTO memory : memories) {
-                int tokens = estimateTokens(memory.content());
-                if (used + tokens > memoryTokenBudget) {
-                    break;
-                }
-                builder.append("- ").append(memory.content()).append('\n');
-                used += tokens;
+        List<ModelMessage> recent = selectRecentRawMessages(history, remainingTokens);
+        int recentTokens = estimateMessagesTokens(recent);
+        int olderCount = history.size() - recent.size();
+        if (olderCount <= 0) {
+            return new HistoryWindow(recent, recentTokens, false);
+        }
+
+        String summary = summarizeOldHistory(history.subList(0, olderCount), budgetPolicy);
+        int summaryTokens = estimateTokens(summary);
+        if (summaryTokens + recentTokens <= remainingTokens) {
+            List<ModelMessage> compacted = new ArrayList<>();
+            compacted.add(new ModelMessage("system", summary));
+            compacted.addAll(recent);
+            return new HistoryWindow(compacted, summaryTokens + recentTokens, true);
+        }
+
+        String degradedNotice = "[compact.auto.degraded]";
+        int degradedTokens = estimateTokens(degradedNotice);
+        if (degradedTokens + recentTokens <= remainingTokens) {
+            List<ModelMessage> compacted = new ArrayList<>();
+            compacted.add(new ModelMessage("system", degradedNotice));
+            compacted.addAll(recent);
+            return new HistoryWindow(compacted, degradedTokens + recentTokens, true);
+        }
+
+        List<ModelMessage> fallback = trimHistory(history, remainingTokens);
+        int fallbackTokens = estimateMessagesTokens(fallback);
+        if (!fallback.isEmpty() && degradedTokens + fallbackTokens <= remainingTokens) {
+            List<ModelMessage> compacted = new ArrayList<>();
+            compacted.add(new ModelMessage("system", degradedNotice));
+            compacted.addAll(fallback);
+            return new HistoryWindow(compacted, degradedTokens + fallbackTokens, true);
+        }
+        if (!fallback.isEmpty()) {
+            return new HistoryWindow(fallback, fallbackTokens, true);
+        }
+        if (degradedTokens <= remainingTokens) {
+            return new HistoryWindow(List.of(new ModelMessage("system", degradedNotice)), degradedTokens, true);
+        }
+        return new HistoryWindow(List.of(new ModelMessage("system", degradedNotice)), degradedTokens, true);
+    }
+
+    private List<ModelMessage> selectRecentRawMessages(List<ConversationMessageDTO> history, int remainingTokens) {
+        List<ModelMessage> selected = new ArrayList<>();
+        int used = 0;
+        int minIndex = Math.max(0, history.size() - RECENT_HISTORY_RAW_MESSAGES);
+        for (int i = history.size() - 1; i >= minIndex; i--) {
+            ConversationMessageDTO message = history.get(i);
+            int tokens = messageTokens(message);
+            if (used + tokens > remainingTokens) {
+                break;
             }
-            builder.append('\n');
+            selected.add(0, new ModelMessage(message.role(), message.content()));
+            used += tokens;
         }
-        if (!skills.isEmpty()) {
-            builder.append("Available skills:\n");
-            skills.forEach(skill -> builder
-                    .append("- ")
-                    .append(skill.code())
-                    .append(": ")
-                    .append(nullToEmpty(skill.description()))
-                    .append('\n'));
-            builder.append('\n');
+        if (!selected.isEmpty()) {
+            return selected;
         }
-        if (!mcpTools.isEmpty()) {
-            builder.append("Available MCP tools:\n");
-            mcpTools.forEach(tool -> builder
-                    .append("- ")
-                    .append(tool.name())
-                    .append(": ")
-                    .append(nullToEmpty(tool.description()))
-                    .append('\n'));
-        }
-        return builder.toString().strip();
+        return trimHistory(history, remainingTokens);
     }
 
     private List<ModelMessage> trimHistory(List<ConversationMessageDTO> history, int remainingTokens) {
@@ -230,7 +471,7 @@ public class DefaultAgentContextBuilder implements AgentContextBuilder {
         int used = 0;
         for (int i = history.size() - 1; i >= 0; i--) {
             ConversationMessageDTO message = history.get(i);
-            int tokens = message.tokenCount() == null ? estimateTokens(message.content()) : message.tokenCount();
+            int tokens = messageTokens(message);
             if (used + tokens > remainingTokens && !selected.isEmpty()) {
                 break;
             }
@@ -240,6 +481,53 @@ public class DefaultAgentContextBuilder implements AgentContextBuilder {
             }
         }
         return selected;
+    }
+
+    private String summarizeOldHistory(List<ConversationMessageDTO> oldHistory, ContextBudgetPolicy budgetPolicy) {
+        StringBuilder builder = new StringBuilder();
+        builder.append("[compact.auto] older history summarized; ");
+        int totalMessages = oldHistory == null ? 0 : oldHistory.size();
+        builder.append("messages=").append(totalMessages);
+        if (oldHistory == null || oldHistory.isEmpty()) {
+            return builder.toString().strip();
+        }
+        if (totalMessages > 1) {
+            return builder.toString().strip();
+        }
+        builder.append('\n');
+        int maxChars = budgetPolicy.autoCompactMaxChars();
+        int remainingChars = maxChars - builder.length();
+        for (ConversationMessageDTO message : oldHistory) {
+            if (remainingChars <= 0) {
+                break;
+            }
+            String sample = sample(message.content(), Math.min(budgetPolicy.autoCompactSampleChars(), remainingChars));
+            String line = "- " + nullToEmpty(message.role()) + ": " + sample + '\n';
+            if (line.length() > remainingChars) {
+                line = line.substring(0, remainingChars);
+            }
+            builder.append(line);
+            remainingChars = maxChars - builder.length();
+        }
+        return builder.toString().strip();
+    }
+
+    private String sample(String content, int maxChars) {
+        if (content == null || content.isBlank() || maxChars <= 0) {
+            return "";
+        }
+        String normalized = content.strip().replaceAll("\\s+", " ");
+        if (normalized.length() <= maxChars) {
+            return normalized;
+        }
+        if (maxChars <= 3) {
+            return normalized.substring(0, maxChars);
+        }
+        return normalized.substring(0, maxChars - 3) + "...";
+    }
+
+    private int messageTokens(ConversationMessageDTO message) {
+        return message.tokenCount() == null ? estimateTokens(message.content()) : message.tokenCount();
     }
 
     private int estimateMessagesTokens(List<ModelMessage> messages) {
@@ -257,5 +545,97 @@ public class DefaultAgentContextBuilder implements AgentContextBuilder {
 
     private String nullToEmpty(String value) {
         return value == null ? "" : value;
+    }
+
+    private ObjectNode attributes() {
+        return com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
+    }
+
+    private TraceSpanDTO safeStartSpan(String traceId, Long parentSpanId, String spanName, String spanType, ObjectNode attributes) {
+        if (traceService == null || traceId == null || traceId.isBlank()) {
+            return null;
+        }
+        try {
+            return traceService.startSpan(new StartTraceSpanCommand(
+                    traceId,
+                    parentSpanId,
+                    spanName,
+                    spanType,
+                    "core",
+                    attributes
+            ));
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    private void safeFinishSpan(TraceSpanDTO span, String status, String errorCode, String errorMessage) {
+        if (traceService == null || span == null || span.id() == null) {
+            return;
+        }
+        try {
+            traceService.finishSpan(new FinishTraceSpanCommand(span.id(), status, errorCode, errorMessage, span.attributes()));
+        } catch (Exception ex) {
+            // Trace is diagnostic data; it must not break context assembly.
+        }
+    }
+
+    private String errorCode(Exception ex) {
+        return ex instanceof BizException bizException ? bizException.getCode() : ErrorCode.INTERNAL_ERROR.getCode();
+    }
+
+    private String errorMessage(Exception ex) {
+        return ex.getMessage() == null ? "Context assembly failed" : ex.getMessage();
+    }
+
+    private static int clamp(int value, int min, int max) {
+        return Math.max(min, Math.min(max, value));
+    }
+
+    private record ContextBudgetPolicy(
+            int memoryTokenBudget,
+            int experienceTokenBudget,
+            int ragTokenBudget,
+            int autoCompactMaxChars,
+            int autoCompactSampleChars
+    ) {
+
+        private static ContextBudgetPolicy from(int maxContextTokens) {
+            int normalizedMaxTokens = Math.max(1, maxContextTokens);
+            int autoCompactMaxChars = clamp(
+                    normalizedMaxTokens / 8,
+                    MIN_AUTO_COMPACT_CHARS,
+                    MAX_AUTO_COMPACT_CHARS
+            );
+            return new ContextBudgetPolicy(
+                    clamp((int) Math.ceil(normalizedMaxTokens * 0.08), MIN_MEMORY_TOKEN_BUDGET, MAX_MEMORY_TOKEN_BUDGET),
+                    clamp((int) Math.ceil(normalizedMaxTokens * 0.10), MIN_EXPERIENCE_TOKEN_BUDGET, MAX_EXPERIENCE_TOKEN_BUDGET),
+                    clamp((int) Math.ceil(normalizedMaxTokens * 0.12), MIN_RAG_TOKEN_BUDGET, MAX_RAG_TOKEN_BUDGET),
+                    autoCompactMaxChars,
+                    clamp(autoCompactMaxChars / 4, MIN_AUTO_COMPACT_SAMPLE_CHARS, MAX_AUTO_COMPACT_SAMPLE_CHARS)
+            );
+        }
+    }
+
+    private record ContextBlocks(
+            String systemPrompt,
+            int platformSystemTokens,
+            int profileTokens,
+            int memoryTokens,
+            int toolsTokens,
+            int experienceTokens,
+            int ragTokens,
+            boolean ragTruncated
+    ) {
+    }
+
+    private record HistoryWindow(
+            List<ModelMessage> messages,
+            int tokens,
+            boolean truncated
+    ) {
+        private HistoryWindow {
+            messages = messages == null ? List.of() : List.copyOf(messages);
+        }
     }
 }

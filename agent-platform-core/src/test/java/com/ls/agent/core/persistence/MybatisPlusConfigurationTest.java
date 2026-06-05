@@ -8,6 +8,8 @@ import com.ls.agent.core.alert.mapper.AlertEventMapper;
 import com.ls.agent.core.quota.mapper.QuotaConfigMapper;
 import com.ls.agent.core.quota.mapper.QuotaReservationMapper;
 import com.ls.agent.core.quota.mapper.TokenUsageLogMapper;
+import com.ls.agent.core.rag.mapper.KnowledgeChunkMapper;
+import com.ls.agent.core.rag.mapper.KnowledgeDocumentMapper;
 import com.ls.agent.core.security.mapper.SecurityEventMapper;
 import com.ls.agent.core.support.persistence.MybatisPlusConfiguration;
 import com.ls.agent.core.trace.mapper.TraceRootMapper;
@@ -50,6 +52,8 @@ class MybatisPlusConfigurationTest {
             assertThat(context).hasSingleBean(TokenUsageLogMapper.class);
             assertThat(context).hasSingleBean(SecurityEventMapper.class);
             assertThat(context).hasSingleBean(AlertEventMapper.class);
+            assertThat(context).hasSingleBean(KnowledgeDocumentMapper.class);
+            assertThat(context).hasSingleBean(KnowledgeChunkMapper.class);
         });
     }
 

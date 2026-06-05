@@ -42,7 +42,7 @@ export function clearStoredChatSession(storage: Pick<Storage, 'removeItem'> = se
 
 function isStoredSession(value: Partial<StoredChatSession>): value is StoredChatSession {
   return (
-    (value.agentMode === 'agent' || value.agentMode === 'none') &&
+    (value.agentMode === 'agent' || value.agentMode === 'team' || value.agentMode === 'none') &&
     isNullableNumber(value.applicationId) &&
     isNullableNumber(value.conversationId) &&
     Array.isArray(value.messages) &&

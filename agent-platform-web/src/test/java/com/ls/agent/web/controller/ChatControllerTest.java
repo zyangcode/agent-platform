@@ -96,7 +96,8 @@ class ChatControllerTest {
                 "client-1",
                 null,
                 null,
-                true
+                true,
+                List.of("skill:deploy")
         );
 
         var result = mockMvc.perform(post("/api/chat/stream")
@@ -120,6 +121,49 @@ class ChatControllerTest {
         assertThat(captor.getValue().channel()).isEqualTo("WEB");
         assertThat(captor.getValue().profileId()).isEqualTo(50001L);
         assertThat(captor.getValue().enabledSkillIds()).containsExactly(60001L);
+        assertThat(captor.getValue().confirmedToolKeys()).containsExactly("skill:deploy");
+    }
+
+    @Test
+    void chatStreamPreservesExplicitEmptyToolSelections() throws Exception {
+        doAnswer(invocation -> {
+            invocation.getArgument(1, java.io.OutputStream.class)
+                    .write("event: message\ndata: {\"content\":\"ok\"}\n\n".getBytes(StandardCharsets.UTF_8));
+            return null;
+        }).when(gatewayClient).chatStream(any(InternalChatStreamRequest.class), any());
+
+        String body = """
+                {
+                  "applicationId": 20001,
+                  "agentMode": "agent",
+                  "profileId": 50001,
+                  "conversationId": null,
+                  "message": "hello",
+                  "enabledSkillIds": [],
+                  "enabledMcpToolIds": [],
+                  "clientRequestId": "client-empty-tools",
+                  "stream": true,
+                  "confirmedToolKeys": []
+                }
+                """;
+
+        var result = mockMvc.perform(post("/api/chat/stream")
+                        .header("Authorization", bearerToken())
+                        .accept(MediaType.TEXT_EVENT_STREAM)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        mockMvc.perform(asyncDispatch(result))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("event: message")));
+
+        ArgumentCaptor<InternalChatStreamRequest> captor = ArgumentCaptor.forClass(InternalChatStreamRequest.class);
+        verify(gatewayClient).chatStream(captor.capture(), any());
+        assertThat(captor.getValue().enabledSkillIds()).isEmpty();
+        assertThat(captor.getValue().enabledMcpToolIds()).isEmpty();
     }
 
     @Test
@@ -148,7 +192,8 @@ class ChatControllerTest {
                 "client-1",
                 null,
                 null,
-                true
+                true,
+                List.of()
         );
 
         var result = mockMvc.perform(post("/api/chat/stream")

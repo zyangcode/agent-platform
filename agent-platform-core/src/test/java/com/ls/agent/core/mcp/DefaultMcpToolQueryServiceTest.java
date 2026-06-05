@@ -15,6 +15,8 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class DefaultMcpToolQueryServiceTest {
@@ -48,6 +50,15 @@ class DefaultMcpToolQueryServiceTest {
         boolean result = service.areMcpToolsBindable(1L, List.of(99L));
 
         assertThat(result).isFalse();
+    }
+
+    @Test
+    void listAvailableToolsWithExplicitEmptyIdsReturnsNoTools() {
+        List<McpToolDTO> result = service.listAvailableTools(1L, List.of());
+
+        assertThat(result).isEmpty();
+        verify(serverMapper, never()).selectList(any(Wrapper.class));
+        verify(toolMapper, never()).selectList(any(Wrapper.class));
     }
 
     private McpServerEntity server() {
