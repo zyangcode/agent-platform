@@ -1,6 +1,7 @@
 package com.ls.agent.core.agent.command;
 
 import java.util.List;
+import java.util.function.Consumer;
 
 public record AgentRunCommand(
         Long tenantId,
@@ -15,7 +16,8 @@ public record AgentRunCommand(
         Integer maxContextTokens,
         String agentMode,
         List<String> confirmedToolKeys,
-        PendingToolCallCommand pendingToolCall
+        PendingToolCallCommand pendingToolCall,
+        Consumer<String> progressCallback
 ) {
     public AgentRunCommand {
         selectedSkillIds = selectedSkillIds == null ? null : List.copyOf(selectedSkillIds);
@@ -37,19 +39,9 @@ public record AgentRunCommand(
             String agentMode
     ) {
         this(
-                tenantId,
-                userId,
-                applicationId,
-                profileId,
-                conversationId,
-                userInput,
-                traceId,
-                selectedSkillIds,
-                selectedMcpToolIds,
-                maxContextTokens,
-                agentMode,
-                List.of(),
-                null
+                tenantId, userId, applicationId, profileId, conversationId,
+                userInput, traceId, selectedSkillIds, selectedMcpToolIds,
+                maxContextTokens, agentMode, List.of(), null, null
         );
     }
 
@@ -66,19 +58,9 @@ public record AgentRunCommand(
             Integer maxContextTokens
     ) {
         this(
-                tenantId,
-                userId,
-                applicationId,
-                profileId,
-                conversationId,
-                userInput,
-                traceId,
-                selectedSkillIds,
-                selectedMcpToolIds,
-                maxContextTokens,
-                null,
-                List.of(),
-                null
+                tenantId, userId, applicationId, profileId, conversationId,
+                userInput, traceId, selectedSkillIds, selectedMcpToolIds,
+                maxContextTokens, null, List.of(), null, null
         );
     }
 
@@ -97,19 +79,9 @@ public record AgentRunCommand(
             List<String> confirmedToolKeys
     ) {
         this(
-                tenantId,
-                userId,
-                applicationId,
-                profileId,
-                conversationId,
-                userInput,
-                traceId,
-                selectedSkillIds,
-                selectedMcpToolIds,
-                maxContextTokens,
-                agentMode,
-                confirmedToolKeys,
-                null
+                tenantId, userId, applicationId, profileId, conversationId,
+                userInput, traceId, selectedSkillIds, selectedMcpToolIds,
+                maxContextTokens, agentMode, confirmedToolKeys, null, null
         );
     }
 }

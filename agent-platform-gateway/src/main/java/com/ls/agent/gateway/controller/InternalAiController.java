@@ -135,6 +135,7 @@ public class InternalAiController {
         return sse(output -> {
             startTraceRoot(traceId, request, tenantId, applicationId, userId, entrypoint, apiKeyPrefix);
             Long conversationId = null;
+            int[] stepHolder = {2};
             writeEvent(output, "thinking", payload("thinking", traceId, null, 1, "request accepted", Map.of()));
 
             try {
@@ -162,6 +163,13 @@ public class InternalAiController {
                 }
 
                 List<String> bufferedMessageDeltas = new ArrayList<>();
+                java.util.function.Consumer<String> progress = msg -> {
+                    try {
+                        writeEvent(output, "thinking", payload("thinking", traceId, null, stepHolder[0]++, msg, Map.of()));
+                    } catch (IOException e) {
+                        // progress is best-effort
+                    }
+                };
                 AgentRunResult result = agentRuntimeService.run(new AgentRunCommand(
                         tenantId,
                         userId,
@@ -175,26 +183,26 @@ public class InternalAiController {
                         null,
                         effectiveAgentMode(request),
                         request.confirmedToolKeys(),
-                        request.pendingToolCall()
+                        request.pendingToolCall(),
+                        progress
                 ), event -> writeTeamEvent(output, event), bufferedMessageDeltas::add);
 
                 conversationId = result.conversationId();
-                int step = 2;
                 for (AgentToolEventDTO event : result.toolEvents()) {
                     writeEvent(output, event.type(), payload(
                             event.type(),
                             traceId,
                             result.conversationId(),
-                            step++,
+                            stepHolder[0]++,
                             event.content(),
                             toolEventMetadata(event)
                     ));
                 }
                 for (String token : bufferedMessageDeltas) {
-                    writeMessageDelta(output, traceId, result.conversationId(), step++, token);
+                    writeMessageDelta(output, traceId, result.conversationId(), stepHolder[0]++, token);
                 }
-                writeEvent(output, "message", payload("message", traceId, result.conversationId(), step++, result.assistantMessage(), Map.of()));
-                writeEvent(output, "done", payload("done", traceId, result.conversationId(), step, null, Map.of()));
+                writeEvent(output, "message", payload("message", traceId, result.conversationId(), stepHolder[0]++, result.assistantMessage(), Map.of()));
+                writeEvent(output, "done", payload("done", traceId, result.conversationId(), stepHolder[0], null, Map.of()));
 
                 quotaFilter.commit(traceId, totalTokens(result.usage()));
                 finishTraceRoot(traceId, conversationId, "SUCCESS", null, null);

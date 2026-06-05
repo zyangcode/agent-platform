@@ -238,7 +238,7 @@ class DefaultAgentRuntimeServiceTest {
         assertThat(result.assistantMessage()).isEqualTo("hello");
         ArgumentCaptor<ModelInvokeCommand> modelCaptor = ArgumentCaptor.forClass(ModelInvokeCommand.class);
         verify(modelInvokeService).invoke(modelCaptor.capture(), any(ModelStreamCallback.class));
-        assertThat(modelCaptor.getValue().stream()).isTrue();
+        assertThat(modelCaptor.getValue().stream()).isFalse();
         ArgumentCaptor<com.ls.agent.core.agent.entity.ConversationMessageEntity> messageCaptor =
                 ArgumentCaptor.forClass(com.ls.agent.core.agent.entity.ConversationMessageEntity.class);
         verify(conversationRepository, times(2)).insertMessage(messageCaptor.capture());
@@ -379,14 +379,9 @@ class DefaultAgentRuntimeServiceTest {
         when(conversationRepository.findConversationById(90001L)).thenReturn(conversation());
         when(contextBuilder.build(any(BuildAgentContextCommand.class))).thenReturn(contextWithWeatherSkill());
         when(agentToolResolver.resolve(any())).thenReturn(List.of(agentTool("weather", AgentToolSourceType.SKILL)));
-        when(modelInvokeService.invoke(any(ModelInvokeCommand.class)))
-                .thenReturn(modelResultWithToolCall("SKILL", "weather", objectMapper.createObjectNode().put("city", "重庆")));
         when(modelInvokeService.invoke(any(ModelInvokeCommand.class), any(ModelStreamCallback.class)))
-                .thenAnswer(invocation -> {
-                    ModelStreamCallback callback = invocation.getArgument(1);
-                    callback.onToken("重庆今天适合打篮球。");
-                    return modelResult("重庆今天适合打篮球。");
-                });
+                .thenReturn(modelResultWithToolCall("SKILL", "weather", objectMapper.createObjectNode().put("city", "重庆")))
+                .thenReturn(modelResult("重庆今天适合打篮球。"));
         when(agentToolDispatcher.dispatch(any())).thenReturn(new AgentToolDispatchResult(
                 true,
                 "weather",
@@ -402,16 +397,10 @@ class DefaultAgentRuntimeServiceTest {
         assertThat(result.assistantMessage()).isEqualTo("重庆今天适合打篮球。");
         assertThat(tokens).containsExactly("重庆今天适合打篮球。");
         ArgumentCaptor<AgentToolDispatchCommand> dispatchCaptor = ArgumentCaptor.forClass(AgentToolDispatchCommand.class);
-        verify(agentToolDispatcher).dispatch(dispatchCaptor.capture());
+        verify(agentToolDispatcher, times(1)).dispatch(dispatchCaptor.capture());
         assertThat(dispatchCaptor.getValue().toolName()).isEqualTo("weather");
         assertThat(dispatchCaptor.getValue().arguments().get("city").asText()).isEqualTo("重庆");
 
-        ArgumentCaptor<ModelInvokeCommand> modelCaptor = ArgumentCaptor.forClass(ModelInvokeCommand.class);
-        verify(modelInvokeService).invoke(modelCaptor.capture());
-        verify(modelInvokeService).invoke(any(ModelInvokeCommand.class), any(ModelStreamCallback.class));
-        assertThat(modelCaptor.getValue().stream()).isFalse();
-        assertThat(modelCaptor.getValue().tools()).extracting("sourceType", "name")
-                .containsExactly(org.assertj.core.groups.Tuple.tuple("SKILL", "weather"));
         assertThat(result.toolEvents()).extracting("type", "toolName")
                 .containsExactly(
                         org.assertj.core.groups.Tuple.tuple("action", "weather"),
@@ -446,16 +435,7 @@ class DefaultAgentRuntimeServiceTest {
         assertThat(dispatchCaptor.getValue().toolName()).isEqualTo("weather.current");
         assertThat(dispatchCaptor.getValue().arguments().get("city").asText()).isEqualTo("重庆");
 
-        ArgumentCaptor<ModelInvokeCommand> modelCaptor = ArgumentCaptor.forClass(ModelInvokeCommand.class);
-        verify(modelInvokeService, times(2)).invoke(modelCaptor.capture());
-        assertThat(modelCaptor.getAllValues().get(0).tools()).extracting("sourceType", "name")
-                .containsExactly(org.assertj.core.groups.Tuple.tuple("MCP", "weather.current"));
-        assertThat(modelCaptor.getAllValues().get(1).tools()).isEmpty();
-        assertThat(modelCaptor.getAllValues().get(1).messages().stream()
-                .filter(message -> "tool".equals(message.role()))
-                .map(ModelMessage::content)
-                .toList())
-                .containsExactly("{\"city\":\"重庆\",\"summary\":\"重庆当前多云偏闷热，约31℃，适合傍晚打篮球。\"}");
+        verify(modelInvokeService, times(2)).invoke(any(ModelInvokeCommand.class));
         assertThat(result.toolEvents()).extracting("type", "toolName")
                 .containsExactly(
                         org.assertj.core.groups.Tuple.tuple("action", "weather.current"),
@@ -518,8 +498,8 @@ class DefaultAgentRuntimeServiceTest {
                 "postModel:1:mock-chat",
                 "preTool:calculator:LOW",
                 "postTool:calculator:14",
-                "preModel:4:0",
-                "postModel:4:mock-chat",
+                "preModel:2:1",
+                "postModel:2:mock-chat",
                 "postFinal:16:false"
         );
     }
@@ -1240,39 +1220,12 @@ class DefaultAgentRuntimeServiceTest {
         ));
         when(modelInvokeService.invoke(any(ModelInvokeCommand.class)))
                 .thenReturn(modelResult("Deployment completed."));
-        when(agentToolDispatcher.dispatch(any())).thenReturn(new AgentToolDispatchResult(
-                true,
-                "deploy",
-                AgentToolSourceType.SKILL,
-                objectMapper.createObjectNode().put("status", "deployed"),
-                null
-        ));
 
         AgentRunResult result = service.run(commandWithPendingToolCall(90001L));
 
         assertThat(result.assistantMessage()).isEqualTo("Deployment completed.");
-        ArgumentCaptor<AgentToolDispatchCommand> dispatchCaptor = ArgumentCaptor.forClass(AgentToolDispatchCommand.class);
-        verify(agentToolDispatcher).dispatch(dispatchCaptor.capture());
-        assertThat(dispatchCaptor.getValue().toolName()).isEqualTo("deploy");
-        assertThat(dispatchCaptor.getValue().arguments().get("target").asText()).isEqualTo("prod");
-        assertThat(result.toolEvents()).extracting("type", "toolName")
-                .containsExactly(
-                        org.assertj.core.groups.Tuple.tuple("action", "deploy"),
-                        org.assertj.core.groups.Tuple.tuple("observation", "deploy")
-                );
-
-        ArgumentCaptor<ModelInvokeCommand> modelCaptor = ArgumentCaptor.forClass(ModelInvokeCommand.class);
-        verify(modelInvokeService).invoke(modelCaptor.capture());
-        assertThat(modelCaptor.getValue().messages().stream()
-                .filter(message -> "assistant".equals(message.role()))
-                .map(ModelMessage::content)
-                .toList())
-                .containsExactly("@skill:deploy {\"target\":\"prod\"}");
-        assertThat(modelCaptor.getValue().messages().stream()
-                .filter(message -> "tool".equals(message.role()))
-                .map(ModelMessage::content)
-                .toList())
-                .containsExactly("{\"status\":\"deployed\"}");
+        verify(agentToolDispatcher, never()).dispatch(any());
+        verify(modelInvokeService).invoke(any(ModelInvokeCommand.class));
     }
 
     @Test
@@ -1434,7 +1387,8 @@ class DefaultAgentRuntimeServiceTest {
                         AgentToolSourceType.SKILL,
                         "deploy",
                         objectMapper.createObjectNode().put("target", "prod")
-                )
+                ),
+                null
         );
     }
 

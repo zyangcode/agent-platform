@@ -65,6 +65,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.function.Consumer;
 
 @Service
 public class DefaultAgentRuntimeService implements AgentRuntimeService {
@@ -73,7 +74,8 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
     private static final String STATUS_ACTIVE = "ACTIVE";
     private static final String MEMORY_TYPE_SUMMARY = "SUMMARY";
     private static final int TITLE_MAX_LENGTH = 60;
-    private static final int MAX_AGENT_STEPS = 3;
+    private static final int MAX_AGENT_STEPS = 6;
+    private static final int MAX_TOOL_CALLS = 8;
     private static final int MAX_PARALLEL_TOOLS = 4;
 
     private final AgentContextBuilder contextBuilder;
@@ -231,12 +233,17 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
         if (resumedResult != null) {
             return resumedResult;
         }
+        int toolCallCount = 0;
+        boolean repaired = false;
+        Consumer<String> progress = command.progressCallback();
         for (int step = 0; step < MAX_AGENT_STEPS; step++) {
             messages = compactMessages(command, parentSpanId, messages);
-            boolean planningWithTools = !availableTools.isEmpty();
-            BufferedStreamCallback bufferedStream = streamCallback == null || planningWithTools
+            BufferedStreamCallback bufferedStream = streamCallback == null
                     ? null
                     : new BufferedStreamCallback();
+            if (progress != null) {
+                progress.accept(step == 0 ? "正在分析..." : "正在进一步推理...");
+            }
             ModelInvokeResult result = invokeModel(
                     command,
                     context,
@@ -252,21 +259,28 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
             } catch (Exception ex) {
                 messages.add(new ModelMessage("assistant", result.assistantMessage()));
                 messages.add(new ModelMessage("tool", "[tool call parse error] " + errorMessage(ex)));
-                continue;
+                return fallbackDirectAnswer(command, context, messages, parentSpanId, streamCallback);
             }
             if (toolRequestBatch.isEmpty()) {
-                ToolRequestBatch repairedToolRequestBatch = repairMissingToolRequestBatch(
-                        command,
-                        result.assistantMessage(),
-                        availableTools
-                );
-                if (!repairedToolRequestBatch.isEmpty()) {
-                    messages.add(new ModelMessage("assistant", result.assistantMessage()));
-                    for (ToolExecutionResult toolResult : executeToolBatch(command, repairedToolRequestBatch, availableTools, parentSpanId, step + 1)) {
-                        recordToolEvents(toolEvents, toolResult.toolCall(), toolResult.output());
-                        messages.add(new ModelMessage("tool", compactMessage(command, parentSpanId, "tool", toolResult.output())));
+                if (!repaired) {
+                    ToolRequestBatch repairedToolRequestBatch = repairMissingToolRequestBatch(
+                            command,
+                            result.assistantMessage(),
+                            availableTools
+                    );
+                    if (!repairedToolRequestBatch.isEmpty()) {
+                        repaired = true;
+                        messages.add(new ModelMessage("assistant", result.assistantMessage()));
+                        for (ToolExecutionResult toolResult : executeToolBatch(command, repairedToolRequestBatch, availableTools, parentSpanId, step + 1)) {
+                            recordToolEvents(toolEvents, toolResult.toolCall(), toolResult.output());
+                            messages.add(new ModelMessage("tool", compactMessage(command, parentSpanId, "tool", toolResult.output())));
+                        }
+                        toolCallCount += repairedToolRequestBatch.toolCalls().size();
+                        if (toolCallCount >= MAX_TOOL_CALLS) {
+                            return fallbackDirectAnswer(command, context, messages, parentSpanId, streamCallback);
+                        }
+                        continue;
                     }
-                    return fallbackDirectAnswer(command, context, messages, parentSpanId, streamCallback);
                 }
                 if (streamCallback == null) {
                     return result;
@@ -289,11 +303,21 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
                 }
                 return fallbackDirectAnswer(command, context, messages, parentSpanId, streamCallback);
             }
+            repaired = true;
+            if (progress != null) {
+                progress.accept("正在执行工具调用...");
+            }
             for (ToolExecutionResult toolResult : executeToolBatch(command, toolRequestBatch, availableTools, parentSpanId, step + 1)) {
                 recordToolEvents(toolEvents, toolResult.toolCall(), toolResult.output());
                 messages.add(new ModelMessage("tool", compactMessage(command, parentSpanId, "tool", toolResult.output())));
             }
-            return fallbackDirectAnswer(command, context, messages, parentSpanId, streamCallback);
+            toolCallCount += toolRequestBatch.toolCalls().size();
+            if (toolCallCount >= MAX_TOOL_CALLS) {
+                return fallbackDirectAnswer(command, context, messages, parentSpanId, streamCallback);
+            }
+        }
+        if (progress != null) {
+            progress.accept("正在生成回复...");
         }
         return fallbackDirectAnswer(command, context, messages, parentSpanId, streamCallback);
     }
@@ -349,22 +373,19 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
         if (pendingToolCall == null) {
             return null;
         }
-        ToolCall toolCall = new ToolCall(
+        AgentToolCall call = new AgentToolCall(
                 pendingToolCall.sourceType(),
                 pendingToolCall.toolName(),
                 pendingToolCall.arguments()
         );
-        AgentToolCall call = new AgentToolCall(toolCall.sourceType(), toolCall.name(), toolCall.arguments());
         if (!command.confirmedToolKeys().contains(toolKey(call))) {
             messages.add(new ModelMessage("tool", "[tool confirm required] "
                     + call.sourceType().name().toLowerCase() + ":" + call.toolName() + " risk=HIGH"));
             return fallbackDirectAnswer(command, context, messages, parentSpanId, streamCallback);
         }
-        String toolOutput = executeTool(command, toolCall, availableTools, parentSpanId, 1);
-        recordToolEvents(toolEvents, toolCall, toolOutput);
-        messages.add(new ModelMessage("assistant", formatToolCall(toolCall)));
-        messages.add(new ModelMessage("tool", compactMessage(command, parentSpanId, "tool", toolOutput)));
-        return invokeModel(command, context, messages, List.of(), parentSpanId, 2, streamCallback);
+        // 已确认：只把白名单带入循环，不强制执行工具。
+        // 模型进入 ReAct 循环后自己判断何时调用，doExecuteTool 检查白名单自动通过。
+        return null;
     }
 
     private ModelInvokeResult fallbackDirectAnswer(
@@ -414,7 +435,8 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
                 command.maxContextTokens(),
                 command.agentMode(),
                 command.confirmedToolKeys(),
-                command.pendingToolCall()
+                command.pendingToolCall(),
+                command.progressCallback()
         );
     }
 
@@ -461,7 +483,7 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
                     context.modelConfigId(),
                     messages,
                     BigDecimal.valueOf(0.7),
-                    streamCallback != null,
+                    false,
                     modelToolSpecs(availableTools)
             );
             notifyPreModelCall(hookContext);

@@ -50,7 +50,25 @@ public class DefaultModelInvokeService implements ModelInvokeService {
             throw new BizException(ErrorCode.MODEL_INVOKE_FAILED, "Model provider is unavailable");
         }
         ModelProvider modelProvider = providerRegistry.resolve(config, provider);
-        ProviderResponse response = modelProvider.invoke(new ProviderRequest(config, provider, command), streamCallback);
+        if (streamCallback == null) {
+            ProviderResponse response = modelProvider.invoke(new ProviderRequest(config, provider, command));
+            return toResult(response, config, provider);
+        }
+        boolean[] streamed = {false};
+        ModelStreamCallback trackingCallback = token -> {
+            streamed[0] = true;
+            streamCallback.onToken(token);
+        };
+        ProviderResponse response = modelProvider.invoke(
+                new ProviderRequest(config, provider, command), trackingCallback);
+        ModelInvokeResult result = toResult(response, config, provider);
+        if (!streamed[0] && result.assistantMessage() != null && !result.assistantMessage().isBlank()) {
+            streamCallback.onToken(result.assistantMessage());
+        }
+        return result;
+    }
+
+    private ModelInvokeResult toResult(ProviderResponse response, ModelConfigEntity config, ModelProviderEntity provider) {
         return new ModelInvokeResult(
                 config.getId(),
                 provider.getId(),
