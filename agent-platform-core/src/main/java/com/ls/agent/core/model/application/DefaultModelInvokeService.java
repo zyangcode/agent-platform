@@ -8,6 +8,8 @@ import com.ls.agent.core.model.command.ModelInvokeCommand;
 import com.ls.agent.core.model.dto.ModelInvokeResult;
 import com.ls.agent.core.model.entity.ModelConfigEntity;
 import com.ls.agent.core.model.entity.ModelProviderEntity;
+
+import java.util.List;
 import com.ls.agent.core.model.mapper.ModelConfigMapper;
 import com.ls.agent.core.model.mapper.ModelProviderMapper;
 import com.ls.agent.core.model.provider.ModelProvider;
@@ -59,10 +61,26 @@ public class DefaultModelInvokeService implements ModelInvokeService {
             streamed[0] = true;
             streamCallback.onToken(token);
         };
-        ProviderResponse response = modelProvider.invoke(
-                new ProviderRequest(config, provider, command), trackingCallback);
+        ProviderResponse response;
+        try {
+            response = modelProvider.invoke(
+                    new ProviderRequest(config, provider, command), trackingCallback);
+        } catch (Exception ex) {
+            String fallback = "Sorry, the model did not return a valid response. Please try again or rephrase your question.";
+            streamCallback.onToken(fallback);
+            return new ModelInvokeResult(config.getId(), provider.getId(),
+                    provider.getProviderType(), config.getModelName(),
+                    fallback, null, List.of());
+        }
         ModelInvokeResult result = toResult(response, config, provider);
-        if (!streamed[0] && result.assistantMessage() != null && !result.assistantMessage().isBlank()) {
+        if (result.assistantMessage() == null || result.assistantMessage().isBlank()) {
+            String fallback = "The model returned an empty response. Please try again.";
+            streamCallback.onToken(fallback);
+            return new ModelInvokeResult(config.getId(), provider.getId(),
+                    provider.getProviderType(), config.getModelName(),
+                    fallback, null, List.of());
+        }
+        if (!streamed[0]) {
             streamCallback.onToken(result.assistantMessage());
         }
         return result;

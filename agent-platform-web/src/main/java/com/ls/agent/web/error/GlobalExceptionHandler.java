@@ -91,7 +91,7 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(errorCode.getHttpStatus())
                 .contentType(MediaType.APPLICATION_JSON)
-                .body(ApiResponse.failure(errorCode.getCode(), errorCode.getMessage()));
+                .body(ApiResponse.failure(errorCode.getCode(), safeMessage(exception)));
     }
 
     private boolean isSseOrCommitted(HttpServletResponse response) {
@@ -101,5 +101,15 @@ public class GlobalExceptionHandler {
         String contentType = response.getContentType();
         return response.isCommitted()
                 || (contentType != null && contentType.startsWith(MediaType.TEXT_EVENT_STREAM_VALUE));
+    }
+
+    private String safeMessage(Exception exception) {
+        if (exception == null) {
+            return ErrorCode.INTERNAL_ERROR.getMessage();
+        }
+        String message = exception.getMessage();
+        return message == null || message.isBlank()
+                ? exception.getClass().getSimpleName()
+                : message;
     }
 }

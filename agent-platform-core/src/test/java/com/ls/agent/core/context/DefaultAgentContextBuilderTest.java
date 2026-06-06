@@ -100,7 +100,7 @@ class DefaultAgentContextBuilderTest {
                 .containsExactly("system", "user", "assistant", "user");
         assertThat(result.apiMessages().get(0).content())
                 .contains("You are Nexus")
-                .contains("not promises")
+                .contains("instead of guessing")
                 .contains("@skill:name")
                 .contains("Be concise.")
                 .contains("Ada likes concise answers.")
@@ -396,7 +396,7 @@ class DefaultAgentContextBuilderTest {
                 50001L,
                 90001L,
                 "current question",
-                90,
+                100,
                 null,
                 null
         ));
@@ -471,7 +471,7 @@ class DefaultAgentContextBuilderTest {
                 50001L,
                 90001L,
                 "current",
-                84,
+                95,
                 null,
                 null
         ));
@@ -484,7 +484,7 @@ class DefaultAgentContextBuilderTest {
         assertThat(result.conversationMessages()).extracting("content")
                 .anySatisfy(content -> assertThat(String.valueOf(content)).contains("[compact.auto.degraded]"))
                 .contains("current");
-        assertThat(result.contextBudgetSnapshot().apiMessagesTokens()).isLessThanOrEqualTo(84);
+        assertThat(result.contextBudgetSnapshot().apiMessagesTokens()).isLessThanOrEqualTo(100);
     }
 
     @Test
@@ -725,7 +725,7 @@ class DefaultAgentContextBuilderTest {
     @Test
     void buildContextUsesModelConfigTokenLimitWhenCommandLimitIsMissing() {
         when(profileService.getProfile(1L, 10001L, 50001L)).thenReturn(profile());
-        when(modelConfigService.getActiveModelConfig(30001L)).thenReturn(modelConfig(90));
+        when(modelConfigService.getActiveModelConfig(30001L)).thenReturn(modelConfig(100));
         when(skillRegistry.listAvailableSkills(1L, List.of(1L))).thenReturn(List.of(skill()));
         when(mcpToolRegistry.listAvailableTools(1L, List.of(1L))).thenReturn(List.of(mcpTool()));
         when(messageHistoryService.listRecentMessages(1L, 20001L, 10001L, 50001L, 90001L, 20)).thenReturn(List.of(

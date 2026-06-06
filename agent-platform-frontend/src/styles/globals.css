@@ -1,41 +1,43 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Geist", "Plus Jakarta Sans", "Segoe UI", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
-  --color-background: #09090b;
-  --color-foreground: #f4f4f5;
-  --color-surface: #111318;
-  --color-surface-raised: #161922;
-  --color-border-subtle: rgba(255, 255, 255, 0.1);
-  --color-accent: #22d3ee;
-  --color-accent-strong: #34d399;
+  --font-sans: "Inter", "Geist", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", "SFMono-Regular", Consolas, monospace;
+
+  /* ---- Nexus palette ---- */
+  --color-bg: #0a0a1a;
+  --color-bg-alt: #0f0f2e;
+  --color-surface: rgba(17, 24, 55, 0.58);
+  --color-surface-strong: rgba(18, 26, 62, 0.76);
+  --color-surface-soft: rgba(255, 255, 255, 0.055);
+  --color-border: rgba(148, 163, 184, 0.18);
+  --color-border-strong: rgba(96, 165, 250, 0.34);
+
+  --color-text: #eef5ff;
+  --color-text-muted: #92a4c7;
+  --color-text-faint: #64748b;
+
+  --color-accent: #3b82f6;
+  --color-accent-cyan: #38bdf8;
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+  --color-danger: #fb7185;
+  --color-violet: #8b5cf6;
+
+  /* shadcn/ui compatibility */
+  --color-background: #0a0a1a;
+  --color-foreground: #eef5ff;
 }
 
 :root {
-  font-family:
-    "Geist",
-    "Plus Jakarta Sans",
-    "Segoe UI",
-    system-ui,
-    sans-serif;
-  color: #f4f4f5;
-  background: #09090b;
+  font-family: "Inter", "Geist", "Segoe UI", system-ui, sans-serif;
+  color: #eef5ff;
+  background: #0a0a1a;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  --radius: 0.75rem;
-  --console-bg: #09090b;
-  --console-panel: rgba(255, 255, 255, 0.035);
-  --console-panel-strong: rgba(24, 24, 27, 0.72);
-  --console-border: rgba(255, 255, 255, 0.1);
-  --console-border-strong: rgba(255, 255, 255, 0.16);
-  --console-muted: #a1a1aa;
-  --console-accent: #22d3ee;
-  --console-success: #34d399;
-  --console-danger: #fb7185;
-  --console-warning: #fbbf24;
+  --radius: 0.5rem;
 }
 
 * {
@@ -47,6 +49,146 @@ body {
   min-width: 320px;
   min-height: 100dvh;
   overflow-x: hidden;
+  background:
+    radial-gradient(circle at 4% 8%, rgba(59, 130, 246, 0.2), transparent 25%),
+    radial-gradient(circle at 92% 18%, rgba(34, 197, 94, 0.1), transparent 22%),
+    radial-gradient(circle at 76% 92%, rgba(56, 189, 248, 0.14), transparent 26%),
+    linear-gradient(135deg, #0a0a1a, #0f0f2e 58%, #09091d);
+  background-attachment: fixed;
+}
+
+/* ---- Glass panel — reusable via class ---- */
+.glass-panel {
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: var(--radius);
+  background: linear-gradient(145deg, rgba(17, 24, 55, 0.58), rgba(255, 255, 255, 0.04));
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 18px 54px rgba(0, 0, 0, 0.28);
+}
+
+.glass-panel-strong {
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: var(--radius);
+  background: linear-gradient(145deg, rgba(18, 26, 62, 0.76), rgba(255, 255, 255, 0.06));
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 18px 54px rgba(0, 0, 0, 0.28);
+}
+
+.glass-input {
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.045);
+  color: #eef5ff;
+}
+
+.glass-input:focus {
+  border-color: rgba(96, 165, 250, 0.4);
+  box-shadow: 0 0 24px rgba(59, 130, 246, 0.12);
+  outline: none;
+}
+
+/* ---- Accent button ---- */
+.btn-accent {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 1rem;
+  height: 2.375rem;
+  border: 1px solid rgba(96, 165, 250, 0.28);
+  border-radius: var(--radius);
+  color: #eaf4ff;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.72), rgba(56, 189, 248, 0.28));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.13), 0 0 28px rgba(59, 130, 246, 0.18);
+  font-weight: 650;
+  font-size: 0.8125rem;
+  cursor: pointer;
+  transition: box-shadow 0.15s;
+}
+
+.btn-accent:hover {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 0 40px rgba(59, 130, 246, 0.28);
+}
+
+/* ---- Status tags ---- */
+.tag-blue {
+  display: inline-flex;
+  align-items: center;
+  height: 1.375rem;
+  padding: 0 0.5rem;
+  border-radius: 999px;
+  border: 1px solid rgba(96, 165, 250, 0.32);
+  color: #bfdbfe;
+  background: rgba(59, 130, 246, 0.12);
+  font-size: 0.6875rem;
+  font-family: "JetBrains Mono", "Fira Code", Consolas, monospace;
+}
+
+.tag-green {
+  display: inline-flex;
+  align-items: center;
+  height: 1.375rem;
+  padding: 0 0.5rem;
+  border-radius: 999px;
+  border: 1px solid rgba(34, 197, 94, 0.32);
+  color: #bbf7d0;
+  background: rgba(34, 197, 94, 0.1);
+  font-size: 0.6875rem;
+  font-family: "JetBrains Mono", "Fira Code", Consolas, monospace;
+}
+
+.tag-amber {
+  display: inline-flex;
+  align-items: center;
+  height: 1.375rem;
+  padding: 0 0.5rem;
+  border-radius: 999px;
+  border: 1px solid rgba(245, 158, 11, 0.32);
+  color: #fde68a;
+  background: rgba(245, 158, 11, 0.1);
+  font-size: 0.6875rem;
+  font-family: "JetBrains Mono", "Fira Code", Consolas, monospace;
+}
+
+.tag-red {
+  display: inline-flex;
+  align-items: center;
+  height: 1.375rem;
+  padding: 0 0.5rem;
+  border-radius: 999px;
+  border: 1px solid rgba(251, 113, 133, 0.32);
+  color: #fecdd3;
+  background: rgba(251, 113, 133, 0.1);
+  font-size: 0.6875rem;
+  font-family: "JetBrains Mono", "Fira Code", Consolas, monospace;
+}
+
+/* ---- Tool call card ---- */
+.tool-call-card {
+  padding: 0.75rem 0.875rem;
+  border-radius: var(--radius);
+  color: #dbeafe;
+  background: linear-gradient(90deg, rgba(56, 189, 248, 0.11), rgba(34, 197, 94, 0.06));
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  font-size: 0.75rem;
+  font-family: "JetBrains Mono", "Fira Code", Consolas, monospace;
+}
+
+/* ---- Substrate grid ---- */
+.substrate-grid {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.016) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: linear-gradient(to bottom, transparent, #000 12%, #000 88%, transparent);
 }
 
 button,
@@ -62,6 +204,6 @@ select {
 }
 
 :focus-visible {
-  outline: 2px solid rgba(103, 232, 249, 0.75);
+  outline: 2px solid rgba(56, 189, 248, 0.75);
   outline-offset: 2px;
 }

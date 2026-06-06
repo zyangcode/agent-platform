@@ -4,11 +4,11 @@ import { cn } from '@/lib/utils'
 type BadgeVariant = 'default' | 'success' | 'warning' | 'danger' | 'muted'
 
 const variants: Record<BadgeVariant, string> = {
-  default: 'border-cyan-200/20 bg-cyan-300/10 text-cyan-100',
-  success: 'border-emerald-200/20 bg-emerald-300/10 text-emerald-100',
-  warning: 'border-amber-200/20 bg-amber-300/10 text-amber-100',
-  danger: 'border-rose-200/20 bg-rose-300/10 text-rose-100',
-  muted: 'border-white/10 bg-white/[0.04] text-zinc-300',
+  default: 'border-[rgba(96,165,250,0.32)] bg-[rgba(59,130,246,0.12)] text-[#bfdbfe]',
+  success: 'border-[rgba(34,197,94,0.32)] bg-[rgba(34,197,94,0.1)] text-[#bbf7d0]',
+  warning: 'border-[rgba(245,158,11,0.32)] bg-[rgba(245,158,11,0.1)] text-[#fde68a]',
+  danger: 'border-[rgba(251,113,133,0.32)] bg-[rgba(251,113,133,0.1)] text-[#fecdd3]',
+  muted: 'border-[rgba(148,163,184,0.16)] bg-[rgba(255,255,255,0.055)] text-[#cbd5e1]',
 }
 
 export function Badge({
@@ -19,7 +19,7 @@ export function Badge({
   return (
     <span
       className={cn(
-        'inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium',
+        'inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium font-mono',
         variants[variant],
         className,
       )}

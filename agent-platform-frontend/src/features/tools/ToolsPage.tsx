@@ -127,7 +127,10 @@ function normalizeAllFilter<TValue extends string>(value: TValue | 'ALL') {
 }
 
 function getErrorMessage(error: unknown, fallback: string) {
-  return error instanceof ApiError ? error.message : fallback
+  if (error instanceof ApiError) {
+    return error.status ? `[${error.status}] ${error.message}` : error.message
+  }
+  return error instanceof Error ? `${fallback}: ${error.message}` : fallback
 }
 
 function initialState(): ToolsState {
@@ -164,6 +167,7 @@ export function ToolsPage() {
   const [mcpServerStatus, setMcpServerStatus] = useState<McpServerStatusFilter | 'ALL'>('ALL')
   const [mcpStatus, setMcpStatus] = useState<McpStatusFilter | 'ALL'>('ALL')
   const [message, setMessage] = useState<string | null>(null)
+  const [messageVariant, setMessageVariant] = useState<'default' | 'danger'>('default')
   const [memories, setMemories] = useState<MemoryRecord[]>([])
   const [editingMemoryId, setEditingMemoryId] = useState<number | null>(null)
   const [memoryEditForm, setMemoryEditForm] = useState({
@@ -202,10 +206,12 @@ export function ToolsPage() {
 
   const filteredSkills = useMemo(() => {
     return filterToolsBySearch(
-      state.skills.map((skill) => ({
-        ...skill,
-        key: skill.code,
-      })),
+      state.skills
+        .filter((skill) => skill.skillType !== 'BUILTIN')
+        .map((skill) => ({
+          ...skill,
+          key: skill.code,
+        })),
       search,
     )
   }, [search, state.skills])
@@ -433,8 +439,10 @@ export function ToolsPage() {
         title: ragDocumentForm.title,
       })
       setRagDocumentForm((current) => ({ ...current, content: '', sourceUri: '', title: '' }))
+      setMessageVariant('default')
       setMessage(t('tools.ragIngestSuccess', { chunkCount: result.chunkCount, documentId: result.documentId }))
     } catch (error) {
+      setMessageVariant('danger')
       setMessage(getErrorMessage(error, t('tools.ragIngestFailed')))
     } finally {
       setSubmitting(false)
@@ -605,8 +613,8 @@ export function ToolsPage() {
       ) : null}
 
       {message ? (
-        <Alert>
-          <AlertTitle>{t('tools.operationResult')}</AlertTitle>
+        <Alert variant={messageVariant}>
+          <AlertTitle>{messageVariant === 'danger' ? t('tools.operationFailed') : t('tools.operationResult')}</AlertTitle>
           <AlertDescription>{message}</AlertDescription>
         </Alert>
       ) : null}
@@ -848,13 +856,6 @@ export function ToolsPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <FieldInput
-                id="rag-profile"
-                label={t('tools.profileIdOptional')}
-                onChange={(value) => setRagDocumentForm((current) => ({ ...current, profileId: value }))}
-                type="number"
-                value={ragDocumentForm.profileId}
-              />
               <FieldInput
                 id="rag-title"
                 label={t('tools.ragTitle')}

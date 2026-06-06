@@ -27,8 +27,14 @@ public class ToolsSlotSource implements ContextSlotSource {
 
     @Override
     public ContextSlotContent fetch(ContextSlot slot, BuildAgentContextCommand command) {
-        if (!supports(slot.kind()) || (skills.isEmpty() && mcpTools.isEmpty())) {
+        if (!supports(slot.kind())) {
             return ContextSlotContent.empty(slot.kind());
+        }
+        if (skills.isEmpty() && mcpTools.isEmpty()) {
+            String notice = """
+                    No tools available. Answer from training knowledge only.
+                    For real-time or external data, do NOT guess; tell the user which tool they should enable.""";
+            return new ContextSlotContent(ContextSlotKind.TOOLS, notice, estimateTokens(notice), false);
         }
         StringBuilder builder = new StringBuilder();
         if (!skills.isEmpty()) {

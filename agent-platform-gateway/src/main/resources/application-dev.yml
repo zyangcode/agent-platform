@@ -9,3 +9,17 @@ spring:
 
 gateway:
   internal-token: ${AGENT_PLATFORM_INTERNAL_TOKEN:dev-internal-token}
+
+agent:
+  rag:
+    vector-store: qdrant
+    embedding-provider: openai-compatible
+    embedding:
+      enabled: true
+      base-url: https://api.siliconflow.cn/v1
+      api-key: ${SILICONFLOW_API_KEY:sk-ntmfzctwsgrldkofblxhowdcshibtytpywrahengjzsuidep}
+      model: BAAI/bge-large-zh-v1.5
+      dimension: 1024
+    qdrant:
+      enabled: true
+      base-url: http://localhost:6333

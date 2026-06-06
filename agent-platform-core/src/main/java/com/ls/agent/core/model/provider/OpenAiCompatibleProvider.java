@@ -107,10 +107,8 @@ public class OpenAiCompatibleProvider implements ModelProvider {
         body.put("messages", openAiMessages(command.messages()));
         body.put("temperature", effectiveTemperature(config, command));
         body.put("stream", command.stream());
-        if (command.tools() != null && !command.tools().isEmpty()) {
-            body.put("tools", openAiTools(command.tools()));
-            body.put("tool_choice", "auto");
-        }
+        // 工具通过 System Prompt 中 @skill:xxx / @mcp:xxx 文本格式传递
+        // 不发送 OpenAI function calling tools，避免不兼容模型返回空内容
         return body;
     }
 

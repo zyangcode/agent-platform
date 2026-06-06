@@ -43,7 +43,7 @@ class ToolsSlotSourceTest {
     }
 
     @Test
-    void fetchReturnsEmptyContentWhenNoToolsAvailable() {
+    void fetchReturnsNoToolsNoticeWhenNoToolsAvailable() {
         ToolsSlotSource source = new ToolsSlotSource(List.of(), List.of());
 
         ContextSlotContent content = source.fetch(
@@ -51,8 +51,8 @@ class ToolsSlotSourceTest {
                 command()
         );
 
-        assertThat(content.content()).isEmpty();
-        assertThat(content.usedTokens()).isZero();
+        assertThat(content.content()).contains("No tools available");
+        assertThat(content.usedTokens()).isPositive();
         assertThat(content.truncated()).isFalse();
     }
 

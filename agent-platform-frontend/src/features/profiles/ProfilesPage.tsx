@@ -305,6 +305,7 @@ export function ProfilesPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>{t('profile.name')}</TableHead>
+                    <TableHead>ID</TableHead>
                     <TableHead>{t('profile.model')}</TableHead>
                     <TableHead>{t('profile.status')}</TableHead>
                   </TableRow>
@@ -328,6 +329,7 @@ export function ProfilesPage() {
                             {profile.description || profile.profileType}
                           </p>
                         </TableCell>
+                        <TableCell className="font-mono text-sm text-zinc-400">{profile.profileId}</TableCell>
                         <TableCell className="text-zinc-400">
                           {modelConfig?.displayName || modelConfig?.modelName || `#${profile.modelConfigId}`}
                         </TableCell>

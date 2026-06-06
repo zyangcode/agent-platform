@@ -22,18 +22,21 @@ public class DefaultMcpToolExecutor implements McpToolExecutor {
     private final ObjectMapper objectMapper;
     private final McpToolMapper mcpToolMapper;
     private final McpServerMapper mcpServerMapper;
-    private final McpClient mcpClient;
+    private final StdioMcpClient stdioMcpClient;
+    private final HttpMcpClient httpMcpClient;
 
     public DefaultMcpToolExecutor(
             ObjectMapper objectMapper,
             McpToolMapper mcpToolMapper,
             McpServerMapper mcpServerMapper,
-            McpClient mcpClient
+            StdioMcpClient stdioMcpClient,
+            HttpMcpClient httpMcpClient
     ) {
         this.objectMapper = objectMapper;
         this.mcpToolMapper = mcpToolMapper;
         this.mcpServerMapper = mcpServerMapper;
-        this.mcpClient = mcpClient;
+        this.stdioMcpClient = stdioMcpClient;
+        this.httpMcpClient = httpMcpClient;
     }
 
     @Override
@@ -42,10 +45,11 @@ public class DefaultMcpToolExecutor implements McpToolExecutor {
         McpToolEntity tool = resolveTool(command);
         McpServerEntity server = resolveServer(command, tool);
         try {
+            McpClient client = resolveClient(server);
             return new McpToolExecuteResult(
                     true,
                     command.toolName(),
-                    mcpClient.callTool(server, command.toolName(), command.arguments()),
+                    client.callTool(server, command.toolName(), command.arguments()),
                     null
             );
         } catch (BizException ex) {
@@ -79,6 +83,16 @@ public class DefaultMcpToolExecutor implements McpToolExecutor {
             throw new BizException(ErrorCode.MCP_TOOL_FAILED, "MCP server is unavailable for tool: " + command.toolName());
         }
         return servers.get(0);
+    }
+
+    private McpClient resolveClient(McpServerEntity server) {
+        if ("STDIO".equalsIgnoreCase(server.getServerType())) {
+            return stdioMcpClient;
+        }
+        if ("HTTP".equalsIgnoreCase(server.getServerType())) {
+            return httpMcpClient;
+        }
+        throw new BizException(ErrorCode.MCP_TOOL_FAILED, "Unsupported MCP server type: " + server.getServerType());
     }
 
     private void validate(McpToolExecuteCommand command) {

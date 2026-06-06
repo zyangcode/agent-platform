@@ -3,8 +3,9 @@ package com.ls.agent.core.mcp;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.ls.agent.core.mcp.application.McpClient;
 import com.ls.agent.core.mcp.application.DefaultMcpToolExecutor;
+import com.ls.agent.core.mcp.application.HttpMcpClient;
+import com.ls.agent.core.mcp.application.StdioMcpClient;
 import com.ls.agent.core.mcp.command.McpToolExecuteCommand;
 import com.ls.agent.core.mcp.dto.McpToolExecuteResult;
 import com.ls.agent.core.mcp.entity.McpServerEntity;
@@ -34,15 +35,17 @@ class DefaultMcpToolExecutorTest {
         AtomicReference<McpServerEntity> calledServer = new AtomicReference<>();
         AtomicReference<String> calledToolName = new AtomicReference<>();
         AtomicReference<JsonNode> calledArguments = new AtomicReference<>();
-        McpClient client = (resolvedServer, toolName, arguments) -> {
-            calledServer.set(resolvedServer);
-            calledToolName.set(toolName);
-            calledArguments.set(arguments);
+        StdioMcpClient stdioClient = mock(StdioMcpClient.class);
+        HttpMcpClient httpClient = mock(HttpMcpClient.class);
+        when(stdioClient.callTool(any(), any(), any())).thenAnswer(invocation -> {
+            calledServer.set(invocation.getArgument(0));
+            calledToolName.set(invocation.getArgument(1));
+            calledArguments.set(invocation.getArgument(2));
             return objectMapper.createObjectNode()
-                    .put("path", arguments.get("path").asText())
+                    .put("path", invocation.<JsonNode>getArgument(2).get("path").asText())
                     .put("content", "real mcp content");
-        };
-        DefaultMcpToolExecutor executor = new DefaultMcpToolExecutor(objectMapper, toolMapper, serverMapper, client);
+        });
+        DefaultMcpToolExecutor executor = new DefaultMcpToolExecutor(objectMapper, toolMapper, serverMapper, stdioClient, httpClient);
         when(serverMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(server));
         when(toolMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(tool));
 

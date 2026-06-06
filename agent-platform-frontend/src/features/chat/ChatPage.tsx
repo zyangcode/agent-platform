@@ -2,8 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Bot, RefreshCw } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { Application, ModelConfig, PageResult, Profile } from '@/lib/api/types'
@@ -92,6 +90,7 @@ export function ChatPage() {
   const loadRequestRef = useRef(0)
   const [agentMode, setAgentMode] = useState<AgentMode>('agent')
   const [input, setInput] = useState('')
+  const [historyCollapsed, setHistoryCollapsed] = useState(false)
   const [conversationId, setConversationId] = useState<number | null>(null)
   const [conversationHistory, setConversationHistory] = useState<ConversationSummary[]>([])
   const [historyError, setHistoryError] = useState<string | null>(null)
@@ -539,142 +538,141 @@ export function ChatPage() {
     state.status,
   ])
   return (
-    <section className="space-y-6">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-        <div>
-          <h2 className="text-2xl font-semibold tracking-tight text-white">{t('chat.title')}</h2>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-400">
-            {t('chat.titleDescription')}
-          </p>
-        </div>
-        <Button onClick={() => loadResources(selectedApplicationId)} variant="secondary">
-          <RefreshCw className="h-4 w-4" strokeWidth={1.75} />
-          {t('chat.refreshResources')}
-        </Button>
+    <section className="flex flex-col gap-3 h-full">
+      {/* Top toolbar — mode/profile/skill selector */}
+      <div className="glass-panel shrink-0 px-4 py-3">
+        {state.status === 'loading' ? (
+          <div className="flex gap-4">
+            <Skeleton className="h-9 w-24" />
+            <Skeleton className="h-9 w-36" />
+            <Skeleton className="h-9 w-28" />
+            <Skeleton className="h-9 w-28" />
+          </div>
+        ) : state.status === 'error' ? (
+          <Alert variant="danger">
+            <AlertDescription>{state.error}</AlertDescription>
+          </Alert>
+        ) : (
+          <div className="flex flex-wrap items-center gap-3">
+            {/* App selector */}
+            <Select onValueChange={handleApplicationChange} value={selectedApplicationId ? String(selectedApplicationId) : undefined}>
+              <SelectTrigger className="glass-input h-9 w-40 text-sm">
+                <SelectValue placeholder={t('chat.selectApplication')} />
+              </SelectTrigger>
+              <SelectContent>{state.applications?.records.map((app) => (
+                <SelectItem key={app.applicationId} value={String(app.applicationId)}>{app.name}</SelectItem>
+              ))}</SelectContent>
+            </Select>
+
+            {/* Mode selector */}
+            <Select onValueChange={(v) => setAgentMode(v as AgentMode)} value={agentMode}>
+              <SelectTrigger className="glass-input h-9 w-28 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="agent">{t('chat.agentMode')}</SelectItem>
+                <SelectItem value="none">{t('chat.directModelMode')}</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {/* Profile selector */}
+            {agentMode !== 'none' && (
+              <Select
+                disabled={runnableProfiles.length === 0}
+                onValueChange={(v) => { setSelectedProfileId(Number(v)); loadConversationHistory(selectedApplicationId, Number(v)) }}
+                value={selectedProfile?.profileId ? String(selectedProfile.profileId) : undefined}
+              >
+                <SelectTrigger className="glass-input h-9 w-44 text-sm">
+                  <SelectValue placeholder={t('chat.selectProfile')} />
+                </SelectTrigger>
+                <SelectContent>{runnableProfiles.map((p) => (
+                  <SelectItem key={p.profileId} value={String(p.profileId)}>{p.name}</SelectItem>
+                ))}</SelectContent>
+              </Select>
+            )}
+
+            {/* Model selector (direct mode) */}
+            {agentMode === 'none' && (
+              <Select
+                disabled={state.modelConfigs.length === 0}
+                onValueChange={(v) => setSelectedModelConfigId(Number(v))}
+                value={selectedModelConfig?.modelConfigId ? String(selectedModelConfig.modelConfigId) : undefined}
+              >
+                <SelectTrigger className="glass-input h-9 w-40 text-sm">
+                  <SelectValue placeholder={t('chat.selectModel')} />
+                </SelectTrigger>
+                <SelectContent>{state.modelConfigs.map((m) => (
+                  <SelectItem key={m.modelConfigId} value={String(m.modelConfigId)}>{m.displayName || m.modelName}</SelectItem>
+                ))}</SelectContent>
+              </Select>
+            )}
+
+            {/* Refresh button */}
+            <Button onClick={() => loadResources(selectedApplicationId)} variant="ghost" size="icon" className="text-text-muted hover:text-text ml-auto">
+              <RefreshCw className="h-4 w-4" strokeWidth={1.75} />
+            </Button>
+          </div>
+        )}
       </div>
 
-      {state.status === 'error' ? (
-        <Alert variant="danger">
-          <AlertTitle>{t('chat.chatResourcesUnavailable')}</AlertTitle>
-          <AlertDescription>{state.error}</AlertDescription>
-        </Alert>
-      ) : null}
-
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('chat.runSetup')}</CardTitle>
-          <CardDescription>{t('chat.runSetupDescription')}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {state.status === 'loading' ? (
-            <div className="grid gap-4 md:grid-cols-4">
-              <Skeleton className="h-10" />
-              <Skeleton className="h-10" />
-              <Skeleton className="h-10" />
-              <Skeleton className="h-10" />
-            </div>
-          ) : (
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <div className="space-y-2">
-                <Label>{t('nav.applications')}</Label>
-                <Select
-                  onValueChange={handleApplicationChange}
-                  value={selectedApplicationId ? String(selectedApplicationId) : undefined}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder={t('chat.selectApplication')} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {state.applications?.records.map((application) => (
-                      <SelectItem key={application.applicationId} value={String(application.applicationId)}>
-                        {application.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>{t('chat.mode')}</Label>
-                <Select
-                  onValueChange={(value) => {
-                    setAgentMode(value as AgentMode)
-                  }}
-                  value={agentMode}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {[
-                      ['agent', t('chat.agentMode')],
-                      ['team', t('chat.teamMode')],
-                      ['none', t('chat.directModelMode')],
-                    ].map(([value, label]) => (
-                      <SelectItem key={value} value={value}>
-                        {label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>{t('chat.profile')}</Label>
-                <Select
-                  disabled={runnableProfiles.length === 0 || agentMode === 'none'}
-                  onValueChange={(value) => {
-                    const profileId = Number(value)
-                    setSelectedProfileId(profileId)
-                    saveLastSelectedProfileId(selectedApplicationId, profileId)
-                    const cleared = clearCurrentChatSession()
-                    setConversationId(cleared.conversationId)
-                    setMessages(cleared.messages)
-                    void loadConversationHistory(selectedApplicationId, profileId)
-                  }}
-                  value={selectedProfile?.profileId ? String(selectedProfile.profileId) : undefined}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder={runnableProfiles.length === 0 ? t('chat.noRunnableProfile') : t('chat.selectProfile')} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {runnableProfiles.map((profile) => (
-                      <SelectItem key={profile.profileId} value={String(profile.profileId)}>
-                        {profile.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>{t('chat.modelConfig')}</Label>
-                <Select
-                  disabled={state.modelConfigs.length === 0 || agentMode !== 'none'}
-                  onValueChange={(value) => {
-                    setSelectedModelConfigId(Number(value))
-                    const cleared = clearCurrentChatSession()
-                    setConversationId(cleared.conversationId)
-                    setMessages(cleared.messages)
-                  }}
-                  value={selectedModelConfig?.modelConfigId ? String(selectedModelConfig.modelConfigId) : undefined}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder={state.modelConfigs.length === 0 ? t('chat.noModel') : t('chat.selectModel')} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {state.modelConfigs.map((modelConfig) => (
-                      <SelectItem key={modelConfig.modelConfigId} value={String(modelConfig.modelConfigId)}>
-                        {modelConfig.displayName || modelConfig.modelName}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+      {/* Three-column layout */}
+      <div className="flex gap-3 flex-1 min-h-0">
+        {/* Collapsible history panel */}
+        <div className={`shrink-0 transition-all duration-300 ${historyCollapsed ? 'w-0 overflow-hidden opacity-0' : 'w-[260px]'}`}>
+          {!historyCollapsed && (
+            <ChatHistoryPanel
+              conversations={conversationHistory}
+              disabled={!selectedApplicationId || !selectedProfileId || agentMode === 'none'}
+              error={historyError}
+              isLoading={historyStatus === 'loading'}
+              onArchive={handleConversationArchive}
+              onNewConversation={startNewConversation}
+              onRefresh={() => loadConversationHistory(selectedApplicationId, selectedProfileId)}
+              onSelect={handleConversationSelect}
+              selectedConversationId={conversationId}
+            />
           )}
-        </CardContent>
-      </Card>
+        </div>
+
+        {/* Toggle history button */}
+        <button
+          className="shrink-0 self-center text-text-faint hover:text-text transition -ml-1 z-10"
+          onClick={() => setHistoryCollapsed((c) => !c)}
+          title={historyCollapsed ? '展开历史' : '收起历史'}
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            {historyCollapsed ? (
+              <path d="M10 3L5 8l5 5" stroke="currentColor" strokeWidth="1.5" fill="none" />
+            ) : (
+              <path d="M6 3l5 5-5 5" stroke="currentColor" strokeWidth="1.5" fill="none" />
+            )}
+          </svg>
+        </button>
+
+        {/* Chat area */}
+        <div className="flex-1 min-w-0">
+          <ConversationPanel
+            disabledReason={disabledReason}
+            input={input}
+            messages={messages}
+            ragCitations={ragCitations}
+            onInputChange={setInput}
+            onStop={stopStreaming}
+            onSubmit={sendMessage}
+            status={runtimeStatus}
+          />
+        </div>
+
+        {/* Runtime panel */}
+        <div className="shrink-0 w-[340px]">
+          <RuntimeDetailPanel
+            error={runtimeError}
+            events={runtimeEvents}
+            onConfirmTool={confirmTool}
+            status={runtimeStatus}
+          />
+        </div>
+      </div>
 
       {!selectedApplication && state.status === 'ready' ? (
         <Alert>
@@ -683,36 +681,6 @@ export function ChatPage() {
           <AlertDescription>{t('chat.noApplicationDescription')}</AlertDescription>
         </Alert>
       ) : null}
-
-      <div className="grid gap-6 2xl:grid-cols-[240px_minmax(720px,1fr)_320px]">
-        <ChatHistoryPanel
-          conversations={conversationHistory}
-          disabled={!selectedApplicationId || !selectedProfileId || agentMode === 'none'}
-          error={historyError}
-          isLoading={historyStatus === 'loading'}
-          onArchive={handleConversationArchive}
-          onNewConversation={startNewConversation}
-          onRefresh={() => loadConversationHistory(selectedApplicationId, selectedProfileId)}
-          onSelect={handleConversationSelect}
-          selectedConversationId={conversationId}
-        />
-        <ConversationPanel
-          disabledReason={disabledReason}
-          input={input}
-          messages={messages}
-          ragCitations={ragCitations}
-          onInputChange={setInput}
-          onStop={stopStreaming}
-          onSubmit={sendMessage}
-          status={runtimeStatus}
-        />
-        <RuntimeDetailPanel
-          error={runtimeError}
-          events={runtimeEvents}
-          onConfirmTool={confirmTool}
-          status={runtimeStatus}
-        />
-      </div>
     </section>
   )
 }

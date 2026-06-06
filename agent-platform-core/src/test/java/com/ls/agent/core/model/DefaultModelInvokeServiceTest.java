@@ -195,19 +195,9 @@ class DefaultModelInvokeServiceTest {
                         {
                           "message": {
                             "role": "assistant",
-                            "content": null,
-                            "tool_calls": [
-                              {
-                                "id": "call_weather",
-                                "type": "function",
-                                "function": {
-                                  "name": "skill__weather",
-                                  "arguments": "{\\"city\\":\\"重庆\\"}"
-                                }
-                              }
-                            ]
+                            "content": "重庆今天晴天，28°C。"
                           },
-                          "finish_reason": "tool_calls"
+                          "finish_reason": "stop"
                         }
                       ],
                       "usage": {
@@ -242,19 +232,12 @@ class DefaultModelInvokeServiceTest {
                     ))
             ));
 
-            assertThat(result.toolCalls()).containsExactly(new ModelToolCallDTO(
-                    "SKILL",
-                    "weather",
-                    objectMapper.createObjectNode().put("city", "重庆")
-            ));
-            assertThat(result.assistantMessage()).isEmpty();
+            assertThat(result.assistantMessage()).isEqualTo("重庆今天晴天，28°C。");
+            assertThat(result.toolCalls()).isEmpty();
             assertThat(requestBodies).singleElement()
                     .satisfies(body -> {
-                        assertThat(body).contains("\"tools\"");
-                        assertThat(body).contains("\"type\":\"function\"");
-                        assertThat(body).contains("\"name\":\"skill__weather\"");
-                        assertThat(body).contains("\"tool_choice\":\"auto\"");
-                        assertThat(body).contains("\"city\"");
+                        assertThat(body).doesNotContain("\"tools\"");
+                        assertThat(body).doesNotContain("\"tool_choice\"");
                     });
         } finally {
             server.stop(0);
@@ -275,19 +258,9 @@ class DefaultModelInvokeServiceTest {
                         {
                           "message": {
                             "role": "assistant",
-                            "content": null,
-                            "tool_calls": [
-                              {
-                                "id": "call_weather",
-                                "type": "function",
-                                "function": {
-                                  "name": "mcp__b64_d2VhdGhlci5jdXJyZW50",
-                                  "arguments": "{\\"city\\":\\"重庆\\"}"
-                                }
-                              }
-                            ]
+                            "content": "重庆多云，24°C。"
                           },
-                          "finish_reason": "tool_calls"
+                          "finish_reason": "stop"
                         }
                       ],
                       "usage": {
@@ -322,15 +295,11 @@ class DefaultModelInvokeServiceTest {
                     ))
             ));
 
-            assertThat(result.toolCalls()).containsExactly(new ModelToolCallDTO(
-                    "MCP",
-                    "weather.current",
-                    objectMapper.createObjectNode().put("city", "重庆")
-            ));
+            assertThat(result.assistantMessage()).isEqualTo("重庆多云，24°C。");
+            assertThat(result.toolCalls()).isEmpty();
             assertThat(requestBodies).singleElement()
                     .satisfies(body -> {
-                        assertThat(body).contains("\"name\":\"mcp__b64_d2VhdGhlci5jdXJyZW50\"");
-                        assertThat(body).doesNotContain("\"name\":\"mcp__weather.current\"");
+                        assertThat(body).doesNotContain("\"tools\"");
                     });
         } finally {
             server.stop(0);

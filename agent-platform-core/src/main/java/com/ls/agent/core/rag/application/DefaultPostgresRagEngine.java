@@ -500,10 +500,28 @@ public class DefaultPostgresRagEngine implements RagEngine {
         Set<String> terms = new LinkedHashSet<>();
         for (String part : normalized.split("\\s+")) {
             if (part.length() >= 2) {
-                terms.add(part);
+                if (isChinese(part)) {
+                    for (int i = 0; i < part.length() - 1; i++) {
+                        terms.add(part.substring(i, i + 2));
+                    }
+                    if (part.length() == 2) {
+                        terms.add(part);
+                    }
+                } else {
+                    terms.add(part);
+                }
             }
         }
         return terms;
+    }
+
+    private boolean isChinese(String text) {
+        for (int i = 0; i < text.length(); i++) {
+            if (Character.UnicodeScript.of(text.charAt(i)) == Character.UnicodeScript.HAN) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private String sha256(String value) {

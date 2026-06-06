@@ -39,7 +39,7 @@ public class RagKnowledgeController {
                 currentUser.tenantId(),
                 request.applicationId(),
                 currentUser.userId(),
-                request.profileId(),
+                null,
                 request.title(),
                 request.sourceType(),
                 request.sourceUri(),

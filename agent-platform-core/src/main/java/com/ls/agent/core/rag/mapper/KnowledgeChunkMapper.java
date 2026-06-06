@@ -47,10 +47,12 @@ public interface KnowledgeChunkMapper extends BaseMapper<KnowledgeChunkEntity> {
             where c.tenant_id = #{tenantId}
               and c.application_id = #{applicationId}
               and d.owner_user_id = #{ownerUserId}
-              and (
-                    d.profile_id is null
-                    or d.profile_id = #{profileId}
-                  )
+              <if test="profileId != null">
+                and (d.profile_id is null or d.profile_id = #{profileId})
+              </if>
+              <if test="profileId == null">
+                and d.profile_id is null
+              </if>
               and c.status = 'ACTIVE'
               and d.status = 'INDEXED'
               and (
@@ -82,10 +84,12 @@ public interface KnowledgeChunkMapper extends BaseMapper<KnowledgeChunkEntity> {
             where c.tenant_id = #{tenantId}
               and c.application_id = #{applicationId}
               and d.owner_user_id = #{ownerUserId}
-              and (
-                    d.profile_id is null
-                    or d.profile_id = #{profileId}
-                  )
+              <if test="profileId != null">
+                and (d.profile_id is null or d.profile_id = #{profileId})
+              </if>
+              <if test="profileId == null">
+                and d.profile_id is null
+              </if>
               and c.status = 'ACTIVE'
               and d.status = 'INDEXED'
               and c.id in

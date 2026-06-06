@@ -16,3 +16,17 @@ security:
   jwt:
     secret: ${AGENT_PLATFORM_JWT_SECRET:dev-only-change-me-dev-only-change-me}
     expires-in-seconds: ${AGENT_PLATFORM_JWT_EXPIRES_IN_SECONDS:7200}
+
+agent:
+  rag:
+    vector-store: qdrant
+    embedding-provider: openai-compatible
+    embedding:
+      enabled: true
+      base-url: https://api.siliconflow.cn/v1
+      api-key: ${SILICONFLOW_API_KEY:sk-ntmfzctwsgrldkofblxhowdcshibtytpywrahengjzsuidep}
+      model: BAAI/bge-large-zh-v1.5
+      dimension: 1024
+    qdrant:
+      enabled: true
+      base-url: http://localhost:6333

@@ -17,10 +17,12 @@ public interface KnowledgeDocumentMapper extends BaseMapper<KnowledgeDocumentEnt
             where tenant_id = #{tenantId}
               and application_id = #{applicationId}
               and owner_user_id = #{ownerUserId}
-              and (
-                    profile_id = #{profileId}
-                    or (profile_id is null and #{profileId} is null)
-                  )
+              <if test="profileId != null">
+                and profile_id = #{profileId}
+              </if>
+              <if test="profileId == null">
+                and profile_id is null
+              </if>
               and doc_hash = #{docHash}
               and status = 'INDEXED'
             limit 1
@@ -42,10 +44,12 @@ public interface KnowledgeDocumentMapper extends BaseMapper<KnowledgeDocumentEnt
               and tenant_id = #{tenantId}
               and application_id = #{applicationId}
               and owner_user_id = #{ownerUserId}
-              and (
-                    profile_id = #{profileId}
-                    or (profile_id is null and #{profileId} is null)
-                  )
+              <if test="profileId != null">
+                and profile_id = #{profileId}
+              </if>
+              <if test="profileId == null">
+                and profile_id is null
+              </if>
               and status = 'INDEXED'
             limit 1
             </script>

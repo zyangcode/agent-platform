@@ -59,7 +59,11 @@
       "Bash(curl -s http://localhost:8082/feishu/webhook -X POST -H \"Content-Type: application/json\" -d '{\"header\":{\"event_type\":\"message\"},\"event\":{\"sender\":{\"sender_id\":\"user1\"},\"message\":{\"chat_id\":\"chat1\",\"content\":\"{\\\\\"text\\\\\":\\\\\"/help\\\\\"}\"}}}')",
       "Bash(curl *)",
       "Bash(mvn test *)",
-      "Bash(sed 's/<[^>]*>//g')"
+      "Bash(sed 's/<[^>]*>//g')",
+      "Bash(npm run *)",
+      "Bash(mvn.cmd -s .mvn/settings.xml -pl agent-platform-core \"-Dtest=DefaultAgentContextBuilderTest#buildContextFallsBackToTrimAndInjectsDegradedNoticeWhenSummaryCannotFit\" test)",
+      "Bash(mvn.cmd -s .mvn/settings.xml -pl agent-platform-core \"-Dtest=DefaultAgentContextBuilderTest#buildContextTreatsExplicitEmptySelectedToolsAsNoTools\" test)",
+      "Bash(jar tf *)"
     ]
   },
   "hooks": {

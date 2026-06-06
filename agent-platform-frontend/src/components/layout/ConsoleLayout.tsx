@@ -4,14 +4,19 @@ import { TopStatusBar } from './TopStatusBar'
 
 export function ConsoleLayout() {
   return (
-    <main className="min-h-[100dvh] bg-[radial-gradient(circle_at_top_left,rgba(20,184,166,0.12),transparent_34rem),linear-gradient(135deg,#09090b_0%,#111827_45%,#0f172a_100%)] text-zinc-100">
-      <div className="mx-auto grid min-h-[100dvh] w-full max-w-[1480px] gap-6 px-4 py-6 md:px-6 lg:grid-cols-[272px_1fr]">
+    <div className="min-h-[100dvh] bg-bg text-text">
+      {/* Fixed substrate grid */}
+      <div className="substrate-grid" />
+
+      <div className="relative mx-auto flex min-h-[100dvh] w-full max-w-[1480px] gap-3 px-3 py-3 md:px-4">
         <Sidebar />
-        <section className="min-w-0 space-y-6">
+        <div className="flex min-h-0 flex-col gap-2 min-w-0 flex-1">
           <TopStatusBar />
-          <Outlet />
-        </section>
+          <div className="flex-1 min-h-0">
+            <Outlet />
+          </div>
+        </div>
       </div>
-    </main>
+    </div>
   )
 }

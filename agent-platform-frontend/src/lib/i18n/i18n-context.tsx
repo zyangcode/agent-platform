@@ -397,6 +397,7 @@ const defaultDictionary: TranslationDictionary = {
     en: 'No Skills match the current filters. Upload a Jar Skill or enable a seeded Skill.',
     zh: '没有符合当前筛选条件的 Skill。阶段 3 暂不开放上传界面。',
   },
+  'tools.operationFailed': { en: 'Operation failed', zh: '操作失败' },
   'tools.operationResult': { en: 'Operation result', zh: '操作结果' },
   'tools.profileIdOptional': { en: 'Profile ID (optional)', zh: 'Profile ID（可选）' },
   'tools.ragChunkBudget': { en: 'Chunk token budget', zh: 'Chunk Token 预算' },

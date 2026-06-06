@@ -79,7 +79,7 @@ class RagKnowledgeControllerTest {
         assertThat(captor.getValue().tenantId()).isEqualTo(1L);
         assertThat(captor.getValue().applicationId()).isEqualTo(20001L);
         assertThat(captor.getValue().ownerUserId()).isEqualTo(10001L);
-        assertThat(captor.getValue().profileId()).isEqualTo(50001L);
+        assertThat(captor.getValue().profileId()).isNull();
         assertThat(captor.getValue().title()).isEqualTo("Basketball Safety");
         assertThat(captor.getValue().content()).contains("Avoid noon");
         assertThat(captor.getValue().chunkTokenBudget()).isEqualTo(300);
