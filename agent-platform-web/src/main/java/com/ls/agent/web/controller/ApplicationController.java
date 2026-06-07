@@ -8,6 +8,7 @@ import com.ls.agent.core.identity.command.UpdateApplicationCommand;
 import com.ls.agent.core.identity.dto.ApiKeyDTO;
 import com.ls.agent.core.identity.dto.ApplicationDTO;
 import com.ls.agent.core.identity.dto.CreateApplicationResult;
+import com.ls.agent.core.identity.dto.CreatedApiKeyDTO;
 import com.ls.agent.core.identity.dto.RevokeApiKeyResult;
 import com.ls.agent.web.dto.CreateApplicationRequest;
 import com.ls.agent.web.dto.UpdateApplicationRequest;
@@ -120,6 +121,18 @@ public class ApplicationController {
         ));
     }
 
+    @PostMapping("/{applicationId}/enable")
+    public ApiResponse<ApplicationDTO> enable(
+            CurrentUser currentUser,
+            @PathVariable("applicationId") Long applicationId
+    ) {
+        return ApiResponse.success(applicationService.enableApplication(
+                currentUser.tenantId(),
+                currentUser.userId(),
+                applicationId
+        ));
+    }
+
     /**
      * 获取指定应用的 API 密钥列表。
      *
@@ -148,6 +161,18 @@ public class ApplicationController {
      * @param apiKeyId 密钥 ID
      * @return 包含撤销结果的通用响应体
      */
+    @PostMapping("/{applicationId}/api-keys/regenerate")
+    public ApiResponse<CreatedApiKeyDTO> regenerateApiKey(
+            CurrentUser currentUser,
+            @PathVariable("applicationId") Long applicationId
+    ) {
+        return ApiResponse.success(applicationService.regenerateApiKey(
+                currentUser.tenantId(),
+                currentUser.userId(),
+                applicationId
+        ));
+    }
+
     @PostMapping("/{applicationId}/api-keys/{apiKeyId}/revoke")
     public ApiResponse<RevokeApiKeyResult> revokeApiKey(
             CurrentUser currentUser,

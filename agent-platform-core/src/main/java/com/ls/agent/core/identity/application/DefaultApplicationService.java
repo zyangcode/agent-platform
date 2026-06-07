@@ -146,6 +146,41 @@ public class DefaultApplicationService implements ApplicationService {
         return toApplicationDTO(application);
     }
 
+    @Override
+    @Transactional
+    public ApplicationDTO enableApplication(Long tenantId, Long ownerUserId, Long applicationId) {
+        ApplicationEntity application = getOwnedApplication(tenantId, ownerUserId, applicationId);
+        application.setStatus(IdentityConstants.STATUS_ACTIVE);
+        applicationMapper.updateById(application);
+        return toApplicationDTO(application);
+    }
+
+    @Override
+    @Transactional
+    public CreatedApiKeyDTO regenerateApiKey(Long tenantId, Long ownerUserId, Long applicationId) {
+        ApplicationEntity application = getOwnedApplication(tenantId, ownerUserId, applicationId);
+        // Revoke existing keys
+        List<ApiKeyEntity> existing = apiKeyMapper.selectList(new LambdaQueryWrapper<ApiKeyEntity>()
+                .eq(ApiKeyEntity::getApplicationId, applicationId)
+                .eq(ApiKeyEntity::getStatus, IdentityConstants.STATUS_ACTIVE));
+        for (ApiKeyEntity key : existing) {
+            key.setStatus(IdentityConstants.STATUS_REVOKED);
+            apiKeyMapper.updateById(key);
+        }
+        // Generate new key
+        String plainApiKey = apiKeyGenerator.generate();
+        ApiKeyEntity apiKey = new ApiKeyEntity();
+        apiKey.setTenantId(application.getTenantId());
+        apiKey.setApplicationId(applicationId);
+        apiKey.setName("default");
+        apiKey.setKeyPrefix(apiKeyGenerator.prefixOf(plainApiKey));
+        apiKey.setKeyHash(passwordHasher.hash(plainApiKey));
+        apiKey.setStatus(IdentityConstants.STATUS_ACTIVE);
+        apiKeyMapper.insert(apiKey);
+        return new CreatedApiKeyDTO(apiKey.getId(), apiKey.getName(), plainApiKey,
+                apiKey.getKeyPrefix(), apiKey.getStatus());
+    }
+
     /**
      * 获取应用下的 API 密钥列表。
      *

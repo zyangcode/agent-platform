@@ -6,6 +6,7 @@ import com.ls.agent.core.identity.command.UpdateApplicationCommand;
 import com.ls.agent.core.identity.dto.ApiKeyDTO;
 import com.ls.agent.core.identity.dto.ApplicationDTO;
 import com.ls.agent.core.identity.dto.CreateApplicationResult;
+import com.ls.agent.core.identity.dto.CreatedApiKeyDTO;
 import com.ls.agent.core.identity.dto.RevokeApiKeyResult;
 
 import java.util.List;
@@ -19,6 +20,10 @@ public interface ApplicationService {
     ApplicationDTO updateApplication(UpdateApplicationCommand command);
 
     ApplicationDTO disableApplication(Long tenantId, Long ownerUserId, Long applicationId);
+
+    ApplicationDTO enableApplication(Long tenantId, Long ownerUserId, Long applicationId);
+
+    CreatedApiKeyDTO regenerateApiKey(Long tenantId, Long ownerUserId, Long applicationId);
 
     void ensureApplicationOwned(Long tenantId, Long ownerUserId, Long applicationId);
 
