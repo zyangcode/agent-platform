@@ -61,15 +61,32 @@ RAG 知识库（独立于记忆系统）
 
 ### 1.2 数据边界
 
-```
-core.memory（用户长期状态）          core.rag（外部知识依据）
-  memories 表                        knowledge_documents 表
-  ├─ summary (对话摘要)               knowledge_chunks 表
-  ├─ preference (用户偏好)            Qdrant collection: "rag"
-  ├─ fact (事实知识)                  Neo4j 图数据库（规划）
-  ├─ episodic (事件)           
-  ├─ tool_failure (工具经验)    两者通过 core.context Slot 注入层汇合
-  └─ reflection (反思)         不混用存储，不交叉检索
+Memory 和 RAG 只在 `core.context` 的 Slot 注入层汇合，存储、索引和召回范围必须分离。
+
+```text
+core.memory（用户长期状态）
+  PostgreSQL: memories 表
+  Qdrant collection: "memory"
+  PG tsvector: memories.search_vector（规划）
+  Neo4j: 用户事实/偏好图谱索引（规划，可选）
+  categories:
+    ├─ summary     对话摘要
+    ├─ preference  用户偏好
+    ├─ fact        用户/项目事实
+    ├─ episodic    事件
+    ├─ tool_failure 工具经验
+    └─ reflection  反思
+
+core.rag（外部知识依据）
+  PostgreSQL: knowledge_documents / knowledge_chunks 表
+  Qdrant collection: "rag"
+  PG tsvector: knowledge_chunks.search_vector（规划）
+  Neo4j: 文档实体关系图谱索引（规划，可选）
+
+core.context（唯一汇合点）
+  MemorySlotSource -> TASK_MEMORY Slot
+  RagSlotSource    -> RAG_RECALL Slot
+  不混用存储，不交叉检索，不把 memory 当 citation 来源。
 ```
 
 ---
@@ -446,3 +463,4 @@ Agent 在后续对话中召回此类记忆，自主避免重复错误。
 - MUSE: Plan-Execute-Reflect-Memorize Loop
 - Mem0 / Letta (MemGPT): OS-inspired tiered memory architecture
 - AGI-saber (Go/Java): 记忆分层 + 混合 RAG 参考架构
+
