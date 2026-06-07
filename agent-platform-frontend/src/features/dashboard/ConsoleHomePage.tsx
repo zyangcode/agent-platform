@@ -103,6 +103,13 @@ export function ConsoleHomePage() {
     }
   }, [fetchDashboardData])
 
+  const successRate = useMemo(() => {
+    const records = state.data?.recentTraces?.records ?? []
+    if (records.length === 0) return '-'
+    const succeeded = records.filter((trace) => trace.status === 'SUCCESS').length
+    return Math.round((succeeded / records.length) * 100) + '%'
+  }, [state.data])
+
   const metrics = useMemo(() => {
     const data = state.data
 
@@ -113,14 +120,14 @@ export function ConsoleHomePage() {
         value: data ? formatInteger(data.applications.total) : '-',
       },
       {
-        icon: ShieldCheck,
-        label: t('dashboard.profiles'),
-        value: data && data.applications.records.length > 0 ? t('dashboard.ready') : '0',
-      },
-      {
         icon: Activity,
         label: t('dashboard.recentTraces'),
         value: data ? formatInteger(data.recentTraces.total) : '-',
+      },
+      {
+        icon: ShieldCheck,
+        label: t('dashboard.successRate'),
+        value: successRate,
       },
       {
         icon: Database,
@@ -128,7 +135,7 @@ export function ConsoleHomePage() {
         value: data ? formatCompact(data.tokenSummary.totalTokens) : '-',
       },
     ]
-  }, [state.data, t])
+  }, [state.data, successRate, t])
 
   return (
     <section className="space-y-6">

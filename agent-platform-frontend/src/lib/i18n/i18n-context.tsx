@@ -240,6 +240,7 @@ const defaultDictionary: TranslationDictionary = {
     zh: '当前用户可见的最新 Gateway 治理请求。',
   },
   'dashboard.retry': { en: 'Retry', zh: '重试' },
+  'dashboard.successRate': { en: 'Success rate', zh: '成功率' },
   'dashboard.sessionExpired': { en: 'Session expired. Sign in again to continue.', zh: '登录已过期，请重新登录。' },
   'dashboard.started': { en: 'Started', zh: '开始时间' },
   'dashboard.tokenDataUnavailable': { en: 'Token data unavailable', zh: 'Token 数据不可用' },
