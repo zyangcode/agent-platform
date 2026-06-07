@@ -23,6 +23,7 @@ import { updateProfile } from './api'
 type EditProfileForm = {
   description: string
   maxSteps: string
+  memoryMode: string
   modelConfigId: string
   name: string
   promptExtra: string
@@ -69,7 +70,7 @@ export function EditProfileDialog({ modelConfigs, onUpdated, profile }: EditProf
       const updatedProfile = await updateProfile(profile.profileId, {
         description: form.description.trim() || undefined,
         maxSteps: Number(form.maxSteps),
-        memoryStrategy: profile.memoryStrategy ?? { mode: 'READ_WRITE' },
+        memoryStrategy: { mode: form.memoryMode },
         modelConfigId: Number(effectiveModelConfigId),
         name: form.name.trim(),
         promptExtra: form.promptExtra.trim() || undefined,
@@ -186,6 +187,22 @@ export function EditProfileDialog({ modelConfigs, onUpdated, profile }: EditProf
                 </SelectContent>
               </Select>
             </div>
+
+            <div className="space-y-2">
+              <Label>{t('profile.memoryMode')}</Label>
+              <Select
+                onValueChange={(value) => setForm((current) => ({ ...current, memoryMode: value }))}
+                value={form.memoryMode}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="DISABLED">{t('profile.memoryDisabled')}</SelectItem>
+                  <SelectItem value="READ_ONLY">{t('profile.memoryReadOnly')}</SelectItem>
+                  <SelectItem value="READ_WRITE">{t('profile.memoryReadWrite')}</SelectItem>
+                  <SelectItem value="SESSION_ONLY">{t('profile.memorySessionOnly')}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           {error ? (
@@ -210,6 +227,7 @@ function emptyForm(): EditProfileForm {
   return {
     description: '',
     maxSteps: '5',
+    memoryMode: 'READ_WRITE',
     modelConfigId: '',
     name: '',
     promptExtra: '',
@@ -221,6 +239,9 @@ function formFromProfile(profile: Profile): EditProfileForm {
   return {
     description: profile.description ?? '',
     maxSteps: String(profile.maxSteps ?? 5),
+    memoryMode: profile.memoryStrategy && typeof profile.memoryStrategy === 'object' && !Array.isArray(profile.memoryStrategy) && typeof (profile.memoryStrategy as Record<string,unknown>).mode === 'string'
+      ? (profile.memoryStrategy as Record<string,string>).mode
+      : 'READ_WRITE',
     modelConfigId: String(profile.modelConfigId),
     name: profile.name,
     promptExtra: profile.promptExtra ?? '',

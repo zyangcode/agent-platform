@@ -37,6 +37,7 @@ export function CreateProfileDialog({ application, modelConfigs, onCreated }: Cr
   const [open, setOpen] = useState(false)
   const [promptExtra, setPromptExtra] = useState('')
   const [executionMode, setExecutionMode] = useState<ProfileExecutionMode>('BASIC')
+  const [memoryMode, setMemoryMode] = useState('READ_WRITE')
 
   const effectiveModelConfigId = useMemo(() => {
     return modelConfigId || String(modelConfigs[0]?.modelConfigId ?? '')
@@ -57,7 +58,7 @@ export function CreateProfileDialog({ application, modelConfigs, onCreated }: Cr
         applicationId: application.applicationId,
         description: description.trim() || undefined,
         maxSteps: Number(maxSteps),
-        memoryStrategy: { mode: 'READ_WRITE' },
+        memoryStrategy: { mode: memoryMode },
         modelConfigId: Number(effectiveModelConfigId),
         name: name.trim(),
         profileType: 'GENERAL',
@@ -176,6 +177,21 @@ export function CreateProfileDialog({ application, modelConfigs, onCreated }: Cr
                 <SelectContent>
                   <SelectItem value="BASIC">{t('profile.executionModeBasic')}</SelectItem>
                   <SelectItem value="TEAM">{t('profile.executionModeTeam')}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>{t('profile.memoryMode')}</Label>
+              <Select onValueChange={setMemoryMode} value={memoryMode}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="DISABLED">{t('profile.memoryDisabled')}</SelectItem>
+                  <SelectItem value="READ_ONLY">{t('profile.memoryReadOnly')}</SelectItem>
+                  <SelectItem value="READ_WRITE">{t('profile.memoryReadWrite')}</SelectItem>
+                  <SelectItem value="SESSION_ONLY">{t('profile.memorySessionOnly')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
