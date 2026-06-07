@@ -10,7 +10,7 @@ import { ApiError } from '@/lib/api/errors'
 import type { ApiKey, Application } from '@/lib/api/types'
 import { formatDateTime } from '@/lib/format/date'
 import { useI18n } from '@/lib/i18n/use-i18n'
-import { listApiKeys, revokeApiKey } from './api'
+import { listApiKeys, regenerateApiKey, revokeApiKey } from './api'
 
 type ApiKeysPanelProps = {
   application: Application | null
@@ -80,6 +80,17 @@ export function ApiKeysPanel({ application }: ApiKeysPanelProps) {
     }
   }
 
+  async function handleRegenerate() {
+    if (!application || !isActiveApplication) return
+    try {
+      const newKey = await regenerateApiKey(application.applicationId)
+      alert(`New API Key: ${newKey.key}\nCopy it now - it won't be shown again.`)
+      await loadKeys(application.applicationId)
+    } catch {
+      alert('Failed to regenerate API key.')
+    }
+  }
+
   useEffect(() => {
     let isMounted = true
 
@@ -114,17 +125,30 @@ export function ApiKeysPanel({ application }: ApiKeysPanelProps) {
                 : t('application.selectApiKeys')}
             </CardDescription>
           </div>
-          {application ? (
-            <Button
-              disabled={!isActiveApplication}
-              onClick={() => loadKeys(application.applicationId)}
-              size="sm"
-              variant="secondary"
-            >
-              <RefreshCw className="h-4 w-4" strokeWidth={1.75} />
-              {t('common.refresh')}
-            </Button>
-          ) : null}
+          <div className="flex gap-2">
+            {application ? (
+              <>
+                <Button
+                  disabled={!isActiveApplication}
+                  onClick={handleRegenerate}
+                  size="sm"
+                  variant="secondary"
+                >
+                  <KeyRound className="h-4 w-4" strokeWidth={1.75} />
+                  Regenerate
+                </Button>
+                <Button
+                  disabled={!isActiveApplication}
+                  onClick={() => loadKeys(application.applicationId)}
+                  size="sm"
+                  variant="secondary"
+                >
+                  <RefreshCw className="h-4 w-4" strokeWidth={1.75} />
+                  {t('common.refresh')}
+                </Button>
+              </>
+            ) : null}
+          </div>
         </div>
       </CardHeader>
       <CardContent>

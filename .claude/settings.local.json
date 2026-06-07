@@ -80,7 +80,10 @@
       "Bash(mvn.cmd -s .mvn/settings.xml -pl agent-platform-core test)",
       "Bash(mvn.cmd -s .mvn/settings.xml -pl agent-platform-core compile)",
       "Bash(mvn.cmd -s .mvn/settings.xml test -pl agent-platform-core)",
-      "Bash(npm --prefix agent-platform-frontend run build)"
+      "Bash(npm --prefix agent-platform-frontend run build)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)"
     ]
   },
   "hooks": {

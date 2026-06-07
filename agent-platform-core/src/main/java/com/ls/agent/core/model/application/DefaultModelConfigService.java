@@ -130,6 +130,15 @@ public class DefaultModelConfigService implements ModelConfigService {
         return toConfigDTO(config);
     }
 
+    @Override
+    public ModelConfigDTO disableModelConfig(Long modelConfigId) {
+        ModelConfigEntity config = configMapper.selectById(ModelValidation.requireNonNull(modelConfigId, "modelConfigId"));
+        if (config == null) throw new BizException(ErrorCode.REQUEST_INVALID, "Model config not found");
+        config.setStatus(ModelConstants.STATUS_DISABLED);
+        configMapper.updateById(config);
+        return toConfigDTO(config);
+    }
+
     /**
      * 获取所有处于激活状态的模型配置列表。
      */

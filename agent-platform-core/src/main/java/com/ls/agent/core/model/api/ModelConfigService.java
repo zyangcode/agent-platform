@@ -18,4 +18,6 @@ public interface ModelConfigService {
     ModelConfigDTO getActiveModelConfig(Long modelConfigId);
 
     List<ModelConfigDTO> listActiveModelConfigs();
+
+    ModelConfigDTO disableModelConfig(Long modelConfigId);
 }

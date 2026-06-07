@@ -9,7 +9,9 @@ import com.ls.agent.core.model.dto.ModelProviderDTO;
 import com.ls.agent.web.dto.CreateModelConfigRequest;
 import com.ls.agent.web.dto.CreateModelProviderRequest;
 import jakarta.validation.Valid;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
@@ -85,4 +87,10 @@ public class ModelController {
         // 调用业务层获取当前系统中所有可供 Agent 绑定的激活模型
         return ApiResponse.success(modelConfigService.listActiveModelConfigs());
     }
+
+    @PostMapping("/api/admin/model-configs/{modelConfigId}/disable")
+    public ApiResponse<ModelConfigDTO> disableModelConfig(@PathVariable Long modelConfigId) {
+        return ApiResponse.success(modelConfigService.disableModelConfig(modelConfigId));
+    }
+
 }
