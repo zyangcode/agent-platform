@@ -9,7 +9,11 @@ import com.ls.agent.core.mcp.api.McpServerService;
 import com.ls.agent.core.mcp.command.CreateMcpServerCommand;
 import com.ls.agent.core.mcp.dto.McpServerDTO;
 import com.ls.agent.core.mcp.entity.McpServerEntity;
+import com.ls.agent.core.mcp.entity.McpToolEntity;
 import com.ls.agent.core.mcp.mapper.McpServerMapper;
+import com.ls.agent.core.mcp.mapper.McpToolMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,15 +22,24 @@ import java.util.List;
 @Service
 public class DefaultMcpServerService implements McpServerService {
 
+    private static final Logger log = LoggerFactory.getLogger(DefaultMcpServerService.class);
     private static final String STATUS_ACTIVE = "ACTIVE";
     private static final String STATUS_DISABLED = "DISABLED";
+    private static final String TOOL_STATUS_AVAILABLE = "AVAILABLE";
 
     private final McpServerMapper mapper;
+    private final McpToolMapper toolMapper;
     private final ObjectMapper objectMapper;
+    private final StdioMcpClient stdioMcpClient;
+    private final HttpMcpClient httpMcpClient;
 
-    public DefaultMcpServerService(McpServerMapper mapper, ObjectMapper objectMapper) {
+    public DefaultMcpServerService(McpServerMapper mapper, McpToolMapper toolMapper, ObjectMapper objectMapper,
+                                   StdioMcpClient stdioMcpClient, HttpMcpClient httpMcpClient) {
         this.mapper = mapper;
+        this.toolMapper = toolMapper;
         this.objectMapper = objectMapper;
+        this.stdioMcpClient = stdioMcpClient;
+        this.httpMcpClient = httpMcpClient;
     }
 
     @Override
@@ -40,7 +53,40 @@ public class DefaultMcpServerService implements McpServerService {
         entity.setConnectionConfig(normalizeConnectionConfig(command.connectionConfig()));
         entity.setStatus(STATUS_ACTIVE);
         mapper.insert(entity);
+        discoverTools(entity);
         return toDTO(entity);
+    }
+
+    private void discoverTools(McpServerEntity server) {
+        try {
+            JsonNode result;
+            if ("STDIO".equalsIgnoreCase(server.getServerType())) {
+                result = stdioMcpClient.listTools(server);
+            } else if ("HTTP".equalsIgnoreCase(server.getServerType())) {
+                result = httpMcpClient.listTools(server);
+            } else {
+                return;
+            }
+            JsonNode tools = result.path("tools");
+            if (!tools.isArray()) return;
+            for (JsonNode tool : tools) {
+                String name = tool.path("name").asText("");
+                if (name.isBlank()) continue;
+                McpToolEntity existing = toolMapper.selectOne(new LambdaQueryWrapper<McpToolEntity>()
+                        .eq(McpToolEntity::getMcpServerId, server.getId())
+                        .eq(McpToolEntity::getName, name));
+                if (existing != null) continue;
+                McpToolEntity entity = new McpToolEntity();
+                entity.setMcpServerId(server.getId());
+                entity.setName(name);
+                entity.setDescription(tool.path("description").asText(""));
+                entity.setParameterSchema(tool.path("inputSchema"));
+                entity.setStatus(TOOL_STATUS_AVAILABLE);
+                toolMapper.insert(entity);
+            }
+        } catch (Exception ex) {
+            log.warn("MCP tool discovery failed for server {}: {}", server.getName(), ex.getMessage());
+        }
     }
 
     @Override

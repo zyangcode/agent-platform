@@ -1,6 +1,7 @@
 package com.ls.agent.core.experience.application;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import java.util.List;
 import com.ls.agent.core.experience.api.ExperienceSkillResolver;
 import com.ls.agent.core.experience.dto.ExperienceSkillDTO;
 import com.ls.agent.core.experience.entity.ExperienceSkillEntity;
@@ -19,7 +20,7 @@ public class DefaultExperienceSkillResolver implements ExperienceSkillResolver {
     private static final int FETCH_MULTIPLIER = 10;
     private static final int MIN_KEYWORD_LENGTH = 2;
     private static final Pattern KEYWORD_SPLITTER = Pattern.compile(
-            "[\\s,./;:'\"\\[\\]{}|_=+\\-!@#$%^&*()]+");
+            "[\\s,./;:'\"\\[\\]{}|_=+\\-!@#$%^&*()\\u3000\\u3001\\uff0c\\u3002\\uff01\\uff1f\\uff1b\\uff1a]+");
 
     private final ExperienceSkillMapper experienceSkillMapper;
 
@@ -47,15 +48,8 @@ public class DefaultExperienceSkillResolver implements ExperienceSkillResolver {
         if (candidates == null || candidates.isEmpty()) {
             return List.of();
         }
-        return candidates.stream()
-                .filter(skill -> matchesDomain(skill, profileType) || countHits(skill, keywords) > 0 || matchesProfile(skill, profileId))
-                .sorted(Comparator
-                        .<ExperienceSkillEntity>comparingInt(skill -> score(skill, keywords, profileId, profileType))
-                        .reversed()
-                        .thenComparing(ExperienceSkillEntity::getUpdatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
-                .limit(safeLimit)
-                .map(this::toDTO)
-                .toList();
+        // 全部注入，不做关键词匹配，由 token 预算控制裁剪
+        return candidates.stream().limit(safeLimit).map(this::toDTO).toList();
     }
 
     private LambdaQueryWrapper<ExperienceSkillEntity> baseWrapper(
@@ -106,15 +100,12 @@ public class DefaultExperienceSkillResolver implements ExperienceSkillResolver {
         if (keywords.isEmpty()) {
             return 0;
         }
-        String text = String.join(" ",
-                nullToEmpty(skill.getName()),
-                nullToEmpty(skill.getDomain()),
-                nullToEmpty(skill.getContent()),
-                String.join(" ", skill.getTriggerKeywords() == null ? new String[0] : skill.getTriggerKeywords())
-        ).toLowerCase(Locale.ROOT);
+        String userText = String.join(" ", keywords).toLowerCase(Locale.ROOT);
+        String[] triggers = skill.getTriggerKeywords() == null ? new String[0] : skill.getTriggerKeywords();
         int hits = 0;
-        for (String keyword : keywords) {
-            if (text.contains(keyword.toLowerCase(Locale.ROOT))) {
+        for (String trigger : triggers) {
+            if (trigger != null && !trigger.isBlank()
+                    && userText.contains(trigger.strip().toLowerCase(Locale.ROOT))) {
                 hits++;
             }
         }
@@ -134,11 +125,13 @@ public class DefaultExperienceSkillResolver implements ExperienceSkillResolver {
     }
 
     private ExperienceSkillDTO toDTO(ExperienceSkillEntity skill) {
+        String[] keywords = skill.getTriggerKeywords();
         return new ExperienceSkillDTO(
                 skill.getId(),
                 skill.getCode(),
                 skill.getName(),
                 skill.getDomain(),
+                keywords == null ? List.of() : List.of(keywords),
                 truncate(skill.getContent())
         );
     }

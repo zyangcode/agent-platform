@@ -1,6 +1,7 @@
 package com.ls.agent.web.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.List;
 import com.ls.agent.common.response.PageResult;
 import com.ls.agent.core.experience.api.ExperienceSkillService;
 import com.ls.agent.core.experience.command.CreateExperienceSkillCommand;
@@ -149,6 +150,7 @@ class ExperienceSkillControllerTest {
                 "support-refund-tone",
                 "Support refund tone",
                 "SUPPORT",
+                List.of(),
                 "Use empathy first."
         );
     }

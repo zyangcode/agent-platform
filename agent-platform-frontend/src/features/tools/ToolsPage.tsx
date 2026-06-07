@@ -762,32 +762,17 @@ export function ToolsPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1">
-                <FieldInput
-                  id="experience-code"
-                  label={t('tools.code')}
-                  onChange={(value) => setExperienceForm((current) => ({ ...current, code: value }))}
-                  value={experienceForm.code}
-                />
-                <FieldInput
-                  id="experience-name"
-                  label={t('profile.name')}
-                  onChange={(value) => setExperienceForm((current) => ({ ...current, name: value }))}
-                  value={experienceForm.name}
-                />
-              </div>
+              <FieldInput
+                id="experience-name"
+                label={t('profile.name')}
+                onChange={(value) => setExperienceForm((current) => ({ ...current, name: value, code: value.replace(/[^a-zA-Z0-9_-]/g, '-').toLowerCase() }))}
+                value={experienceForm.name}
+              />
               <FieldInput
                 id="experience-domain"
                 label={t('tools.domain')}
                 onChange={(value) => setExperienceForm((current) => ({ ...current, domain: value }))}
                 value={experienceForm.domain}
-              />
-              <FieldInput
-                id="experience-profile"
-                label={t('tools.profileIdOptional')}
-                onChange={(value) => setExperienceForm((current) => ({ ...current, profileId: value }))}
-                type="number"
-                value={experienceForm.profileId}
               />
               <FieldInput
                 id="experience-keywords"

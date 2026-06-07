@@ -150,6 +150,7 @@ export type ExperienceSkill = {
   code: string
   name: string
   domain?: string | null
+  triggerKeywords?: string[] | null
   content: string
 }
 

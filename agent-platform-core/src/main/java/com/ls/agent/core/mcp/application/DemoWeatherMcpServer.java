@@ -8,8 +8,12 @@ import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
+import java.net.URI;
+import java.net.URLEncoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.util.Locale;
 
 public final class DemoWeatherMcpServer {
 
@@ -33,6 +37,8 @@ public final class DemoWeatherMcpServer {
                 String method = request.path("method").asText("");
                 if ("initialize".equals(method)) {
                     response.set("result", initializeResult());
+                } else if ("tools/list".equals(method)) {
+                    response.set("result", toolsListResult());
                 } else if ("tools/call".equals(method)) {
                     response.set("result", callToolResult(request.path("params")));
                 } else {
@@ -59,6 +65,20 @@ public final class DemoWeatherMcpServer {
         return result;
     }
 
+    private static ObjectNode toolsListResult() {
+        var tools = OBJECT_MAPPER.createArrayNode();
+        tools.add(OBJECT_MAPPER.createObjectNode()
+                .put("name", "weather.current")
+                .put("description", "Get current weather by city")
+                .set("inputSchema", OBJECT_MAPPER.createObjectNode()
+                        .put("type", "object")
+                        .set("properties", OBJECT_MAPPER.createObjectNode()
+                                .set("city", OBJECT_MAPPER.createObjectNode()
+                                        .put("type", "string")
+                                        .put("description", "City name")))));
+        return OBJECT_MAPPER.createObjectNode().set("tools", tools);
+    }
+
     private static ObjectNode callToolResult(JsonNode params) {
         String toolName = params.path("name").asText("");
         if (!"weather.current".equals(toolName)) {
@@ -75,37 +95,77 @@ public final class DemoWeatherMcpServer {
     }
 
     private static ObjectNode weatherResult(String city) {
-        WeatherSnapshot snapshot = snapshot(city);
-        ObjectNode result = OBJECT_MAPPER.createObjectNode();
-        result.put("city", city);
-        result.put("temperatureCelsius", snapshot.temperatureCelsius());
-        result.put("condition", snapshot.condition());
-        result.put("humidityPercent", snapshot.humidityPercent());
-        result.put("windLevel", snapshot.windLevel());
-        result.put("basketballAdvice", snapshot.basketballAdvice());
-        result.put("summary", city + "当前" + snapshot.condition()
-                + "，约" + snapshot.temperatureCelsius() + "℃，湿度" + snapshot.humidityPercent()
-                + "%，" + snapshot.basketballAdvice());
-        result.put("source", "demo-mcp-weather");
-        result.put("isError", false);
-        return result;
+        try {
+            String normalized = city.strip();
+            double lat;
+            double lon;
+            String name;
+            java.util.Map<String, double[]> known = knownCities();
+            if (known.containsKey(normalized)) {
+                double[] coords = known.get(normalized);
+                lat = coords[0]; lon = coords[1]; name = normalized;
+            } else {
+                String encoded = URLEncoder.encode(normalized, StandardCharsets.UTF_8);
+                URI geoUri = URI.create("https://geocoding-api.open-meteo.com/v1/search?name=" + encoded + "&count=1&language=en&format=json");
+                HttpClient geoClient = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL).build();
+                HttpResponse<String> geoResp = geoClient.send(
+                        HttpRequest.newBuilder(geoUri).GET().build(),
+                        HttpResponse.BodyHandlers.ofString());
+                JsonNode geo = OBJECT_MAPPER.readTree(geoResp.body());
+                JsonNode first = geo.path("results").path(0);
+                if (first.isMissingNode()) {
+                    return errorResult("City not found: " + city);
+                }
+                lat = first.path("latitude").asDouble();
+                lon = first.path("longitude").asDouble();
+                name = first.path("name").asText(normalized);
+            }
+            URI forecastUri = URI.create("https://api.open-meteo.com/v1/forecast"
+                    + "?latitude=" + lat + "&longitude=" + lon
+                    + "&current=temperature_2m,weather_code,wind_speed_10m,relative_humidity_2m"
+                    + "&timezone=auto");
+            HttpClient forecastClient = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL).build();
+            HttpResponse<String> fcResp = forecastClient.send(
+                    HttpRequest.newBuilder(forecastUri).GET().build(),
+                    HttpResponse.BodyHandlers.ofString());
+            JsonNode current = OBJECT_MAPPER.readTree(fcResp.body()).path("current");
+            double temp = current.path("temperature_2m").asDouble();
+            int code = current.path("weather_code").asInt();
+            double wind = current.path("wind_speed_10m").asDouble();
+            int humidity = current.path("relative_humidity_2m").asInt();
+            ObjectNode result = OBJECT_MAPPER.createObjectNode();
+            result.put("city", name);
+            result.put("temperatureCelsius", temp);
+            result.put("weatherCode", code);
+            result.put("condition", weatherDescription(code));
+            result.put("windSpeedKmh", wind);
+            result.put("humidityPercent", humidity);
+            result.put("summary", name + "当前" + weatherDescription(code)
+                    + "，" + temp + "°C，湿度" + humidity + "%");
+            result.put("source", "open-meteo");
+            result.put("isError", false);
+            return result;
+        } catch (Exception ex) {
+            return errorResult("Weather lookup failed: " + ex.getMessage());
+        }
     }
 
-    private static WeatherSnapshot snapshot(String city) {
-        String normalized = city.toLowerCase(Locale.ROOT);
-        if (normalized.contains("重庆") || normalized.contains("chongqing")) {
-            return new WeatherSnapshot(31, "多云偏闷热", 72, "2级", "适合傍晚打篮球，注意补水并避开正午高温。");
-        }
-        if (normalized.contains("北京") || normalized.contains("beijing")) {
-            return new WeatherSnapshot(27, "晴", 38, "3级", "适合户外篮球，注意热身和防晒。");
-        }
-        if (normalized.contains("上海") || normalized.contains("shanghai")) {
-            return new WeatherSnapshot(29, "阴", 68, "3级", "可以打篮球，湿度偏高时建议降低强度。");
-        }
-        if (normalized.contains("广州") || normalized.contains("guangzhou")) {
-            return new WeatherSnapshot(32, "阵雨间歇", 78, "2级", "不建议室外篮球，优先选择室内场地。");
-        }
-        return new WeatherSnapshot(26, "多云", 55, "2级", "适合轻中等强度篮球，出发前再确认本地实时天气。");
+    private static String weatherDescription(int code) {
+        return switch (code) {
+            case 0 -> "晴天"; case 1,2,3 -> "多云";
+            case 45,48 -> "雾霾"; case 51,53,55 -> "小雨";
+            case 61,63,65 -> "中雨"; case 71,73,75 -> "小雪";
+            case 80,81,82 -> "阵雨"; case 95,96,99 -> "雷暴";
+            default -> "多云";
+        };
+    }
+
+    private static ObjectNode errorResult(String message) {
+        ObjectNode error = OBJECT_MAPPER.createObjectNode();
+        error.put("isError", true);
+        error.put("content", OBJECT_MAPPER.createArrayNode()
+                .add(OBJECT_MAPPER.createObjectNode().put("type", "text").put("text", message)));
+        return error;
     }
 
     private static String normalizeCity(String city) {
@@ -115,12 +175,18 @@ public final class DemoWeatherMcpServer {
         return city.strip();
     }
 
-    private record WeatherSnapshot(
-            int temperatureCelsius,
-            String condition,
-            int humidityPercent,
-            String windLevel,
-            String basketballAdvice
-    ) {
+    private static java.util.Map<String, double[]> knownCities() {
+        java.util.Map<String, double[]> cities = new java.util.LinkedHashMap<>();
+        cities.put("重庆", new double[]{29.56, 106.55});
+        cities.put("北京", new double[]{39.90, 116.41});
+        cities.put("上海", new double[]{31.23, 121.47});
+        cities.put("广州", new double[]{23.13, 113.26});
+        cities.put("深圳", new double[]{22.54, 114.06});
+        cities.put("成都", new double[]{30.57, 104.07});
+        cities.put("杭州", new double[]{30.29, 120.15});
+        cities.put("武汉", new double[]{30.59, 114.31});
+        cities.put("西安", new double[]{34.34, 108.94});
+        cities.put("南京", new double[]{32.06, 118.80});
+        return cities;
     }
 }

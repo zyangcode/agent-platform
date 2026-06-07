@@ -4,10 +4,13 @@ import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ls.agent.common.error.BizException;
 import com.ls.agent.core.mcp.application.DefaultMcpServerService;
+import com.ls.agent.core.mcp.application.HttpMcpClient;
+import com.ls.agent.core.mcp.application.StdioMcpClient;
 import com.ls.agent.core.mcp.command.CreateMcpServerCommand;
 import com.ls.agent.core.mcp.dto.McpServerDTO;
 import com.ls.agent.core.mcp.entity.McpServerEntity;
 import com.ls.agent.core.mcp.mapper.McpServerMapper;
+import com.ls.agent.core.mcp.mapper.McpToolMapper;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -24,10 +27,15 @@ class DefaultMcpServerServiceTest {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final McpServerMapper mapper = mock(McpServerMapper.class);
-    private final DefaultMcpServerService service = new DefaultMcpServerService(mapper, objectMapper);
+    private final McpToolMapper toolMapper = mock(McpToolMapper.class);
+    private final StdioMcpClient stdioClient = mock(StdioMcpClient.class);
+    private final HttpMcpClient httpClient = mock(HttpMcpClient.class);
+    private final DefaultMcpServerService service = new DefaultMcpServerService(
+            mapper, toolMapper, objectMapper, stdioClient, httpClient);
 
     @Test
     void createPersistsActiveServerInTenantScope() {
+        when(stdioClient.listTools(any())).thenReturn(objectMapper.createObjectNode());
         service.create(new CreateMcpServerCommand(
                 1L,
                 "Readonly Filesystem MCP",

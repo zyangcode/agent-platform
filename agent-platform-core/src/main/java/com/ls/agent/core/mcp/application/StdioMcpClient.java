@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.ls.agent.common.error.BizException;
 import com.ls.agent.common.error.ErrorCode;
 import com.ls.agent.core.mcp.entity.McpServerEntity;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.io.BufferedReader;
@@ -21,12 +23,34 @@ import java.util.List;
 @Component
 public class StdioMcpClient implements McpClient {
 
-    private static final Duration CALL_TIMEOUT = Duration.ofSeconds(8);
+    private static final Logger log = LoggerFactory.getLogger(StdioMcpClient.class);
+    private static final Duration CALL_TIMEOUT = Duration.ofSeconds(20);
 
     private final ObjectMapper objectMapper;
 
     public StdioMcpClient(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
+    }
+
+    public JsonNode listTools(McpServerEntity server) {
+        List<String> command = stdioCommand(server.getConnectionConfig());
+        Process process = null;
+        try {
+            process = new ProcessBuilder(command).redirectErrorStream(true).start();
+            try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8));
+                 BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+                writeJsonRpc(writer, 1, "initialize", objectMapper.createObjectNode());
+                readJsonRpc(reader, 1);
+                writeJsonRpc(writer, 2, "tools/list", objectMapper.createObjectNode());
+                JsonNode response = readJsonRpc(reader, 2);
+                return response.path("result");
+            }
+        } catch (Exception ex) {
+            log.warn("MCP tools/list failed for {}: {}", server.getName(), ex.getMessage());
+            return objectMapper.createObjectNode();
+        } finally {
+            if (process != null) process.destroyForcibly();
+        }
     }
 
     @Override
@@ -37,7 +61,7 @@ public class StdioMcpClient implements McpClient {
         List<String> command = stdioCommand(server.getConnectionConfig());
         Process process = null;
         try {
-            process = new ProcessBuilder(command).start();
+            process = new ProcessBuilder(command).redirectErrorStream(true).start();
             try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8));
                  BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
                 writeJsonRpc(writer, 1, "initialize", objectMapper.createObjectNode());
@@ -53,8 +77,8 @@ public class StdioMcpClient implements McpClient {
                 }
                 return result.path("result");
             }
-        } catch (IOException ex) {
-            throw new BizException(ErrorCode.MCP_TOOL_FAILED, "MCP stdio call failed: " + safeMessage(ex));
+        } catch (Exception ex) {
+            throw new BizException(ErrorCode.MCP_TOOL_FAILED, "MCP tool unavailable: " + toolName + " (" + safeMessage(ex) + ")");
         } finally {
             if (process != null) {
                 process.destroyForcibly();
@@ -84,7 +108,11 @@ public class StdioMcpClient implements McpClient {
             );
         }
         List<String> command = new ArrayList<>();
-        command.add(configuredCommand);
+        for (String part : configuredCommand.split("\\s+")) {
+            if (!part.isBlank()) {
+                command.add(part);
+            }
+        }
         JsonNode args = config.path("args");
         if (args.isArray()) {
             for (JsonNode arg : args) {
@@ -119,32 +147,15 @@ public class StdioMcpClient implements McpClient {
     private JsonNode readJsonRpc(BufferedReader reader, int expectedId) throws IOException {
         long deadline = System.nanoTime() + CALL_TIMEOUT.toNanos();
         while (System.nanoTime() < deadline) {
-            if (!reader.ready()) {
-                sleepBriefly();
-                continue;
-            }
             String line = reader.readLine();
-            if (line == null) {
-                break;
-            }
-            if (line.isBlank()) {
-                continue;
-            }
+            if (line == null) break;
+            if (line.isBlank()) continue;
             JsonNode response = objectMapper.readTree(line);
             if (response.path("id").asInt(-1) == expectedId) {
                 return response;
             }
         }
         throw new BizException(ErrorCode.MCP_TOOL_FAILED, "MCP stdio response timed out");
-    }
-
-    private void sleepBriefly() {
-        try {
-            Thread.sleep(10);
-        } catch (InterruptedException ex) {
-            Thread.currentThread().interrupt();
-            throw new BizException(ErrorCode.MCP_TOOL_FAILED, "MCP stdio call interrupted");
-        }
     }
 
     private String safeMessage(Exception ex) {

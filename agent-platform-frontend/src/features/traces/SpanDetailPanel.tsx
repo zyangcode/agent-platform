@@ -129,7 +129,7 @@ function FactField({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0 rounded-xl border border-cyan-200/10 bg-cyan-300/[0.035] px-3 py-2">
       <span className="text-xs text-zinc-500">{label}</span>
-      <p className="mt-1 min-w-0 break-all font-mono text-xs leading-5 text-cyan-100">{value}</p>
+      <p className="mt-1 min-w-0 break-words font-mono text-xs leading-5 text-cyan-100">{value}</p>
     </div>
   )
 }
@@ -149,7 +149,7 @@ function Field({
     <div className="grid min-w-0 gap-2 rounded-xl border border-white/10 bg-white/[0.035] px-3 py-2 sm:grid-cols-[5.5rem_minmax(0,1fr)] sm:items-center">
       <span className="text-xs text-zinc-500">{label}</span>
       <span className="flex min-w-0 items-center justify-between gap-2">
-        <span className="min-w-0 break-all font-mono text-xs text-zinc-200">{value}</span>
+        <span className="min-w-0 break-words font-mono text-xs text-zinc-200">{value}</span>
         {onCopy ? (
           <Button className="h-7 w-7 shrink-0" onClick={onCopy} size="icon" variant="ghost">
             {copied ? (

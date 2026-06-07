@@ -497,6 +497,11 @@ function TraceDetailView({
             <Metric label={t('common.tokens')} value={formatTraceTokenCount(detail.totalTokens)} />
             <Metric label={t('trace.mode')} value={detail.agentMode || '-'} />
           </div>
+          <div className="grid gap-3 md:grid-cols-3">
+            <Metric label={t('trace.userId')} value={detail.userId ? `#${detail.userId}` : '-'} />
+            <Metric label={t('trace.applicationId')} value={detail.applicationId ? `#${detail.applicationId}` : '-'} />
+            <Metric label={t('trace.entrypoint')} value={detail.entrypoint || '-'} />
+          </div>
           {modelCallSummary ? (
             <div className="grid gap-3 md:grid-cols-4">
               <Metric label={t('trace.modelCallCount')} value={String(modelCallSummary.modelCallCount)} />

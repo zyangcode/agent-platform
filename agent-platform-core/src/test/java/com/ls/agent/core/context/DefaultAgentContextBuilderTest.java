@@ -100,7 +100,7 @@ class DefaultAgentContextBuilderTest {
                 .containsExactly("system", "user", "assistant", "user");
         assertThat(result.apiMessages().get(0).content())
                 .contains("You are Nexus")
-                .contains("instead of guessing")
+                .contains("Act directly")
                 .contains("@skill:name")
                 .contains("Be concise.")
                 .contains("Ada likes concise answers.")
@@ -478,11 +478,11 @@ class DefaultAgentContextBuilderTest {
 
         assertThat(result.truncated()).isTrue();
         assertThat(result.apiMessages()).extracting("content")
-                .anySatisfy(content -> assertThat(String.valueOf(content)).contains("[compact.auto.degraded]"))
+                .anySatisfy(content -> assertThat(String.valueOf(content)).contains("[compact.auto] older history summarized"))
                 .contains("current")
                 .doesNotContain("very old " + "x".repeat(300));
         assertThat(result.conversationMessages()).extracting("content")
-                .anySatisfy(content -> assertThat(String.valueOf(content)).contains("[compact.auto.degraded]"))
+                .anySatisfy(content -> assertThat(String.valueOf(content)).contains("[compact.auto] older history summarized"))
                 .contains("current");
         assertThat(result.contextBudgetSnapshot().apiMessagesTokens()).isLessThanOrEqualTo(100);
     }
@@ -560,6 +560,7 @@ class DefaultAgentContextBuilderTest {
                         "support-refund-tone",
                         "Support refund tone",
                         "GENERAL",
+                        List.of(),
                         "Use empathy first. Confirm policy second. Keep the final reply under 120 words."
                 )));
 
@@ -603,6 +604,7 @@ class DefaultAgentContextBuilderTest {
                         "small-window-exp",
                         "Small Window Experience",
                         "GENERAL",
+                        List.of(),
                         largeExperience
                 )));
 
@@ -912,6 +914,7 @@ class DefaultAgentContextBuilderTest {
                 code,
                 "Large Window Experience",
                 "GENERAL",
+                List.of(),
                 content
         );
     }

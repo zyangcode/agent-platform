@@ -63,7 +63,22 @@
       "Bash(npm run *)",
       "Bash(mvn.cmd -s .mvn/settings.xml -pl agent-platform-core \"-Dtest=DefaultAgentContextBuilderTest#buildContextFallsBackToTrimAndInjectsDegradedNoticeWhenSummaryCannotFit\" test)",
       "Bash(mvn.cmd -s .mvn/settings.xml -pl agent-platform-core \"-Dtest=DefaultAgentContextBuilderTest#buildContextTreatsExplicitEmptySelectedToolsAsNoTools\" test)",
-      "Bash(jar tf *)"
+      "Bash(jar tf *)",
+      "Bash(javac -encoding UTF-8 -cp 'agent-platform-core/target/classes;__TRACKED_VAR__/jackson-databind/2.15.3/jackson-databind-2.15.3.jar;__TRACKED_VAR__/jackson-core/2.15.3/jackson-core-2.15.3.jar;__TRACKED_VAR__/jackson-annotations/2.15.3/jackson-annotations-2.15.3.jar' -d . TextAuditHandler.java)",
+      "Bash(jar cf *)",
+      "Bash(javac -encoding UTF-8 -cp \"agent-platform-core/target/classes;C:/Users/WYZ/.m2/repository/com/fasterxml/jackson/core/jackson-databind/2.15.3/jackson-databind-2.15.3.jar;C:/Users/WYZ/.m2/repository/com/fasterxml/jackson/core/jackson-core/2.15.3/jackson-core-2.15.3.jar;C:/Users/WYZ/.m2/repository/com/fasterxml/jackson/core/jackson-annotations/2.15.3/jackson-annotations-2.15.3.jar\" -d . TextAuditHandler.java)",
+      "Read(//c/Users/WYZ/.m2/repository/com/fasterxml/jackson/core/jackson-core/2.15.3/**)",
+      "Read(//c/Users/WYZ/.m2/repository/com/fasterxml/jackson/core/jackson-annotations/2.15.3/**)",
+      "Bash(mvn.cmd -s .mvn/settings.xml -pl agent-platform-core compile -q)",
+      "Bash(git checkout *)",
+      "Bash(python -c ' *)",
+      "Read(//c/Program Files/**)",
+      "Read(//c/Program Files \\(x86\\)/**)",
+      "Read(//c/Users/WYZ/AppData/Local/draw.io/**)",
+      "Read(//c/Users/WYZ/AppData/Local/Programs/**)",
+      "Bash(where drawio *)",
+      "Bash(mvn.cmd -s .mvn/settings.xml -pl agent-platform-core test)",
+      "Bash(mvn.cmd -s .mvn/settings.xml -pl agent-platform-core compile)"
     ]
   },
   "hooks": {

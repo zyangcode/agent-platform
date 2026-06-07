@@ -445,7 +445,7 @@ const defaultDictionary: TranslationDictionary = {
   'tools.skills': { en: 'Skills', zh: 'Skills' },
   'tools.title': { en: 'Tools', zh: '工具' },
   'tools.unavailable': { en: 'Tools unavailable', zh: '工具不可用' },
-  'tools.triggerKeywords': { en: 'Trigger keywords', zh: '触发关键词' },
+  'tools.triggerKeywords': { en: 'Trigger keywords', zh: '触发词' },
   'tools.uploadFailed': { en: 'Jar Skill upload failed.', zh: 'Jar Skill 上传失败。' },
   'tools.uploadJar': { en: 'Upload Jar', zh: '上传 Jar' },
   'tools.uploadJarSkill': { en: 'Upload Jar Skill', zh: '上传 Jar Skill' },
@@ -675,6 +675,8 @@ const defaultDictionary: TranslationDictionary = {
   },
   'trace.emptyTitle': { en: 'No traces', zh: '暂无 Trace' },
   'trace.entrypoint': { en: 'Entrypoint', zh: '入口' },
+  'trace.userId': { en: 'User ID', zh: '用户ID' },
+  'trace.applicationId': { en: 'App ID', zh: '应用ID' },
   'trace.errorCode': { en: 'Error code', zh: '错误码' },
   'trace.completionTokens': { en: 'Completion tokens', zh: '输出 Token' },
   'trace.filterDescription': {

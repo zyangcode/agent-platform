@@ -33,7 +33,7 @@ class ProfileSlotSourceTest {
         assertThat(content.kind()).isEqualTo(ContextSlotKind.PROFILE);
         assertThat(content.content())
                 .contains("You are Nexus")
-                .contains("Tools only when needed")
+                .contains("Act directly")
                 .contains(LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE))
                 .contains("Profile Prompt:")
                 .contains("Be concise.");

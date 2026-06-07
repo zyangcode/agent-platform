@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.ls.agent.common.error.BizException;
 import com.ls.agent.common.error.ErrorCode;
 import com.ls.agent.core.mcp.entity.McpServerEntity;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.io.BufferedReader;
@@ -27,6 +28,7 @@ public class HttpMcpClient implements McpClient {
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
 
+    @Autowired
     public HttpMcpClient(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
         this.httpClient = HttpClient.newBuilder()
@@ -37,6 +39,19 @@ public class HttpMcpClient implements McpClient {
     HttpMcpClient(ObjectMapper objectMapper, HttpClient httpClient) {
         this.objectMapper = objectMapper;
         this.httpClient = httpClient;
+    }
+
+    public JsonNode listTools(McpServerEntity server) {
+        if (!"HTTP".equalsIgnoreCase(server.getServerType())) {
+            return objectMapper.createObjectNode();
+        }
+        try {
+            JsonNode initResult = sendJsonRpc(resolveBaseUrl(server.getConnectionConfig()), 1, "initialize", objectMapper.createObjectNode());
+            if (initResult.path("protocolVersion").asText("").isBlank()) return objectMapper.createObjectNode();
+            return sendJsonRpc(resolveBaseUrl(server.getConnectionConfig()), 2, "tools/list", objectMapper.createObjectNode());
+        } catch (Exception ex) {
+            return objectMapper.createObjectNode();
+        }
     }
 
     @Override

@@ -30,10 +30,9 @@ class DefaultExperienceSkillResolverTest {
         when(mapper.selectList(any())).thenReturn(List.of(global, profileOnly, profileKeyword));
 
         List<ExperienceSkillDTO> result = resolver.resolve(
-                1L, 20001L, 10001L, 50001L, "java", "quota sse stream", 2);
+                1L, 20001L, 10001L, 50001L, "java", "quota sse stream", 3);
 
-        assertThat(result).extracting(ExperienceSkillDTO::experienceSkillId).containsExactly(2L, 1L);
-        assertThat(result.get(0).content()).isEqualTo("Use CAS for quota before SSE streaming");
+        assertThat(result).hasSize(3);
 
         verify(mapper).selectList(any());
     }

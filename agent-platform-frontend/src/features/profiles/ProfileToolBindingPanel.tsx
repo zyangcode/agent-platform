@@ -166,7 +166,9 @@ export function ProfileToolBindingPanel({ onProfileChanged, profile }: ProfileTo
             <ToolChecklist
               disabled={!profile || !isEditableProfile}
               emptyText={t('profile.noEnabledSkills')}
-              items={state.skills.map((skill) => ({
+              items={state.skills
+                .filter((skill) => skill.skillType !== 'BUILTIN')
+                .map((skill) => ({
                 description: skill.description || t('profile.noDescription'),
                 id: skill.skillId,
                 meta: skill.scope,

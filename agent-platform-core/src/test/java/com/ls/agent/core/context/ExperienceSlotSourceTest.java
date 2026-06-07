@@ -5,10 +5,11 @@ import com.ls.agent.core.context.command.BuildAgentContextCommand;
 import com.ls.agent.core.context.dto.ContextSlot;
 import com.ls.agent.core.context.dto.ContextSlotContent;
 import com.ls.agent.core.context.dto.ContextSlotKind;
+import java.util.List;
 import com.ls.agent.core.experience.dto.ExperienceSkillDTO;
 import org.junit.jupiter.api.Test;
 
-import java.util.List;
+
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -56,7 +57,7 @@ class ExperienceSlotSourceTest {
     }
 
     private ExperienceSkillDTO experience(String code, String content) {
-        return new ExperienceSkillDTO(1L, code, code, "GENERAL", content);
+        return new ExperienceSkillDTO(1L, code, code, "GENERAL", List.of(), content);
     }
 
     private BuildAgentContextCommand command() {

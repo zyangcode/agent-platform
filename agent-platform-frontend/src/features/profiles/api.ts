@@ -57,6 +57,6 @@ export function listSkills() {
 
 export function listMcpTools() {
   return apiClient.get<McpTool[]>('/mcp-tools', {
-    query: { status: 'ENABLED' },
+    query: { status: 'AVAILABLE' },
   })
 }

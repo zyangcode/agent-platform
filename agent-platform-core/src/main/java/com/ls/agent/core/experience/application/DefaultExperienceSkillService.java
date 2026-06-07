@@ -7,6 +7,7 @@ import com.ls.agent.common.error.ErrorCode;
 import com.ls.agent.common.response.PageResult;
 import com.ls.agent.core.experience.api.ExperienceSkillService;
 import com.ls.agent.core.experience.command.CreateExperienceSkillCommand;
+import java.util.List;
 import com.ls.agent.core.experience.command.UpdateExperienceSkillCommand;
 import com.ls.agent.core.experience.dto.ExperienceSkillDTO;
 import com.ls.agent.core.experience.entity.ExperienceSkillEntity;
@@ -126,11 +127,13 @@ public class DefaultExperienceSkillService implements ExperienceSkillService {
     }
 
     private ExperienceSkillDTO toDTO(ExperienceSkillEntity entity) {
+        String[] keywords = entity.getTriggerKeywords();
         return new ExperienceSkillDTO(
                 entity.getId(),
                 entity.getCode(),
                 entity.getName(),
                 entity.getDomain(),
+                keywords == null ? List.of() : List.of(keywords),
                 entity.getContent()
         );
     }

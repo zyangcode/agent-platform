@@ -41,6 +41,7 @@ export function ExperienceSkillTable({ onDisable, skills, status }: ExperienceSk
         <TableRow>
           <TableHead>{t('profile.name')}</TableHead>
           <TableHead>{t('tools.domain')}</TableHead>
+          <TableHead>{t('tools.triggerKeywords')}</TableHead>
           <TableHead>{t('tools.content')}</TableHead>
           <TableHead>{t('application.actions')}</TableHead>
         </TableRow>
@@ -53,8 +54,11 @@ export function ExperienceSkillTable({ onDisable, skills, status }: ExperienceSk
               <p className="mt-1 font-mono text-xs text-zinc-500">{skill.code}</p>
             </TableCell>
             <TableCell className="text-zinc-400">{skill.domain || t('tools.noDomain')}</TableCell>
+            <TableCell className="text-zinc-400 text-xs">
+              {(skill.triggerKeywords || []).join(', ') || '-'}
+            </TableCell>
             <TableCell>
-              <p className="max-w-[420px] truncate text-sm text-zinc-300">{skill.content}</p>
+              <p className="max-w-[420px] whitespace-pre-wrap break-words text-sm text-zinc-300">{skill.content}</p>
             </TableCell>
             <TableCell>
               <Button onClick={() => onDisable(skill.experienceSkillId)} size="sm" variant="danger">

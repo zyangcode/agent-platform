@@ -52,8 +52,6 @@ public class DefaultMcpToolExecutor implements McpToolExecutor {
                     client.callTool(server, command.toolName(), command.arguments()),
                     null
             );
-        } catch (BizException ex) {
-            throw ex;
         } catch (Exception ex) {
             return new McpToolExecuteResult(
                     false,
