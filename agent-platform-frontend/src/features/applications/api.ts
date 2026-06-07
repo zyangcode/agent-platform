@@ -37,7 +37,7 @@ export function disableApplication(applicationId: number) {
 }
 
 export function enableApplication(applicationId: number) {
-  return apiClient.post<Application>(`/applications/${applicationId}/enable`)
+  return apiClient.post<Application>(`/applications/${applicationId}/activate`)
 }
 
 export function regenerateApiKey(applicationId: number) {

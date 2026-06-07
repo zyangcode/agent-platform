@@ -70,6 +70,18 @@ class DefaultApplicationServiceTest {
     }
 
     @Test
+    void enableApplicationMarksOwnedDisabledApplicationActive() {
+        when(applicationMapper.selectOne(any(Wrapper.class))).thenReturn(application("DISABLED"));
+
+        ApplicationDTO result = service.enableApplication(1L, 10001L, 20001L);
+
+        assertThat(result.status()).isEqualTo("ACTIVE");
+        ArgumentCaptor<ApplicationEntity> captor = ArgumentCaptor.forClass(ApplicationEntity.class);
+        verify(applicationMapper).updateById(captor.capture());
+        assertThat(captor.getValue().getStatus()).isEqualTo("ACTIVE");
+    }
+
+    @Test
     void updateApplicationRejectsBlankName() {
         assertThatThrownBy(() -> service.updateApplication(new UpdateApplicationCommand(
                 1L,
@@ -83,13 +95,17 @@ class DefaultApplicationServiceTest {
     }
 
     private ApplicationEntity application() {
+        return application("ACTIVE");
+    }
+
+    private ApplicationEntity application(String status) {
         ApplicationEntity entity = new ApplicationEntity();
         entity.setId(20001L);
         entity.setTenantId(1L);
         entity.setOwnerUserId(10001L);
         entity.setName("Demo App");
         entity.setDescription("old description");
-        entity.setStatus("ACTIVE");
+        entity.setStatus(status);
         return entity;
     }
 }

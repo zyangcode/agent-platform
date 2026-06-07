@@ -121,8 +121,8 @@ public class ApplicationController {
         ));
     }
 
-    @PostMapping("/{applicationId}/enable")
-    public ApiResponse<ApplicationDTO> enable(
+    @PostMapping("/{applicationId}/activate")
+    public ApiResponse<ApplicationDTO> activate(
             CurrentUser currentUser,
             @PathVariable("applicationId") Long applicationId
     ) {
