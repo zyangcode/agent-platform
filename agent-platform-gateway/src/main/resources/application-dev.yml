@@ -17,7 +17,7 @@ agent:
     embedding:
       enabled: true
       base-url: https://api.siliconflow.cn/v1
-      api-key: ${SILICONFLOW_API_KEY:sk-ntmfzctwsgrldkofblxhowdcshibtytpywrahengjzsuidep}
+      api-key: ${SILICONFLOW_API_KEY:}
       model: BAAI/bge-large-zh-v1.5
       dimension: 1024
     qdrant:

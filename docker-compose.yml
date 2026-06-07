@@ -1,0 +1,87 @@
+# Agent Platform - Docker Compose
+# 使用: docker compose up -d
+# 访问: http://localhost
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: agent-platform-pg
+    environment:
+      POSTGRES_DB: ${PG_DB:-agent_platform}
+      POSTGRES_USER: ${PG_USER:-agent}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-agent123}
+    ports:
+      - "15432:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-agent} -d ${PG_DB:-agent_platform}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.6
+    container_name: agent-platform-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant-data:/qdrant/storage
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    container_name: agent-platform-web
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${PG_DB:-agent_platform}
+      SPRING_DATASOURCE_USERNAME: ${PG_USER:-agent}
+      SPRING_DATASOURCE_PASSWORD: ${PG_PASSWORD:-agent123}
+      AGENT_PLATFORM_GATEWAY_URL: http://gateway:8081
+      AGENT_PLATFORM_GATEWAY_INTERNAL_TOKEN: ${GATEWAY_INTERNAL_TOKEN:-prod-internal-token}
+      AGENT_PLATFORM_JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      AGENT_PLATFORM_JWT_EXPIRES_IN_SECONDS: ${JWT_EXPIRES_IN_SECONDS:-7200}
+      SILICONFLOW_API_KEY: ${SILICONFLOW_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/api/auth/me || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.gateway
+    container_name: agent-platform-gateway
+    ports:
+      - "8081:8081"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${PG_DB:-agent_platform}
+      SPRING_DATASOURCE_USERNAME: ${PG_USER:-agent}
+      SPRING_DATASOURCE_PASSWORD: ${PG_PASSWORD:-agent123}
+      AGENT_PLATFORM_INTERNAL_TOKEN: ${GATEWAY_INTERNAL_TOKEN:-prod-internal-token}
+      SILICONFLOW_API_KEY: ${SILICONFLOW_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: agent-platform-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - web
+
+volumes:
+  pg-data:
+  qdrant-data:
