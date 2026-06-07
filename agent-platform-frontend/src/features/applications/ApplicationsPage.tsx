@@ -14,7 +14,7 @@ import { useI18n } from '@/lib/i18n/use-i18n'
 import { ApiKeyRevealDialog } from './ApiKeyRevealDialog'
 import { ApiKeysPanel } from './ApiKeysPanel'
 import { resolveSelectedApplicationId } from './application-selection-utils'
-import { listApplications } from './api'
+import { enableApplication, listApplications } from './api'
 import { CreateApplicationDialog } from './CreateApplicationDialog'
 import { DisableApplicationDialog } from './DisableApplicationDialog'
 import { EditApplicationDialog } from './EditApplicationDialog'
@@ -215,6 +215,10 @@ export function ApplicationsPage() {
                                 void loadApplications()
                               }}
                             />
+                            <EnableApplicationButton
+                              application={application}
+                              onEnabled={() => { void loadApplications() }}
+                            />
                             <DisableApplicationDialog
                               application={application}
                               onDisabled={() => {
@@ -250,5 +254,21 @@ export function ApplicationsPage() {
         open={revealedKey !== null}
       />
     </section>
+  )
+}
+
+function EnableApplicationButton({ application, onEnabled }: { application: Application; onEnabled: () => void }) {
+  if (application.status !== 'DISABLED') return null
+  return (
+    <Button
+      onClick={async () => {
+        await enableApplication(application.applicationId)
+        onEnabled()
+      }}
+      size="sm"
+      variant="secondary"
+    >
+      Enable
+    </Button>
   )
 }

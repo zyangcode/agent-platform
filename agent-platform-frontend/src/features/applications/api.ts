@@ -3,6 +3,7 @@ import type {
   ApiKey,
   Application,
   CreateApplicationResult,
+  CreatedApiKey,
   PageResult,
   RevokeApiKeyResult,
 } from '@/lib/api/types'
@@ -33,6 +34,14 @@ export function updateApplication(applicationId: number, request: UpdateApplicat
 
 export function disableApplication(applicationId: number) {
   return apiClient.post<Application>(`/applications/${applicationId}/disable`)
+}
+
+export function enableApplication(applicationId: number) {
+  return apiClient.post<Application>(`/applications/${applicationId}/enable`)
+}
+
+export function regenerateApiKey(applicationId: number) {
+  return apiClient.post<CreatedApiKey>(`/applications/${applicationId}/api-keys/regenerate`)
 }
 
 export function listApiKeys(applicationId: number) {
