@@ -16,6 +16,7 @@ import com.ls.agent.core.rag.application.MockQueryExpansionService;
 import com.ls.agent.core.rag.application.MockRetrievalReranker;
 import com.ls.agent.core.rag.application.MockVectorStore;
 import com.ls.agent.core.rag.application.OpenAiCompatibleEmbeddingService;
+import com.ls.agent.core.rag.application.OpenAiCompatibleRetrievalReranker;
 import com.ls.agent.core.rag.application.QdrantVectorStore;
 import com.ls.agent.core.rag.application.RagSearchServiceConfiguration;
 import com.ls.agent.core.rag.application.TextSplitter;
@@ -133,6 +134,23 @@ class RagSearchServiceConfigurationTest {
                     assertThat(context.getBean(QueryExpansionService.class)).isInstanceOf(MockQueryExpansionService.class);
                     assertThat(context).hasSingleBean(HypotheticalDocumentService.class);
                     assertThat(context.getBean(HypotheticalDocumentService.class)).isInstanceOf(MockHypotheticalDocumentService.class);
+                });
+    }
+
+    @Test
+    void registersOpenAiCompatibleRerankerWhenEnabled() {
+        contextRunner
+                .withPropertyValues(
+                        "agent.rag.reranker.enabled=true",
+                        "agent.rag.reranker.provider=openai-compatible",
+                        "agent.rag.reranker.base-url=https://rerank.example.com/v1",
+                        "agent.rag.reranker.api-key=sk-test",
+                        "agent.rag.reranker.model=rerank-v1",
+                        "agent.rag.reranker.path=/rerank"
+                )
+                .run(context -> {
+                    assertThat(context).hasSingleBean(RetrievalReranker.class);
+                    assertThat(context.getBean(RetrievalReranker.class)).isInstanceOf(OpenAiCompatibleRetrievalReranker.class);
                 });
     }
 }

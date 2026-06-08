@@ -81,6 +81,23 @@ public class RagSearchServiceConfiguration {
     }
 
     @Bean
+    @ConditionalOnExpression("'${agent.rag.reranker.provider:noop}' == 'openai-compatible' && '${agent.rag.reranker.enabled:false}' == 'true'")
+    public RetrievalReranker openAiCompatibleRetrievalReranker(
+            ObjectMapper objectMapper,
+            @Value("${agent.rag.reranker.enabled:false}") boolean enabled,
+            @Value("${agent.rag.reranker.base-url:https://api.openai.com/v1}") String baseUrl,
+            @Value("${agent.rag.reranker.api-key:}") String apiKey,
+            @Value("${agent.rag.reranker.model:rerank-v1}") String model,
+            @Value("${agent.rag.reranker.path:/rerank}") String path,
+            @Value("${agent.rag.reranker.timeout-ms:3000}") int timeoutMs
+    ) {
+        return new OpenAiCompatibleRetrievalReranker(
+                new OpenAiCompatibleRetrievalRerankerProperties(enabled, baseUrl, apiKey, model, path, timeoutMs),
+                objectMapper
+        );
+    }
+
+    @Bean
     @ConditionalOnMissingBean(RetrievalReranker.class)
     public RetrievalReranker retrievalReranker() {
         return RetrievalReranker.noop();
