@@ -184,6 +184,7 @@ class QdrantVectorStoreTest {
         CapturedRequest request = client.requests.get(2);
         assertThat(shouldKeys(request.body, "application_id")).contains("application_id");
         assertThat(shouldKeys(request.body, "profile_id")).contains("profile_id");
+        assertThat(isEmptyKeys(request.body)).contains("application_id", "profile_id");
     }
 
     @Test
@@ -298,6 +299,18 @@ class QdrantVectorStoreTest {
             for (JsonNode option : condition.path("should")) {
                 if (key.equals(option.path("key").asText())) {
                     keys.add(key);
+                }
+            }
+        }
+        return keys;
+    }
+
+    private List<String> isEmptyKeys(JsonNode body) {
+        List<String> keys = new ArrayList<>();
+        for (JsonNode condition : body.path("filter").path("must")) {
+            for (JsonNode option : condition.path("should")) {
+                if (option.has("is_empty")) {
+                    keys.add(option.path("is_empty").path("key").asText());
                 }
             }
         }

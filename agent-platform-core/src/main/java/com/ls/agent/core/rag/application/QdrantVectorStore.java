@@ -255,7 +255,7 @@ public class QdrantVectorStore implements VectorStore {
         exact.put("key", key);
         exact.putObject("match").put("value", value);
         ObjectNode global = should.addObject();
-        global.put("is_empty", key);
+        global.putObject("is_empty").put("key", key);
     }
 
     private ArrayNode vectorNode(EmbeddingVectorDTO vector) {

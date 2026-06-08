@@ -82,6 +82,25 @@ class DefaultProfileServiceTest {
     }
 
     @Test
+    void createProfileRejectsInvalidMemoryStrategyMode() {
+        assertThatThrownBy(() -> service.createProfile(new CreateProfileCommand(
+                1L,
+                10001L,
+                20001L,
+                "General Assistant",
+                "GENERAL",
+                "Stage 1 assistant",
+                1L,
+                "Be concise.",
+                objectMapper.createObjectNode().put("mode", "READWRITE"),
+                5,
+                "BASIC",
+                "PRIVATE"
+        ))).isInstanceOf(BizException.class)
+                .hasMessageContaining("memoryStrategy.mode");
+    }
+
+    @Test
     void pageProfilesFiltersByTenantUserAndApplication() {
         AgentProfileEntity profile = draftProfile();
         Page<AgentProfileEntity> page = Page.of(2, 20);
@@ -170,6 +189,26 @@ class DefaultProfileServiceTest {
         assertThat(entity.getExecutionMode()).isEqualTo("TEAM");
         assertThat(result.modelConfigId()).isEqualTo(2L);
         assertThat(result.executionMode()).isEqualTo("TEAM");
+    }
+
+    @Test
+    void updateProfileRejectsInvalidMemoryStrategyMode() {
+        when(profileMapper.selectById(50001L)).thenReturn(draftProfile());
+
+        assertThatThrownBy(() -> service.updateProfile(new UpdateProfileCommand(
+                1L,
+                10001L,
+                50001L,
+                "Updated Assistant",
+                "Updated description",
+                2L,
+                "Updated prompt.",
+                objectMapper.createObjectNode().put("mode", "READWRITE"),
+                3,
+                "BASIC",
+                "PRIVATE"
+        ))).isInstanceOf(BizException.class)
+                .hasMessageContaining("memoryStrategy.mode");
     }
 
     @Test

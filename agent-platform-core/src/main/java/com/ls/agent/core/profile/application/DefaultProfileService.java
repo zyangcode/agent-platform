@@ -74,7 +74,7 @@ public class DefaultProfileService implements ProfileService {
         profile.setDescription(command.description());
         profile.setModelConfigId(ProfileValidation.requireNonNull(command.modelConfigId(), "modelConfigId"));
         profile.setPromptExtra(command.promptExtra());
-        profile.setMemoryStrategy(command.memoryStrategy() == null ? objectMapper.createObjectNode() : command.memoryStrategy());
+        profile.setMemoryStrategy(ProfileValidation.normalizeMemoryStrategy(command.memoryStrategy(), objectMapper.createObjectNode()));
         profile.setMaxSteps(command.maxSteps() == null ? 6 : command.maxSteps());
         profile.setExecutionMode(ProfileValidation.normalizeExecutionMode(command.executionMode()));
         profile.setVisibility(ProfileValidation.normalizeRequired(command.visibility(), "visibility"));
@@ -131,7 +131,7 @@ public class DefaultProfileService implements ProfileService {
         profile.setDescription(command.description());
         profile.setModelConfigId(ProfileValidation.requireNonNull(command.modelConfigId(), "modelConfigId"));
         profile.setPromptExtra(command.promptExtra());
-        profile.setMemoryStrategy(command.memoryStrategy() == null ? objectMapper.createObjectNode() : command.memoryStrategy());
+        profile.setMemoryStrategy(ProfileValidation.normalizeMemoryStrategy(command.memoryStrategy(), objectMapper.createObjectNode()));
         profile.setMaxSteps(command.maxSteps() == null ? 6 : command.maxSteps());
         profile.setExecutionMode(ProfileValidation.normalizeExecutionMode(command.executionMode()));
         profile.setVisibility(ProfileValidation.normalizeRequired(command.visibility(), "visibility"));
