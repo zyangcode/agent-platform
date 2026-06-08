@@ -102,18 +102,39 @@ public class RetrievalEvaluationFileRunner {
         }
     }
 
-    static int run(String[] args, PrintStream out, PrintStream err) {
+    public static int run(String[] args, PrintStream out, PrintStream err) {
         try {
             Arguments arguments = Arguments.parse(args);
             RetrievalEvaluationFileRunner runner = new RetrievalEvaluationFileRunner(new ObjectMapper());
             RetrievalEvaluationReport report = runner.evaluate(arguments.casesFile(), arguments.predictionsFile(), arguments.topK());
             out.print(runner.render(report));
-            return 0;
+            List<String> gateFailures = arguments.gate().failures(report.result());
+            if (gateFailures.isEmpty()) {
+                if (arguments.gate().enabled()) {
+                    out.println("Gate: PASS");
+                }
+                return 0;
+            }
+            err.println("Evaluation gate failed");
+            for (String failure : gateFailures) {
+                err.println("- " + failure);
+            }
+            return 2;
+        } catch (NumberFormatException exception) {
+            err.println("Threshold and topK values must be numeric: " + exception.getMessage());
+            err.println(usage());
+            return 1;
         } catch (RuntimeException exception) {
             err.println(exception.getMessage());
-            err.println("Usage: RetrievalEvaluationFileRunner --cases <cases.jsonl> --predictions <predictions.jsonl> [--topK 5]");
+            err.println(usage());
             return 1;
         }
+    }
+
+    private static String usage() {
+        return "Usage: RetrievalEvaluationFileRunner --cases <cases.jsonl> --predictions <predictions.jsonl> "
+                + "[--topK 5] [--minHitRate 0.80] [--minMrr 0.60] [--minRecall 0.70] "
+                + "[--minNoAnswerPrecision 0.90]";
     }
 
     private <T> List<JsonlRow<T>> readJsonl(Path file, Class<T> type) {
@@ -155,18 +176,27 @@ public class RetrievalEvaluationFileRunner {
         return String.format(java.util.Locale.ROOT, "%.4f", value);
     }
 
-    private record Arguments(Path casesFile, Path predictionsFile, int topK) {
+    private record Arguments(Path casesFile, Path predictionsFile, int topK, MetricGate gate) {
 
         private static Arguments parse(String[] args) {
             Path casesFile = null;
             Path predictionsFile = null;
             int topK = 5;
+            Double minHitRate = null;
+            Double minMrr = null;
+            Double minRecall = null;
+            Double minNoAnswerPrecision = null;
             for (int index = 0; index < args.length; index++) {
                 String arg = args[index];
                 switch (arg) {
                     case "--cases" -> casesFile = Path.of(nextValue(args, ++index, "--cases"));
                     case "--predictions" -> predictionsFile = Path.of(nextValue(args, ++index, "--predictions"));
                     case "--topK" -> topK = Integer.parseInt(nextValue(args, ++index, "--topK"));
+                    case "--minHitRate" -> minHitRate = threshold(nextValue(args, ++index, "--minHitRate"), "--minHitRate");
+                    case "--minMrr" -> minMrr = threshold(nextValue(args, ++index, "--minMrr"), "--minMrr");
+                    case "--minRecall" -> minRecall = threshold(nextValue(args, ++index, "--minRecall"), "--minRecall");
+                    case "--minNoAnswerPrecision" ->
+                            minNoAnswerPrecision = threshold(nextValue(args, ++index, "--minNoAnswerPrecision"), "--minNoAnswerPrecision");
                     default -> throw new IllegalArgumentException("Unknown argument: " + arg);
                 }
             }
@@ -176,7 +206,12 @@ public class RetrievalEvaluationFileRunner {
             if (predictionsFile == null) {
                 throw new IllegalArgumentException("--predictions is required");
             }
-            return new Arguments(casesFile, predictionsFile, topK);
+            return new Arguments(
+                    casesFile,
+                    predictionsFile,
+                    topK,
+                    new MetricGate(minHitRate, minMrr, minRecall, minNoAnswerPrecision)
+            );
         }
 
         private static String nextValue(String[] args, int index, String flag) {
@@ -185,8 +220,50 @@ public class RetrievalEvaluationFileRunner {
             }
             return args[index];
         }
+
+        private static double threshold(String value, String flag) {
+            double parsed = Double.parseDouble(value);
+            if (parsed < 0.0 || parsed > 1.0) {
+                throw new IllegalArgumentException(flag + " must be between 0 and 1");
+            }
+            return parsed;
+        }
     }
 
     private record JsonlRow<T>(int lineNumber, T value) {
+    }
+
+    private record MetricGate(
+            Double minHitRate,
+            Double minMrr,
+            Double minRecall,
+            Double minNoAnswerPrecision
+    ) {
+
+        private boolean enabled() {
+            return minHitRate != null
+                    || minMrr != null
+                    || minRecall != null
+                    || minNoAnswerPrecision != null;
+        }
+
+        private List<String> failures(RetrievalEvaluationResult result) {
+            List<String> failures = new ArrayList<>();
+            addFailure(failures, "hitRate", result.hitRate(), minHitRate);
+            addFailure(failures, "mrrAtK", result.meanReciprocalRank(), minMrr);
+            addFailure(failures, "recallAtK", result.recallAtK(), minRecall);
+            addFailure(failures, "noAnswerPrecision", result.noAnswerPrecision(), minNoAnswerPrecision);
+            return failures;
+        }
+
+        private void addFailure(List<String> failures, String metricName, double actual, Double minimum) {
+            if (minimum != null && actual < minimum) {
+                failures.add(metricName + " " + formatStatic(actual) + " < " + formatStatic(minimum));
+            }
+        }
+
+        private static String formatStatic(double value) {
+            return String.format(java.util.Locale.ROOT, "%.4f", value);
+        }
     }
 }

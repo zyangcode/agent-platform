@@ -6,6 +6,8 @@ import com.ls.agent.core.evaluation.dto.RetrievalEvaluationReport;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -123,5 +125,83 @@ class RetrievalEvaluationFileRunnerTest {
                 .contains("noAnswerPrecision=0.0000")
                 .contains("misses=1")
                 .contains("rag-no-answer");
+    }
+
+    @Test
+    void runReturnsTwoWhenMetricThresholdFails() throws Exception {
+        Path cases = tempDir.resolve("cases.jsonl");
+        Path predictions = tempDir.resolve("predictions.jsonl");
+        Files.writeString(cases, """
+                {"id":"memory-style","sourceType":"memory","query":"answer style","expectedIds":["memory-1"]}
+                """, StandardCharsets.UTF_8);
+        Files.writeString(predictions, """
+                {"caseId":"memory-style","returnedIds":["memory-9"]}
+                """, StandardCharsets.UTF_8);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ByteArrayOutputStream err = new ByteArrayOutputStream();
+
+        int exitCode = RetrievalEvaluationFileRunner.run(new String[]{
+                        "--cases", cases.toString(),
+                        "--predictions", predictions.toString(),
+                        "--topK", "5",
+                        "--minHitRate", "0.80"
+                },
+                new PrintStream(out, true, StandardCharsets.UTF_8),
+                new PrintStream(err, true, StandardCharsets.UTF_8));
+
+        assertThat(exitCode).isEqualTo(2);
+        assertThat(out.toString(StandardCharsets.UTF_8)).contains("hitRate=0.0000");
+        assertThat(err.toString(StandardCharsets.UTF_8))
+                .contains("Evaluation gate failed")
+                .contains("hitRate 0.0000 < 0.8000");
+    }
+
+    @Test
+    void runReturnsZeroWhenAllMetricThresholdsPass() throws Exception {
+        Path cases = tempDir.resolve("cases.jsonl");
+        Path predictions = tempDir.resolve("predictions.jsonl");
+        Files.writeString(cases, """
+                {"id":"memory-style","sourceType":"memory","query":"answer style","expectedIds":["memory-1"]}
+                {"id":"rag-no-answer","sourceType":"rag","query":"unknown payment rule","expectedIds":[]}
+                """, StandardCharsets.UTF_8);
+        Files.writeString(predictions, """
+                {"caseId":"memory-style","returnedIds":["memory-1"]}
+                {"caseId":"rag-no-answer","returnedIds":[]}
+                """, StandardCharsets.UTF_8);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ByteArrayOutputStream err = new ByteArrayOutputStream();
+
+        int exitCode = RetrievalEvaluationFileRunner.run(new String[]{
+                        "--cases", cases.toString(),
+                        "--predictions", predictions.toString(),
+                        "--minHitRate", "1.0",
+                        "--minMrr", "1.0",
+                        "--minRecall", "1.0",
+                        "--minNoAnswerPrecision", "1.0"
+                },
+                new PrintStream(out, true, StandardCharsets.UTF_8),
+                new PrintStream(err, true, StandardCharsets.UTF_8));
+
+        assertThat(exitCode).isZero();
+        assertThat(out.toString(StandardCharsets.UTF_8)).contains("Gate: PASS");
+        assertThat(err.toString(StandardCharsets.UTF_8)).isEmpty();
+    }
+
+    @Test
+    void runRejectsThresholdOutsideZeroToOne() {
+        ByteArrayOutputStream err = new ByteArrayOutputStream();
+
+        int exitCode = RetrievalEvaluationFileRunner.run(new String[]{
+                        "--cases", "cases.jsonl",
+                        "--predictions", "predictions.jsonl",
+                        "--minHitRate", "1.01"
+                },
+                new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8),
+                new PrintStream(err, true, StandardCharsets.UTF_8));
+
+        assertThat(exitCode).isEqualTo(1);
+        assertThat(err.toString(StandardCharsets.UTF_8))
+                .contains("--minHitRate")
+                .contains("between 0 and 1");
     }
 }
