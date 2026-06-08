@@ -39,6 +39,7 @@ import java.util.stream.Collectors;
 public class DefaultPostgresRagEngine implements RagEngine {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final double RRF_K = 60.0;
 
     private final KnowledgeDocumentMapper documentMapper;
     private final KnowledgeChunkMapper chunkMapper;
@@ -200,9 +201,18 @@ public class DefaultPostgresRagEngine implements RagEngine {
         List<RagSearchResultDTO> vectorResults = searchByVector(tenantId, applicationId, userId, profileId, query, topK,
                 queryVector,
                 traceId, parentSpanId);
-        if (!vectorResults.isEmpty()) {
-            return vectorResults;
-        }
+        List<RagSearchResultDTO> keywordResults = searchByKeyword(tenantId, applicationId, userId, profileId, query, topK);
+        return mergeSearchResults(vectorResults, keywordResults, topK);
+    }
+
+    private List<RagSearchResultDTO> searchByKeyword(
+            Long tenantId,
+            Long applicationId,
+            Long userId,
+            Long profileId,
+            String query,
+            int topK
+    ) {
         List<String> terms = keywords(query).stream().toList();
         if (terms.isEmpty()) {
             return List.of();
@@ -218,6 +228,70 @@ public class DefaultPostgresRagEngine implements RagEngine {
                         chunk.getKeywordScore() == null ? 0.0 : chunk.getKeywordScore()
                 ))
                 .toList();
+    }
+
+    private List<RagSearchResultDTO> mergeSearchResults(
+            List<RagSearchResultDTO> vectorResults,
+            List<RagSearchResultDTO> keywordResults,
+            int topK
+    ) {
+        List<RagSearchResultDTO> safeVectorResults = vectorResults == null ? List.of() : vectorResults;
+        List<RagSearchResultDTO> safeKeywordResults = keywordResults == null ? List.of() : keywordResults;
+        if (safeVectorResults.isEmpty()) {
+            return safeKeywordResults;
+        }
+        if (safeKeywordResults.isEmpty()) {
+            return safeVectorResults;
+        }
+        Map<String, FusedRagResult> fused = new java.util.LinkedHashMap<>();
+        addRankedRagResults(fused, safeVectorResults);
+        addRankedRagResults(fused, safeKeywordResults);
+        return fused.values().stream()
+                .sorted(java.util.Comparator
+                        .<FusedRagResult>comparingDouble(FusedRagResult::score)
+                        .reversed()
+                        .thenComparing(result -> result.value().score(), java.util.Comparator.reverseOrder()))
+                .limit(Math.max(1, topK))
+                .map(result -> withScore(result.value(), result.score()))
+                .toList();
+    }
+
+    private void addRankedRagResults(Map<String, FusedRagResult> fused, List<RagSearchResultDTO> results) {
+        for (int i = 0; i < results.size(); i++) {
+            RagSearchResultDTO result = results.get(i);
+            if (result == null) {
+                continue;
+            }
+            String key = ragKey(result);
+            double score = 1.0 / (RRF_K + i + 1);
+            fused.compute(key, (ignored, existing) -> {
+                if (existing == null) {
+                    return new FusedRagResult(result, score);
+                }
+                return new FusedRagResult(existing.value(), existing.score() + score);
+            });
+        }
+    }
+
+    private String ragKey(RagSearchResultDTO result) {
+        if (result.chunkId() != null) {
+            return "chunk:" + result.chunkId();
+        }
+        if (result.documentId() != null) {
+            return "doc:" + result.documentId() + ":" + result.content();
+        }
+        return "content:" + result.content();
+    }
+
+    private RagSearchResultDTO withScore(RagSearchResultDTO result, double score) {
+        return new RagSearchResultDTO(
+                result.documentId(),
+                result.chunkId(),
+                result.title(),
+                result.content(),
+                result.sourceUri(),
+                score
+        );
     }
 
     @Override
@@ -557,5 +631,11 @@ public class DefaultPostgresRagEngine implements RagEngine {
         } catch (NoSuchAlgorithmException ex) {
             throw new IllegalStateException("SHA-256 is not available", ex);
         }
+    }
+
+    private record FusedRagResult(
+            RagSearchResultDTO value,
+            double score
+    ) {
     }
 }

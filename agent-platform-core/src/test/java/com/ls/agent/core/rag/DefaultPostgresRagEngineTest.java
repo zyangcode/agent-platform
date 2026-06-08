@@ -327,6 +327,65 @@ class DefaultPostgresRagEngineTest {
     }
 
     @Test
+    void searchMergesVectorAndKeywordChunksWhenBothPathsFindResults() {
+        DefaultPostgresRagEngine vectorEngine = new DefaultPostgresRagEngine(
+                documentMapper,
+                chunkMapper,
+                new TextSplitter(),
+                embeddingService,
+                vectorStore
+        );
+        EmbeddingVectorDTO queryVector = new EmbeddingVectorDTO("mock", new float[]{1.0f, 0.0f});
+        when(embeddingService.embed("basketball injury prevention")).thenReturn(queryVector);
+        when(vectorStore.search(new VectorSearchQueryDTO(
+                1L,
+                20001L,
+                10001L,
+                50001L,
+                queryVector,
+                5
+        ))).thenReturn(List.of(new VectorSearchResultDTO("vec-91001", 90001L, 91001L, 0.87)));
+        KnowledgeChunkEntity semanticChunk = new KnowledgeChunkEntity();
+        semanticChunk.setId(91001L);
+        semanticChunk.setDocumentId(90001L);
+        semanticChunk.setTitle("Basketball Guide");
+        semanticChunk.setSourceUri("kb://basketball");
+        semanticChunk.setContent("Outdoor basketball needs a dry court after rain.");
+        when(chunkMapper.selectActiveChunksByIds(1L, 20001L, 10001L, 50001L, List.of(91001L)))
+                .thenReturn(List.of(semanticChunk));
+        KnowledgeChunkEntity keywordChunk = new KnowledgeChunkEntity();
+        keywordChunk.setId(91002L);
+        keywordChunk.setDocumentId(90002L);
+        keywordChunk.setTitle("Injury Prevention");
+        keywordChunk.setSourceUri("kb://injury");
+        keywordChunk.setContent("Basketball injury prevention starts with warmups and hydration.");
+        keywordChunk.setKeywordScore(3.0);
+        when(chunkMapper.searchActiveChunks(
+                eq(1L),
+                eq(20001L),
+                eq(10001L),
+                eq(50001L),
+                eq(List.of("basketball", "injury", "prevention")),
+                eq(5)
+        )).thenReturn(List.of(keywordChunk));
+
+        List<RagSearchResultDTO> results = vectorEngine.search(
+                1L,
+                20001L,
+                10001L,
+                50001L,
+                "basketball injury prevention",
+                5
+        );
+
+        assertThat(results).extracting(RagSearchResultDTO::chunkId)
+                .containsExactlyInAnyOrder(91001L, 91002L);
+        assertThat(results).extracting(RagSearchResultDTO::content)
+                .anySatisfy(content -> assertThat(content).contains("dry court"))
+                .anySatisfy(content -> assertThat(content).contains("warmups"));
+    }
+
+    @Test
     void searchRecordsEmbeddingAndVectorSearchTraceSpansWhenTraceContextExists() {
         VectorStore traceObservedVectorStore = new TraceObservedVectorStore();
         DefaultPostgresRagEngine vectorEngine = new DefaultPostgresRagEngine(

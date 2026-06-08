@@ -122,15 +122,12 @@ class DefaultMemoryRecallServiceTest {
         semanticMemory.setMemoryCategory("preference");
         semanticMemory.setApplicationId(20001L);
         semanticMemory.setProfileId(50001L);
-        MemoryEntity unrelatedKeywordMemory = memory("PREFERENCE", "User likes concise writing.");
-        unrelatedKeywordMemory.setId(99L);
-        unrelatedKeywordMemory.setMemoryCategory("preference");
         when(embeddingService.embed("sports after work"))
                 .thenReturn(new EmbeddingVectorDTO("mock", new float[]{1.0f, 0.0f}));
         when(vectorStore.search(any(VectorSearchQueryDTO.class)))
                 .thenReturn(List.of(new VectorSearchResultDTO("memory-88", 88L, 88L, 0.91)));
         when(memoryMapper.selectBatchIds(any(java.util.Collection.class))).thenReturn(List.of(semanticMemory));
-        when(memoryMapper.selectList(any(Wrapper.class))).thenReturn(List.of(unrelatedKeywordMemory));
+        when(memoryMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
 
         List<MemoryDTO> result = vectorService.recall(
                 1L,
@@ -152,6 +149,48 @@ class DefaultMemoryRecallServiceTest {
         assertThat(queryCaptor.getValue().applicationId()).isEqualTo(20001L);
         assertThat(queryCaptor.getValue().ownerUserId()).isEqualTo(10001L);
         assertThat(queryCaptor.getValue().profileId()).isEqualTo(50001L);
+    }
+
+    @Test
+    void recallMergesVectorAndKeywordCandidatesWhenBothPathsFindMemories() {
+        EmbeddingService embeddingService = mock(EmbeddingService.class);
+        VectorStore vectorStore = mock(VectorStore.class);
+        DefaultMemoryRecallService vectorService = new DefaultMemoryRecallService(memoryMapper, embeddingService, vectorStore);
+        MemoryEntity semanticMemory = memory("PREFERENCE", "User likes evening basketball.");
+        semanticMemory.setId(88L);
+        semanticMemory.setTenantId(1L);
+        semanticMemory.setUserId(10001L);
+        semanticMemory.setApplicationId(20001L);
+        semanticMemory.setProfileId(50001L);
+        semanticMemory.setMemoryCategory("preference");
+        semanticMemory.setImportance(0.7);
+        MemoryEntity keywordMemory = memory("PREFERENCE", "User prefers basketball advice with injury prevention tips.");
+        keywordMemory.setId(99L);
+        keywordMemory.setMemoryCategory("preference");
+        keywordMemory.setImportance(0.8);
+        when(embeddingService.embed("basketball injury prevention"))
+                .thenReturn(new EmbeddingVectorDTO("mock", new float[]{1.0f, 0.0f}));
+        when(vectorStore.search(any(VectorSearchQueryDTO.class)))
+                .thenReturn(List.of(new VectorSearchResultDTO("memory-88", 88L, 88L, 0.91)));
+        when(memoryMapper.selectBatchIds(any(java.util.Collection.class))).thenReturn(List.of(semanticMemory));
+        when(memoryMapper.selectList(any(Wrapper.class))).thenReturn(List.of(keywordMemory));
+
+        List<MemoryDTO> result = vectorService.recall(
+                1L,
+                20001L,
+                10001L,
+                50001L,
+                "basketball injury prevention",
+                MemoryRecallFilter.builder()
+                        .categories(List.of("preference"))
+                        .topK(5)
+                        .build()
+        );
+
+        assertThat(result).extracting(MemoryDTO::content).containsExactlyInAnyOrder(
+                "User likes evening basketball.",
+                "User prefers basketball advice with injury prevention tips."
+        );
     }
 
     @Test

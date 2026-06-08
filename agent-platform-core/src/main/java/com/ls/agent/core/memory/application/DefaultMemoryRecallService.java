@@ -28,6 +28,7 @@ public class DefaultMemoryRecallService implements MemoryRecallService {
 
     private static final String STATUS_ACTIVE = "ACTIVE";
     private static final int FETCH_MULTIPLIER = 10;
+    private static final double RRF_K = 60.0;
     private static final Pattern KEYWORD_SPLITTER = Pattern.compile(
             "[\\s,./;:'\"\\[\\]{}|_=+\\-!@#$%^&*()"
                     + "，。！？；：、“”‘’]+");
@@ -111,6 +112,7 @@ public class DefaultMemoryRecallService implements MemoryRecallService {
                 ? MemoryRecallFilter.builder().build()
                 : filter;
         int limit = resolvedFilter.resolvedTopK(5);
+        List<String> keywords = extractKeywords(query);
         List<MemoryEntity> vectorMemories = recallByVector(
                 tenantId,
                 applicationId,
@@ -123,13 +125,31 @@ public class DefaultMemoryRecallService implements MemoryRecallService {
                 traceId,
                 parentSpanId
         );
-        if (!vectorMemories.isEmpty()) {
-            touchReturnedMemories(vectorMemories);
-            return vectorMemories.stream()
-                    .map(this::toDTO)
-                    .toList();
-        }
-        List<String> keywords = extractKeywords(query);
+        List<MemoryEntity> keywordMemories = recallByKeyword(
+                tenantId,
+                applicationId,
+                userId,
+                profileId,
+                resolvedFilter,
+                limit,
+                keywords
+        );
+        List<MemoryEntity> returned = mergeRecallCandidates(vectorMemories, keywordMemories, keywords, limit);
+        touchReturnedMemories(returned);
+        return returned.stream()
+                .map(this::toDTO)
+                .toList();
+    }
+
+    private List<MemoryEntity> recallByKeyword(
+            Long tenantId,
+            Long applicationId,
+            Long userId,
+            Long profileId,
+            MemoryRecallFilter resolvedFilter,
+            int limit,
+            List<String> keywords
+    ) {
         LambdaQueryWrapper<MemoryEntity> wrapper = baseWrapper(tenantId, applicationId, userId, profileId);
 
         // Add keyword-based filtering if keywords exist
@@ -169,14 +189,65 @@ public class DefaultMemoryRecallService implements MemoryRecallService {
                         .reversed()
                         .thenComparing(MemoryEntity::getUpdatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
                 .toList();
+        return scored;
+    }
 
-        List<MemoryEntity> returned = collapseConflicts(scored).stream()
+    private List<MemoryEntity> mergeRecallCandidates(
+            List<MemoryEntity> vectorMemories,
+            List<MemoryEntity> keywordMemories,
+            List<String> keywords,
+            int limit
+    ) {
+        List<MemoryEntity> safeVectorMemories = vectorMemories == null ? List.of() : vectorMemories;
+        List<MemoryEntity> safeKeywordMemories = keywordMemories == null ? List.of() : keywordMemories;
+        if (safeVectorMemories.isEmpty()) {
+            return collapseConflicts(safeKeywordMemories).stream()
+                    .limit(Math.max(1, limit))
+                    .toList();
+        }
+        if (safeKeywordMemories.isEmpty()) {
+            return safeVectorMemories.stream()
+                    .limit(Math.max(1, limit))
+                    .toList();
+        }
+        Map<String, FusedMemory> fused = new LinkedHashMap<>();
+        addRankedMemories(fused, safeVectorMemories);
+        addRankedMemories(fused, safeKeywordMemories);
+        return collapseConflicts(fused.values().stream()
+                .sorted(Comparator
+                        .<FusedMemory>comparingDouble(FusedMemory::score)
+                        .reversed()
+                        .thenComparing(fusedMemory -> score(fusedMemory.memory(), keywords), Comparator.reverseOrder())
+                        .thenComparing(fusedMemory -> fusedMemory.memory().getUpdatedAt(), Comparator.nullsLast(Comparator.reverseOrder())))
+                .map(FusedMemory::memory)
+                .toList())
+                .stream()
                 .limit(Math.max(1, limit))
                 .toList();
-        touchReturnedMemories(returned);
-        return returned.stream()
-                .map(this::toDTO)
-                .toList();
+    }
+
+    private void addRankedMemories(Map<String, FusedMemory> fused, List<MemoryEntity> memories) {
+        for (int i = 0; i < memories.size(); i++) {
+            MemoryEntity memory = memories.get(i);
+            if (memory == null) {
+                continue;
+            }
+            String key = memoryKey(memory);
+            double score = 1.0 / (RRF_K + i + 1);
+            fused.compute(key, (ignored, existing) -> {
+                if (existing == null) {
+                    return new FusedMemory(memory, score);
+                }
+                return new FusedMemory(existing.memory(), existing.score() + score);
+            });
+        }
+    }
+
+    private String memoryKey(MemoryEntity memory) {
+        if (memory.getId() != null) {
+            return "id:" + memory.getId();
+        }
+        return "content:" + (memory.getContent() == null ? "" : memory.getContent());
     }
 
     private List<MemoryEntity> recallByVector(
@@ -516,5 +587,11 @@ public class DefaultMemoryRecallService implements MemoryRecallService {
             return content;
         }
         return content.substring(0, maxLen) + "...";
+    }
+
+    private record FusedMemory(
+            MemoryEntity memory,
+            double score
+    ) {
     }
 }
