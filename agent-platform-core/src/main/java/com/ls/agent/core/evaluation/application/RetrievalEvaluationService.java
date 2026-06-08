@@ -27,14 +27,35 @@ public class RetrievalEvaluationService {
         }
 
         Map<String, RetrievalPrediction> safePredictions = predictions == null ? Map.of() : predictions;
+        int answerableCaseCount = 0;
         int hitCount = 0;
         double reciprocalRankSum = 0.0;
         double recallSum = 0.0;
+        int noAnswerCaseCount = 0;
+        int noAnswerCorrectCount = 0;
         List<RetrievalEvaluationMiss> misses = new ArrayList<>();
 
         for (RetrievalEvaluationCase evaluationCase : cases) {
             List<String> expectedIds = normalizedIds(evaluationCase.expectedIds());
             List<String> returnedIdsWithinK = topKIds(safePredictions.get(evaluationCase.id()), topK);
+
+            if (expectedIds.isEmpty()) {
+                noAnswerCaseCount++;
+                if (returnedIdsWithinK.isEmpty()) {
+                    noAnswerCorrectCount++;
+                } else {
+                    misses.add(new RetrievalEvaluationMiss(
+                            evaluationCase.id(),
+                            evaluationCase.sourceType(),
+                            evaluationCase.query(),
+                            expectedIds,
+                            returnedIdsWithinK
+                    ));
+                }
+                continue;
+            }
+
+            answerableCaseCount++;
             int firstRank = firstExpectedRank(expectedIds, returnedIdsWithinK);
             recallSum += recall(expectedIds, returnedIdsWithinK);
 
@@ -53,12 +74,17 @@ public class RetrievalEvaluationService {
         }
 
         int totalCases = cases.size();
+        double answerableDenominator = answerableCaseCount == 0 ? 0.0 : answerableCaseCount;
         return new RetrievalEvaluationResult(
                 totalCases,
+                answerableCaseCount,
                 hitCount,
-                hitCount / (double) totalCases,
-                reciprocalRankSum / totalCases,
-                recallSum / totalCases,
+                answerableCaseCount == 0 ? 0.0 : hitCount / answerableDenominator,
+                answerableCaseCount == 0 ? 0.0 : reciprocalRankSum / answerableDenominator,
+                answerableCaseCount == 0 ? 0.0 : recallSum / answerableDenominator,
+                noAnswerCaseCount,
+                noAnswerCorrectCount,
+                noAnswerCaseCount == 0 ? 0.0 : noAnswerCorrectCount / (double) noAnswerCaseCount,
                 misses
         );
     }
