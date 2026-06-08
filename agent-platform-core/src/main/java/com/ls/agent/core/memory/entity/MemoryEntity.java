@@ -59,6 +59,9 @@ public class MemoryEntity extends BaseEntity {
     @TableField(typeHandler = JsonNodeTypeHandler.class)
     private JsonNode metadata;
 
+    @TableField(exist = false)
+    private Double keywordScore;
+
     public Long getTenantId() {
         return tenantId;
     }
@@ -201,5 +204,13 @@ public class MemoryEntity extends BaseEntity {
 
     public void setMetadata(JsonNode metadata) {
         this.metadata = metadata;
+    }
+
+    public Double getKeywordScore() {
+        return keywordScore;
+    }
+
+    public void setKeywordScore(Double keywordScore) {
+        this.keywordScore = keywordScore;
     }
 }
