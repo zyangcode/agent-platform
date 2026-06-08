@@ -38,4 +38,4 @@ jobs:
           cache: "maven"
       - name: Run retrieval evaluation gate
         shell: pwsh
-        run: ./scripts/run-retrieval-eval.ps1
+        run: ./scripts/run-retrieval-eval.ps1 -Cases "实际开发/优化阶段/记忆系统优化/retrieval-eval-cases.business.jsonl" -Predictions "实际开发/优化阶段/记忆系统优化/retrieval-eval-predictions.business-baseline.jsonl" -TopK 5 -MinHitRate 0.90 -MinMrr 0.85 -MinRecall 0.90 -MinNoAnswerPrecision 1.0

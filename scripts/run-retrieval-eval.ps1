@@ -13,16 +13,22 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $repoRoot
 
 if ([string]::IsNullOrWhiteSpace($Cases)) {
-    $Cases = (Get-ChildItem -Path $repoRoot -Recurse -Filter "retrieval-eval-cases.seed.jsonl" | Select-Object -First 1).FullName
+    $Cases = (Get-ChildItem -Path $repoRoot -Recurse -Filter "retrieval-eval-cases.business.jsonl" | Select-Object -First 1).FullName
+    if ([string]::IsNullOrWhiteSpace($Cases)) {
+        $Cases = (Get-ChildItem -Path $repoRoot -Recurse -Filter "retrieval-eval-cases.seed.jsonl" | Select-Object -First 1).FullName
+    }
 }
 if ([string]::IsNullOrWhiteSpace($Predictions)) {
-    $Predictions = (Get-ChildItem -Path $repoRoot -Recurse -Filter "retrieval-eval-predictions.baseline.jsonl" | Select-Object -First 1).FullName
+    $Predictions = (Get-ChildItem -Path $repoRoot -Recurse -Filter "retrieval-eval-predictions.business-baseline.jsonl" | Select-Object -First 1).FullName
+    if ([string]::IsNullOrWhiteSpace($Predictions)) {
+        $Predictions = (Get-ChildItem -Path $repoRoot -Recurse -Filter "retrieval-eval-predictions.baseline.jsonl" | Select-Object -First 1).FullName
+    }
 }
 if ([string]::IsNullOrWhiteSpace($Cases)) {
-    throw "retrieval-eval-cases.seed.jsonl was not found"
+    throw "retrieval-eval-cases.business.jsonl or retrieval-eval-cases.seed.jsonl was not found"
 }
 if ([string]::IsNullOrWhiteSpace($Predictions)) {
-    throw "retrieval-eval-predictions.baseline.jsonl was not found"
+    throw "retrieval-eval-predictions.business-baseline.jsonl or retrieval-eval-predictions.baseline.jsonl was not found"
 }
 
 $runnerArgs = @(

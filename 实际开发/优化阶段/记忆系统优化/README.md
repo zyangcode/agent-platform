@@ -17,7 +17,7 @@
    - 开发完成后按这个跑自动化测试和 HTTP 冒烟。
 
 5. `检索评测集.md`
-   - 固定 Hit@K / MRR 评测口径和种子样例，用于后续 HyDE、MQE、Neo4j 等检索增强上线前对比。
+   - 固定 Hit@K / MRR 评测口径、业务 corpus、业务 case 和 CI 门禁，用于后续 HyDE、MQE、Neo4j 等检索增强上线前对比。
 
 ## 展开材料
 
@@ -36,5 +36,5 @@
 - PostgreSQL 是事实源；Qdrant、PG tsvector、Neo4j 是派生索引。
 - Memory 不作为 citation 来源；RAG 才作为外部知识引用。
 - 高级能力 HyDE、MQE、Reranker、Neo4j 默认关闭，必须通过评测后再开启。
-- 检索评测已提供脚本入口 `scripts/run-retrieval-eval.ps1` 和 GitHub Actions 工作流 `Retrieval Evaluation`；后续检索策略改动应先过本地/CI 门禁。
+- 检索评测已提供脚本入口 `scripts/run-retrieval-eval.ps1`、业务评测集和 GitHub Actions 工作流 `Retrieval Evaluation`；后续检索策略改动应先过本地/CI 门禁。
 - 目录里的旧文档不删除，避免丢失细节；但实现时以 `00-单Agent记忆与RAG统一设计文档.md` 为准。
