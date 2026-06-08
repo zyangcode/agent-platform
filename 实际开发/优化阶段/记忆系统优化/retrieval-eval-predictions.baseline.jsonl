@@ -1,0 +1,10 @@
+{"caseId":"memory-answer-style","returnedIds":["memory-answer-style-current"]}
+{"caseId":"memory-project-stack","returnedIds":["memory-project-stack"]}
+{"caseId":"memory-explicit-forget","returnedIds":[]}
+{"caseId":"memory-conflict-preference","returnedIds":["memory-answer-style-current"]}
+{"caseId":"memory-tool-failure","returnedIds":["memory-tool-failure-search-timeout"]}
+{"caseId":"rag-auth-api","returnedIds":["chunk-auth-api-key"]}
+{"caseId":"rag-context-timeout","returnedIds":["chunk-context-retrieval-timeout"]}
+{"caseId":"rag-qdrant-scope","returnedIds":["chunk-qdrant-scope"]}
+{"caseId":"rag-no-answer","returnedIds":[]}
+{"caseId":"rag-reingest","returnedIds":["chunk-rag-reingest-delete-vector"]}
