@@ -330,6 +330,9 @@ public class DefaultMemoryWriteService implements MemoryWriteService {
 
     private void disableRelatedMemories(RecordMemoryCommand command) {
         List<String> keywords = forgetKeywords(command.content());
+        if (keywords.isEmpty()) {
+            return;
+        }
         LambdaQueryWrapper<MemoryEntity> wrapper = new LambdaQueryWrapper<MemoryEntity>()
                 .eq(MemoryEntity::getTenantId, command.tenantId())
                 .eq(MemoryEntity::getUserId, command.userId())
@@ -348,17 +351,15 @@ public class DefaultMemoryWriteService implements MemoryWriteService {
                         w.isNull(MemoryEntity::getProfileId).or().eq(MemoryEntity::getProfileId, command.profileId());
                     }
                 });
-        if (!keywords.isEmpty()) {
-            wrapper.and(w -> {
-                for (int i = 0; i < keywords.size(); i++) {
-                    if (i == 0) {
-                        w.like(MemoryEntity::getContent, keywords.get(i));
-                    } else {
-                        w.or().like(MemoryEntity::getContent, keywords.get(i));
-                    }
+        wrapper.and(w -> {
+            for (int i = 0; i < keywords.size(); i++) {
+                if (i == 0) {
+                    w.like(MemoryEntity::getContent, keywords.get(i));
+                } else {
+                    w.or().like(MemoryEntity::getContent, keywords.get(i));
                 }
-            });
-        }
+            }
+        });
         wrapper.last("limit 20");
         List<MemoryEntity> memories = memoryMapper.selectList(wrapper);
         if (memories == null || memories.isEmpty()) {

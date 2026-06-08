@@ -247,12 +247,14 @@ public class DefaultAgentContextBuilder implements AgentContextBuilder {
     ) {
         boolean recallMemory = shouldRecallMemory(profile);
         boolean recallRag = ragSearchService != null;
-        EmbeddingVectorDTO queryVector = precomputeQueryVector(command, recallMemory || recallRag);
+        CompletableFuture<EmbeddingVectorDTO> queryVectorFuture = (recallMemory || recallRag)
+                ? supplyEmbedding(command)
+                : CompletableFuture.completedFuture(null);
         CompletableFuture<List<MemoryDTO>> memoryFuture = recallMemory
-                ? supplyRetrieval(() -> recallMemories(command, queryVector))
+                ? supplyRetrieval(() -> recallMemories(command, awaitEmbedding(queryVectorFuture)))
                 : CompletableFuture.completedFuture(List.of());
         CompletableFuture<List<RagSearchResultDTO>> ragFuture = recallRag
-                ? supplyRetrieval(() -> searchRag(command, queryVector, ragTokenBudget))
+                ? supplyRetrieval(() -> searchRag(command, awaitEmbedding(queryVectorFuture), ragTokenBudget))
                 : CompletableFuture.completedFuture(List.of());
         return new RetrievalResult(
                 awaitRetrieval(memoryFuture),
@@ -260,14 +262,25 @@ public class DefaultAgentContextBuilder implements AgentContextBuilder {
         );
     }
 
-    private EmbeddingVectorDTO precomputeQueryVector(BuildAgentContextCommand command, boolean needed) {
-        if (!needed || embeddingService == null || command.userInput() == null || command.userInput().isBlank()) {
+    private CompletableFuture<EmbeddingVectorDTO> supplyEmbedding(BuildAgentContextCommand command) {
+        return CompletableFuture.supplyAsync(() -> precomputeQueryVector(command), retrievalExecutor);
+    }
+
+    private EmbeddingVectorDTO precomputeQueryVector(BuildAgentContextCommand command) {
+        if (embeddingService == null || command.userInput() == null || command.userInput().isBlank()) {
             return null;
         }
+        EmbeddingVectorDTO vector = embeddingService.embed(command.userInput());
+        return vector == null || vector.dimension() == 0 ? null : vector;
+    }
+
+    private EmbeddingVectorDTO awaitEmbedding(CompletableFuture<EmbeddingVectorDTO> future) {
         try {
-            EmbeddingVectorDTO vector = embeddingService.embed(command.userInput());
-            return vector == null || vector.dimension() == 0 ? null : vector;
-        } catch (RuntimeException ex) {
+            return future.get(RETRIEVAL_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+        } catch (TimeoutException ex) {
+            future.cancel(true);
+            return null;
+        } catch (Exception ex) {
             return null;
         }
     }

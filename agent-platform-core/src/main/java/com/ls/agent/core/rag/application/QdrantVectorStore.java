@@ -86,7 +86,7 @@ public class QdrantVectorStore implements VectorStore {
             root.set("vector", vectorNode(query.queryVector()));
             root.put("limit", query.topK());
             root.put("with_payload", true);
-            root.set("filter", scopedFilter(query.tenantId(), query.applicationId(), query.ownerUserId(),
+            root.set("filter", searchScopedFilter(query.tenantId(), query.applicationId(), query.ownerUserId(),
                     query.profileId(), null, query.sourceType()));
 
             JsonNode response = httpClient.send(
@@ -206,6 +206,25 @@ public class QdrantVectorStore implements VectorStore {
         return filter;
     }
 
+    private ObjectNode searchScopedFilter(
+            Long tenantId,
+            Long applicationId,
+            Long ownerUserId,
+            Long profileId,
+            Long documentId,
+            String sourceType
+    ) {
+        ObjectNode filter = objectMapper.createObjectNode();
+        ArrayNode must = filter.putArray("must");
+        addMatch(must, "source_type", sourceType);
+        addMatch(must, "tenant_id", tenantId);
+        addVisibleScope(must, "application_id", applicationId);
+        addMatch(must, "owner_user_id", ownerUserId);
+        addVisibleScope(must, "profile_id", profileId);
+        addMatch(must, "document_id", documentId);
+        return filter;
+    }
+
     private void addMatch(ArrayNode must, String key, Long value) {
         if (value == null) {
             return;
@@ -224,6 +243,19 @@ public class QdrantVectorStore implements VectorStore {
         condition.put("key", key);
         ObjectNode match = condition.putObject("match");
         match.put("value", value);
+    }
+
+    private void addVisibleScope(ArrayNode must, String key, Long value) {
+        if (value == null) {
+            return;
+        }
+        ObjectNode anyScope = must.addObject();
+        ArrayNode should = anyScope.putArray("should");
+        ObjectNode exact = should.addObject();
+        exact.put("key", key);
+        exact.putObject("match").put("value", value);
+        ObjectNode global = should.addObject();
+        global.put("is_empty", key);
     }
 
     private ArrayNode vectorNode(EmbeddingVectorDTO vector) {

@@ -180,8 +180,18 @@ public class DefaultMemoryRecallService implements MemoryRecallService {
                         .put("keywordCount", keywords == null ? 0 : keywords.size()));
         LambdaQueryWrapper<MemoryEntity> wrapper = baseWrapper(tenantId, applicationId, userId, profileId);
 
-        // Add keyword-based filtering if keywords exist
         if (!keywords.isEmpty()) {
+            List<MemoryEntity> tsvectorCandidates = searchByTsvector(
+                    tenantId,
+                    applicationId,
+                    userId,
+                    profileId,
+                    keywords,
+                    Math.max(1, limit * FETCH_MULTIPLIER)
+            );
+            if (!tsvectorCandidates.isEmpty()) {
+                return filterAndRankKeywordCandidates(tsvectorCandidates, resolvedFilter, keywords, keywordSpan);
+            }
             wrapper.and(w -> {
                 for (int i = 0; i < keywords.size(); i++) {
                     if (i == 0) {
@@ -228,6 +238,56 @@ public class DefaultMemoryRecallService implements MemoryRecallService {
             safeFinishSpan(keywordSpan, "FAILED", errorCode(ex), errorMessage(ex));
             throw ex;
         }
+    }
+
+    private List<MemoryEntity> searchByTsvector(
+            Long tenantId,
+            Long applicationId,
+            Long userId,
+            Long profileId,
+            List<String> keywords,
+            int limit
+    ) {
+        try {
+            List<MemoryEntity> memories = memoryMapper.searchActiveMemories(
+                    tenantId,
+                    applicationId,
+                    userId,
+                    profileId,
+                    keywords,
+                    String.join(" ", keywords),
+                    limit
+            );
+            return memories == null ? List.of() : memories;
+        } catch (RuntimeException ex) {
+            return List.of();
+        }
+    }
+
+    private List<MemoryEntity> filterAndRankKeywordCandidates(
+            List<MemoryEntity> candidates,
+            MemoryRecallFilter resolvedFilter,
+            List<String> keywords,
+            TraceSpanDTO keywordSpan
+    ) {
+        LocalDateTime minUpdatedAt = resolvedFilter.maxAge() == null
+                ? null
+                : LocalDateTime.now().minus(resolvedFilter.maxAge());
+        List<MemoryEntity> scored = candidates.stream()
+                .filter(memory -> matchesFilter(memory, resolvedFilter, minUpdatedAt))
+                .filter(memory -> score(memory, keywords) >= minScore(resolvedFilter))
+                .sorted(Comparator
+                        .<MemoryEntity>comparingDouble(m -> score(m, keywords))
+                        .reversed()
+                        .thenComparing(MemoryEntity::getUpdatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
+                .toList();
+        if (keywordSpan != null && keywordSpan.attributes() instanceof com.fasterxml.jackson.databind.node.ObjectNode attributes) {
+            attributes.put("candidateCount", candidates.size());
+            attributes.put("resultCount", scored.size());
+            attributes.put("keywordSearchMode", "tsvector");
+        }
+        safeFinishSpan(keywordSpan, "SUCCESS", null, null);
+        return scored;
     }
 
     private List<MemoryEntity> mergeRecallCandidates(
@@ -453,7 +513,7 @@ public class DefaultMemoryRecallService implements MemoryRecallService {
         }
         boolean applicationMatches = memory.getApplicationId() == null || Objects.equals(memory.getApplicationId(), applicationId);
         boolean profileMatches = memory.getProfileId() == null || Objects.equals(memory.getProfileId(), profileId);
-        return applicationMatches && profileMatches && STATUS_ACTIVE.equals(memory.getStatus());
+        return applicationMatches && profileMatches && STATUS_ACTIVE.equals(memory.getStatus()) && !isExpired(memory);
     }
 
     private LambdaQueryWrapper<MemoryEntity> baseWrapper(Long tenantId, Long applicationId, Long userId, Long profileId) {
@@ -461,6 +521,8 @@ public class DefaultMemoryRecallService implements MemoryRecallService {
                 .eq(MemoryEntity::getTenantId, tenantId)
                 .eq(MemoryEntity::getUserId, userId)
                 .eq(MemoryEntity::getStatus, STATUS_ACTIVE)
+                .and(w -> w.isNull(MemoryEntity::getExpiresAt)
+                        .or().gt(MemoryEntity::getExpiresAt, LocalDateTime.now()))
                 .and(w -> w.isNull(MemoryEntity::getApplicationId)
                         .or().eq(MemoryEntity::getApplicationId, applicationId))
                 .and(w -> w.isNull(MemoryEntity::getProfileId)
@@ -497,6 +559,9 @@ public class DefaultMemoryRecallService implements MemoryRecallService {
 
     private boolean matchesFilter(MemoryEntity memory, MemoryRecallFilter filter, LocalDateTime minUpdatedAt) {
         if (memory == null) {
+            return false;
+        }
+        if (isExpired(memory)) {
             return false;
         }
         if (minUpdatedAt != null && memory.getUpdatedAt() != null && memory.getUpdatedAt().isBefore(minUpdatedAt)) {
@@ -599,9 +664,13 @@ public class DefaultMemoryRecallService implements MemoryRecallService {
         }
         LocalDateTime now = LocalDateTime.now();
         for (MemoryEntity memory : memories) {
-            memory.setAccessCount(memory.getAccessCount() == null ? 1 : memory.getAccessCount() + 1);
-            memory.setLastAccessedAt(now);
-            memoryMapper.updateById(memory);
+            try {
+                memory.setAccessCount(memory.getAccessCount() == null ? 1 : memory.getAccessCount() + 1);
+                memory.setLastAccessedAt(now);
+                memoryMapper.updateById(memory);
+            } catch (RuntimeException ignored) {
+                // Access stats are telemetry; recall results must remain available if this write fails.
+            }
         }
     }
 
@@ -617,6 +686,10 @@ public class DefaultMemoryRecallService implements MemoryRecallService {
         return tags(tags).stream()
                 .map(tag -> tag.strip().toLowerCase())
                 .collect(Collectors.toSet());
+    }
+
+    private boolean isExpired(MemoryEntity memory) {
+        return memory.getExpiresAt() != null && !memory.getExpiresAt().isAfter(LocalDateTime.now());
     }
 
     private List<String> tags(String[] tags) {

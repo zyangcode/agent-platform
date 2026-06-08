@@ -18,9 +18,12 @@ import com.ls.agent.core.rag.dto.VectorStoreDocumentDTO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 @Service
 public class DefaultMemoryManagementService implements MemoryManagementService {
@@ -62,10 +65,28 @@ public class DefaultMemoryManagementService implements MemoryManagementService {
     ) {
         requireNonNull(tenantId, "tenantId");
         requireNonNull(userId, "userId");
+        int resolvedLimit = clampLimit(limit);
+        if (query != null && !query.isBlank()) {
+            List<MemoryEntity> searched = searchByTsvector(
+                    tenantId,
+                    applicationId,
+                    userId,
+                    profileId,
+                    category,
+                    query,
+                    resolvedLimit
+            );
+            if (!searched.isEmpty()) {
+                return searched.stream().map(this::toDTO).toList();
+            }
+        }
         LambdaQueryWrapper<MemoryEntity> wrapper = new LambdaQueryWrapper<MemoryEntity>()
                 .eq(MemoryEntity::getTenantId, tenantId)
                 .eq(MemoryEntity::getUserId, userId)
-                .eq(MemoryEntity::getStatus, STATUS_ACTIVE);
+                .eq(MemoryEntity::getStatus, STATUS_ACTIVE)
+                .and(w -> w.isNull(MemoryEntity::getExpiresAt)
+                        .or()
+                        .gt(MemoryEntity::getExpiresAt, LocalDateTime.now()));
         appendApplicationScope(wrapper, applicationId);
         appendProfileScope(wrapper, profileId);
         if (category != null && !category.isBlank()) {
@@ -76,10 +97,47 @@ public class DefaultMemoryManagementService implements MemoryManagementService {
         }
         wrapper.orderByDesc(MemoryEntity::getUpdatedAt)
                 .orderByDesc(MemoryEntity::getId)
-                .last("limit " + clampLimit(limit));
+                .last("limit " + resolvedLimit);
         return memoryMapper.selectList(wrapper).stream()
+                .filter(memory -> !isExpired(memory))
                 .map(this::toDTO)
                 .toList();
+    }
+
+    private List<MemoryEntity> searchByTsvector(
+            Long tenantId,
+            Long applicationId,
+            Long userId,
+            Long profileId,
+            String category,
+            String query,
+            int limit
+    ) {
+        List<String> terms = keywords(query);
+        if (terms.isEmpty()) {
+            return List.of();
+        }
+        try {
+            List<MemoryEntity> memories = memoryMapper.searchActiveMemories(
+                    tenantId,
+                    applicationId,
+                    userId,
+                    profileId,
+                    terms,
+                    String.join(" ", terms),
+                    limit
+            );
+            if (memories == null || memories.isEmpty()) {
+                return List.of();
+            }
+            String normalizedCategory = category == null || category.isBlank() ? null : normalize(category);
+            return memories.stream()
+                    .filter(memory -> !isExpired(memory))
+                    .filter(memory -> normalizedCategory == null || normalizedCategory.equals(resolveCategory(memory)))
+                    .toList();
+        } catch (RuntimeException ex) {
+            return List.of();
+        }
     }
 
     @Override
@@ -187,6 +245,10 @@ public class DefaultMemoryManagementService implements MemoryManagementService {
         return requested != null && requested.equals(actual);
     }
 
+    private boolean isExpired(MemoryEntity memory) {
+        return memory.getExpiresAt() != null && !memory.getExpiresAt().isAfter(LocalDateTime.now());
+    }
+
     private void upsertVector(MemoryEntity memory) {
         if (embeddingService == null || vectorStore == null || memory.getId() == null) {
             return;
@@ -284,6 +346,32 @@ public class DefaultMemoryManagementService implements MemoryManagementService {
 
     private String normalize(String value) {
         return value.strip().toLowerCase(Locale.ROOT);
+    }
+
+    private String resolveCategory(MemoryEntity memory) {
+        if (memory.getMemoryCategory() != null && !memory.getMemoryCategory().isBlank()) {
+            return normalize(memory.getMemoryCategory());
+        }
+        return memory.getMemoryType() == null ? "" : normalize(memory.getMemoryType());
+    }
+
+    private List<String> keywords(String value) {
+        if (value == null || value.isBlank()) {
+            return List.of();
+        }
+        String normalized = value.toLowerCase(Locale.ROOT)
+                .replaceAll("[^\\p{IsHan}\\p{IsAlphabetic}\\p{IsDigit}]+", " ")
+                .strip();
+        if (normalized.isBlank()) {
+            return List.of();
+        }
+        Set<String> terms = new LinkedHashSet<>();
+        for (String part : normalized.split("\\s+")) {
+            if (part.length() >= 2) {
+                terms.add(part);
+            }
+        }
+        return terms.stream().limit(10).toList();
     }
 
     private String[] tags(List<String> tags) {

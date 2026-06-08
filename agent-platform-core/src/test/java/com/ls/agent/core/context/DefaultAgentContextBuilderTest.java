@@ -326,6 +326,43 @@ class DefaultAgentContextBuilderTest {
     }
 
     @Test
+    void buildContextTimesOutSlowSharedEmbeddingPrecompute() {
+        when(profileService.getProfile(1L, 10001L, 50001L)).thenReturn(profile());
+        when(skillRegistry.listAvailableSkills(1L, List.of(1L))).thenReturn(List.of(skill()));
+        when(mcpToolRegistry.listAvailableTools(1L, List.of(1L))).thenReturn(List.of(mcpTool()));
+        when(messageHistoryService.listRecentMessages(eq(1L), eq(20001L), eq(10001L), eq(50001L), eq(90001L), anyInt()))
+                .thenReturn(List.of());
+        EmbeddingService slowEmbeddingService = query -> {
+            try {
+                Thread.sleep(3_000);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+            }
+            return new EmbeddingVectorDTO("slow", new float[]{1.0f});
+        };
+        MemoryRecallService emptyMemoryService = mock(MemoryRecallService.class);
+        RagSearchService emptyRagService = mock(RagSearchService.class);
+        DefaultAgentContextBuilder slowEmbeddingBuilder = builderWith(emptyMemoryService, emptyRagService, slowEmbeddingService);
+
+        long startedAt = System.nanoTime();
+        AgentContextDTO result = slowEmbeddingBuilder.build(new BuildAgentContextCommand(
+                1L,
+                10001L,
+                20001L,
+                50001L,
+                90001L,
+                "slow embedding query",
+                1_000,
+                null,
+                null
+        ));
+        long elapsedMillis = java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt);
+
+        assertThat(elapsedMillis).isLessThan(2_500L);
+        assertThat(result.apiMessages().get(0).content()).contains("You are Nexus");
+    }
+
+    @Test
     void buildContextKeepsRagResultsWhenMemoryRetrievalFails() {
         EmbeddingVectorDTO queryVector = new EmbeddingVectorDTO("mock", new float[]{0.7f});
         when(embeddingService.embed("memory path fails")).thenReturn(queryVector);

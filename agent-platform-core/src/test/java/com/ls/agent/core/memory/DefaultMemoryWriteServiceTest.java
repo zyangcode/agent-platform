@@ -334,6 +334,27 @@ class DefaultMemoryWriteServiceTest {
     }
 
     @Test
+    void recordDoesNotDisableMemoriesWhenForgetTargetIsUnclear() {
+        service.record(new RecordMemoryCommand(
+                1L,
+                10001L,
+                20001L,
+                50001L,
+                "SUMMARY",
+                "忘记",
+                90001L,
+                "summary",
+                List.of("chat"),
+                0.7,
+                "task_memory"
+        ));
+
+        verify(memoryMapper, never()).selectList(any());
+        verify(memoryMapper, never()).insert(any(MemoryEntity.class));
+        verify(memoryMapper, never()).updateById(any(MemoryEntity.class));
+    }
+
+    @Test
     void recordBlocksSensitiveSecrets() {
         service.record(new RecordMemoryCommand(
                 1L,

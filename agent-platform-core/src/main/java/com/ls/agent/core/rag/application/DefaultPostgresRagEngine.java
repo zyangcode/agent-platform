@@ -139,6 +139,7 @@ public class DefaultPostgresRagEngine implements RagEngine {
             applyDocumentFields(document, command, docHash);
             documentMapper.updateById(document);
             chunkMapper.disableByDocumentId(command.tenantId(), command.applicationId(), document.getId());
+            deleteVectorDocument(command.tenantId(), command.applicationId(), command.ownerUserId(), command.profileId(), document.getId());
         }
 
         int vectorIndexedCount = 0;
@@ -217,17 +218,21 @@ public class DefaultPostgresRagEngine implements RagEngine {
         if (terms.isEmpty()) {
             return List.of();
         }
-        return chunkMapper.searchActiveChunks(tenantId, applicationId, userId, profileId, terms, topK)
-                .stream()
-                .map(chunk -> new RagSearchResultDTO(
-                        chunk.getDocumentId(),
-                        chunk.getId(),
-                        chunk.getTitle(),
-                        chunk.getContent(),
-                        chunk.getSourceUri(),
-                        chunk.getKeywordScore() == null ? 0.0 : chunk.getKeywordScore()
-                ))
-                .toList();
+        try {
+            return chunkMapper.searchActiveChunks(tenantId, applicationId, userId, profileId, terms, String.join(" ", terms), topK)
+                    .stream()
+                    .map(chunk -> new RagSearchResultDTO(
+                            chunk.getDocumentId(),
+                            chunk.getId(),
+                            chunk.getTitle(),
+                            chunk.getContent(),
+                            chunk.getSourceUri(),
+                            chunk.getKeywordScore() == null ? 0.0 : chunk.getKeywordScore()
+                    ))
+                    .toList();
+        } catch (RuntimeException ex) {
+            return List.of();
+        }
     }
 
     private List<RagSearchResultDTO> mergeSearchResults(

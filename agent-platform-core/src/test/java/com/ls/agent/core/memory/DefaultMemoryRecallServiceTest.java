@@ -27,6 +27,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doThrow;
 
 class DefaultMemoryRecallServiceTest {
 
@@ -56,6 +57,19 @@ class DefaultMemoryRecallServiceTest {
         assertThat(captor.getValue().getId()).isEqualTo(10L);
         assertThat(captor.getValue().getAccessCount()).isEqualTo(3);
         assertThat(captor.getValue().getLastAccessedAt()).isNotNull();
+    }
+
+    @Test
+    void recallStillReturnsMemoriesWhenAccessStatsUpdateFails() {
+        MemoryEntity entity = memory("PREFERENCE", "Ada likes basketball.");
+        entity.setId(10L);
+        entity.setAccessCount(2);
+        when(memoryMapper.selectList(any(Wrapper.class))).thenReturn(List.of(entity));
+        doThrow(new IllegalStateException("db update down")).when(memoryMapper).updateById(entity);
+
+        List<MemoryDTO> result = service.recall(1L, 20001L, 10001L, 50001L, "basketball", 5);
+
+        assertThat(result).extracting(MemoryDTO::content).containsExactly("Ada likes basketball.");
     }
 
     @Test
@@ -109,6 +123,24 @@ class DefaultMemoryRecallServiceTest {
         assertThat(result.get(0).tags()).containsExactly("sports", "style");
         assertThat(result.get(0).importance()).isEqualTo(0.9);
         assertThat(result.get(0).slotHint()).isEqualTo("task_memory");
+    }
+
+    @Test
+    void recallExcludesExpiredMemoriesFromContextInjection() {
+        MemoryEntity expired = memory("PREFERENCE", "Ada likes expired basketball tips.");
+        expired.setExpiresAt(LocalDateTime.now().minusDays(1));
+        expired.setImportance(1.0);
+
+        MemoryEntity active = memory("PREFERENCE", "Ada likes active basketball tips.");
+        active.setExpiresAt(LocalDateTime.now().plusDays(1));
+        active.setImportance(0.8);
+
+        when(memoryMapper.selectList(any(Wrapper.class))).thenReturn(List.of(expired, active));
+
+        List<MemoryDTO> result = service.recall(1L, 20001L, 10001L, 50001L, "basketball", 5);
+
+        assertThat(result).extracting(MemoryDTO::content)
+                .containsExactly("Ada likes active basketball tips.");
     }
 
     @Test

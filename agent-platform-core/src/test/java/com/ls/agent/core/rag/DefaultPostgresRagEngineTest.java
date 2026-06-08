@@ -185,6 +185,42 @@ class DefaultPostgresRagEngineTest {
     }
 
     @Test
+    void ingestSameDocumentHashDeletesOldChunkVectorsBeforeReindexing() {
+        DefaultPostgresRagEngine vectorEngine = new DefaultPostgresRagEngine(
+                documentMapper,
+                chunkMapper,
+                new TextSplitter(),
+                embeddingService,
+                vectorStore
+        );
+        KnowledgeDocumentEntity existing = new KnowledgeDocumentEntity();
+        existing.setId(90001L);
+        when(documentMapper.selectActiveByScopeAndHash(
+                1L,
+                20001L,
+                10001L,
+                50001L,
+                sha256("Policy content for refund.")
+        )).thenReturn(existing);
+
+        vectorEngine.ingest(new IngestKnowledgeDocumentCommand(
+                1L,
+                20001L,
+                10001L,
+                50001L,
+                "Policy",
+                "MANUAL",
+                "kb://policy",
+                "Policy content for refund.",
+                40,
+                5
+        ));
+
+        verify(chunkMapper).disableByDocumentId(1L, 20001L, 90001L);
+        verify(vectorStore).deleteByDocument(1L, 20001L, 10001L, 50001L, 90001L);
+    }
+
+    @Test
     void ingestRecordsTraceSpanWhenTraceContextExists() {
         EmbeddingService traceObservedEmbeddingService = new TraceObservedEmbeddingService();
         VectorStore traceObservedVectorStore = new TraceObservedVectorStore();
@@ -263,6 +299,7 @@ class DefaultPostgresRagEngineTest {
                 eq(10001L),
                 eq(50001L),
                 eq(List.of("outdoor", "basketball")),
+                eq("outdoor basketball"),
                 eq(5)
         )).thenReturn(List.of(chunk));
 
@@ -366,6 +403,7 @@ class DefaultPostgresRagEngineTest {
                 eq(10001L),
                 eq(50001L),
                 eq(List.of("basketball", "injury", "prevention")),
+                eq("basketball injury prevention"),
                 eq(5)
         )).thenReturn(List.of(keywordChunk));
 
@@ -474,6 +512,7 @@ class DefaultPostgresRagEngineTest {
                 eq(10001L),
                 eq(50001L),
                 eq(List.of("outdoor", "basketball")),
+                eq("outdoor basketball"),
                 eq(5)
         )).thenReturn(List.of(chunk));
 
@@ -488,6 +527,30 @@ class DefaultPostgresRagEngineTest {
 
         assertThat(results).hasSize(1);
         assertThat(results.get(0).score()).isEqualTo(2.0);
+    }
+
+    @Test
+    void searchReturnsEmptyResultsWhenPostgresKeywordSearchFails() {
+        when(chunkMapper.searchActiveChunks(
+                eq(1L),
+                eq(20001L),
+                eq(10001L),
+                eq(50001L),
+                eq(List.of("outdoor", "basketball")),
+                eq("outdoor basketball"),
+                eq(5)
+        )).thenThrow(new IllegalStateException("search_vector column missing"));
+
+        List<RagSearchResultDTO> results = engine.search(
+                1L,
+                20001L,
+                10001L,
+                50001L,
+                "outdoor basketball",
+                5
+        );
+
+        assertThat(results).isEmpty();
     }
 
     @Test

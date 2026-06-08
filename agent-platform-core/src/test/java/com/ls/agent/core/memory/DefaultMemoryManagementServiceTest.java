@@ -19,6 +19,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -58,6 +59,54 @@ class DefaultMemoryManagementServiceTest {
         assertThat(result.get(0).content()).isEqualTo("User likes evening basketball.");
         assertThat(result.get(0).tags()).containsExactly("sports", "preference");
         assertThat(result.get(0).status()).isEqualTo("ACTIVE");
+    }
+
+    @Test
+    void listUsesTsvectorSearchWhenQueryIsPresent() {
+        MemoryEntity memory = memory(88L, "User likes evening basketball.");
+        when(memoryMapper.searchActiveMemories(
+                eq(1L),
+                eq(20001L),
+                eq(10001L),
+                eq(50001L),
+                eq(List.of("basketball", "preference")),
+                eq("basketball preference"),
+                eq(20)
+        )).thenReturn(List.of(memory));
+
+        List<MemoryRecordDTO> result = service.list(
+                1L,
+                20001L,
+                10001L,
+                50001L,
+                "preference",
+                "basketball preference",
+                20
+        );
+
+        assertThat(result).extracting(MemoryRecordDTO::id).containsExactly(88L);
+        verify(memoryMapper, never()).selectList(any(Wrapper.class));
+    }
+
+    @Test
+    void listExcludesExpiredActiveMemoriesFromDefaultManagementView() {
+        MemoryEntity expired = memory(87L, "Expired preference");
+        expired.setExpiresAt(LocalDateTime.now().minusDays(1));
+        MemoryEntity active = memory(88L, "Active preference");
+        active.setExpiresAt(LocalDateTime.now().plusDays(1));
+        when(memoryMapper.selectList(any(Wrapper.class))).thenReturn(List.of(expired, active));
+
+        List<MemoryRecordDTO> result = service.list(
+                1L,
+                20001L,
+                10001L,
+                50001L,
+                "preference",
+                null,
+                20
+        );
+
+        assertThat(result).extracting(MemoryRecordDTO::id).containsExactly(88L);
     }
 
     @Test

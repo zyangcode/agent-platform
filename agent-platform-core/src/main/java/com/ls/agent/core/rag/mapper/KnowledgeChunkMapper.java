@@ -29,21 +29,16 @@ public interface KnowledgeChunkMapper extends BaseMapper<KnowledgeChunkEntity> {
 
     @Select("""
             <script>
+            with query as (
+                select websearch_to_tsquery('simple', #{queryText}) as ts_query
+            )
             select c.*,
                    d.title as title,
                    d.source_uri as source_uri,
-                   (
-                       <foreach collection="terms" item="term" separator="+">
-                       case
-                         when c.content ilike concat('%', #{term}, '%')
-                              or d.title ilike concat('%', #{term}, '%')
-                         then 1
-                         else 0
-                       end
-                       </foreach>
-                   )::float8 as keyword_score
+                   ts_rank_cd(c.search_vector, query.ts_query)::float8 as keyword_score
             from knowledge_chunks c
             join knowledge_documents d on d.id = c.document_id
+            cross join query
             where c.tenant_id = #{tenantId}
               and c.application_id = #{applicationId}
               and d.owner_user_id = #{ownerUserId}
@@ -55,12 +50,7 @@ public interface KnowledgeChunkMapper extends BaseMapper<KnowledgeChunkEntity> {
               </if>
               and c.status = 'ACTIVE'
               and d.status = 'INDEXED'
-              and (
-                    <foreach collection="terms" item="term" separator=" or ">
-                    c.content ilike concat('%', #{term}, '%')
-                    or d.title ilike concat('%', #{term}, '%')
-                    </foreach>
-                  )
+              and c.search_vector @@ query.ts_query
             order by keyword_score desc, c.chunk_index asc
             limit #{limit}
             </script>
@@ -71,6 +61,7 @@ public interface KnowledgeChunkMapper extends BaseMapper<KnowledgeChunkEntity> {
             @Param("ownerUserId") Long ownerUserId,
             @Param("profileId") Long profileId,
             @Param("terms") List<String> terms,
+            @Param("queryText") String queryText,
             @Param("limit") int limit
     );
 

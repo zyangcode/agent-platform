@@ -125,6 +125,27 @@ class MockVectorStoreTest {
         ))).extracting(VectorSearchResultDTO::vectorId).containsExactly("memory-88");
     }
 
+    @Test
+    void searchIncludesGlobalApplicationAndProfileVectorsInCurrentScope() {
+        vectorStore.upsert(point("global-memory", "memory", 1L, null, 10001L, null, 88L, 88L,
+                "User likes basketball"));
+        vectorStore.upsert(point("profile-memory", "memory", 1L, 20001L, 10001L, 50001L, 89L, 89L,
+                "User likes basketball after work"));
+
+        List<VectorSearchResultDTO> results = vectorStore.search(new VectorSearchQueryDTO(
+                "memory",
+                1L,
+                20001L,
+                10001L,
+                50001L,
+                embeddingService.embed("basketball"),
+                5
+        ));
+
+        assertThat(results).extracting(VectorSearchResultDTO::vectorId)
+                .contains("global-memory", "profile-memory");
+    }
+
     private VectorStoreDocumentDTO point(
             String vectorId,
             Long tenantId,

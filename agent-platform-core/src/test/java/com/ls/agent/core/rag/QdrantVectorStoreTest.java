@@ -115,13 +115,13 @@ class QdrantVectorStoreTest {
         assertThat(request.path).isEqualTo("/collections/rag_chunks_test/points/search");
         assertThat(request.body.path("limit").asInt()).isEqualTo(3);
         assertThat(request.body.path("vector")).hasSize(3);
-        assertThat(filterKeys(request.body)).containsExactly(
+        assertThat(filterKeys(request.body)).contains(
                 "source_type",
                 "tenant_id",
-                "application_id",
-                "owner_user_id",
-                "profile_id"
+                "owner_user_id"
         );
+        assertThat(shouldKeys(request.body, "application_id")).contains("application_id");
+        assertThat(shouldKeys(request.body, "profile_id")).contains("profile_id");
         assertThat(filterValue(request.body, "source_type")).isEqualTo("rag");
     }
 
@@ -164,6 +164,26 @@ class QdrantVectorStoreTest {
 
         CapturedRequest request = client.requests.get(2);
         assertThat(filterValue(request.body, "source_type")).isEqualTo("memory");
+    }
+
+    @Test
+    void searchFilterIncludesGlobalApplicationAndProfileScopeAlternatives() throws Exception {
+        FakeQdrantHttpClient client = new FakeQdrantHttpClient(objectMapper);
+        QdrantVectorStore store = new QdrantVectorStore(properties, client, objectMapper);
+
+        store.search(new VectorSearchQueryDTO(
+                "memory",
+                1L,
+                20001L,
+                10001L,
+                50001L,
+                new EmbeddingVectorDTO("mock-embedding", new float[]{0.4f, 0.5f, 0.6f}),
+                3
+        ));
+
+        CapturedRequest request = client.requests.get(2);
+        assertThat(shouldKeys(request.body, "application_id")).contains("application_id");
+        assertThat(shouldKeys(request.body, "profile_id")).contains("profile_id");
     }
 
     @Test
@@ -256,7 +276,9 @@ class QdrantVectorStoreTest {
     private List<String> filterKeys(JsonNode body) {
         List<String> keys = new ArrayList<>();
         for (JsonNode condition : body.path("filter").path("must")) {
-            keys.add(condition.path("key").asText());
+            if (condition.hasNonNull("key")) {
+                keys.add(condition.path("key").asText());
+            }
         }
         return keys;
     }
@@ -268,6 +290,18 @@ class QdrantVectorStoreTest {
             }
         }
         return "";
+    }
+
+    private List<String> shouldKeys(JsonNode body, String key) {
+        List<String> keys = new ArrayList<>();
+        for (JsonNode condition : body.path("filter").path("must")) {
+            for (JsonNode option : condition.path("should")) {
+                if (key.equals(option.path("key").asText())) {
+                    keys.add(key);
+                }
+            }
+        }
+        return keys;
     }
 
     private VectorStoreDocumentDTO point(String vectorId) {

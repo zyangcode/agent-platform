@@ -43,6 +43,25 @@ class RagPersistenceStructureTest {
     }
 
     @Test
+    void keywordSearchMigrationAddsPostgresTsvectorIndexesForMemoryAndRag() throws IOException {
+        String sql = readMigration("db/migration/V017__add_memory_rag_tsvector_search.sql");
+
+        assertThat(sql).contains(
+                "alter table memories",
+                "search_vector tsvector",
+                "alter table knowledge_chunks",
+                "idx_memories_search_vector",
+                "idx_knowledge_chunks_search_vector",
+                "using gin (search_vector)",
+                "create or replace function update_memories_search_vector",
+                "create or replace function update_knowledge_chunks_search_vector",
+                "trigger trg_memories_search_vector",
+                "trigger trg_knowledge_chunks_search_vector",
+                "to_tsvector('simple'"
+        );
+    }
+
+    @Test
     void ragEntitiesExistAndUseExpectedBaseClasses() throws ClassNotFoundException {
         for (Map.Entry<String, Class<?>> entry : RAG_ENTITY_SUPER_TYPES.entrySet()) {
             Class<?> entityClass = Class.forName(entry.getKey());
