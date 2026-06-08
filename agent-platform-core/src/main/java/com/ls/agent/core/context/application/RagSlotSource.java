@@ -21,6 +21,7 @@ public class RagSlotSource implements ContextSlotSource {
 
     private final RagSearchService ragSearchService;
     private final TraceService traceService;
+    private final List<RagSearchResultDTO> prefetchedResults;
     private List<RagSearchResultDTO> lastResults = List.of();
 
     public RagSlotSource(RagSearchService ragSearchService) {
@@ -28,8 +29,21 @@ public class RagSlotSource implements ContextSlotSource {
     }
 
     public RagSlotSource(RagSearchService ragSearchService, TraceService traceService) {
+        this(ragSearchService, traceService, null);
+    }
+
+    public RagSlotSource(List<RagSearchResultDTO> prefetchedResults) {
+        this(null, null, prefetchedResults == null ? List.of() : List.copyOf(prefetchedResults));
+    }
+
+    private RagSlotSource(
+            RagSearchService ragSearchService,
+            TraceService traceService,
+            List<RagSearchResultDTO> prefetchedResults
+    ) {
         this.ragSearchService = ragSearchService;
         this.traceService = traceService;
+        this.prefetchedResults = prefetchedResults;
     }
 
     @Override
@@ -39,7 +53,15 @@ public class RagSlotSource implements ContextSlotSource {
 
     @Override
     public ContextSlotContent fetch(ContextSlot slot, BuildAgentContextCommand command) {
-        if (!supports(slot.kind()) || ragSearchService == null || command == null) {
+        if (!supports(slot.kind()) || command == null) {
+            return ContextSlotContent.empty(slot.kind());
+        }
+        if (prefetchedResults != null) {
+            List<RagSearchResultDTO> safeResults = prefetchedResults;
+            this.lastResults = safeResults;
+            return format(safeResults, slot.tokenBudget());
+        }
+        if (ragSearchService == null) {
             return ContextSlotContent.empty(slot.kind());
         }
         TraceSpanDTO span = safeStartSpan(command, slot.tokenBudget());

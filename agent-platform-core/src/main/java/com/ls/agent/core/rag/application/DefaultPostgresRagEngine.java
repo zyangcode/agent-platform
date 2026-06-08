@@ -179,10 +179,26 @@ public class DefaultPostgresRagEngine implements RagEngine {
             String traceId,
             Long parentSpanId
     ) {
+        return search(tenantId, applicationId, userId, profileId, query, topK, null, traceId, parentSpanId);
+    }
+
+    @Override
+    public List<RagSearchResultDTO> search(
+            Long tenantId,
+            Long applicationId,
+            Long userId,
+            Long profileId,
+            String query,
+            int topK,
+            EmbeddingVectorDTO queryVector,
+            String traceId,
+            Long parentSpanId
+    ) {
         if (query == null || query.isBlank() || topK <= 0) {
             return List.of();
         }
         List<RagSearchResultDTO> vectorResults = searchByVector(tenantId, applicationId, userId, profileId, query, topK,
+                queryVector,
                 traceId, parentSpanId);
         if (!vectorResults.isEmpty()) {
             return vectorResults;
@@ -263,28 +279,17 @@ public class DefaultPostgresRagEngine implements RagEngine {
             Long profileId,
             String query,
             int topK,
+            EmbeddingVectorDTO precomputedQueryVector,
             String traceId,
             Long parentSpanId
     ) {
-        if (embeddingService == null || vectorStore == null) {
+        if (vectorStore == null) {
             return List.of();
         }
         try {
-            ObjectNode embeddingAttributes = OBJECT_MAPPER.createObjectNode()
-                    .put("queryChars", query == null ? 0 : query.length());
-            TraceSpanDTO embeddingSpan = safeStartSpan(traceId, parentSpanId, "rag.embedding", "RAG", embeddingAttributes);
-            EmbeddingVectorDTO queryVector;
-            try {
-                queryVector = embeddingService.embed(query);
-                if (embeddingSpan != null && embeddingSpan.attributes() instanceof ObjectNode attributes) {
-                    attributes.put("model", queryVector == null ? "" : queryVector.model());
-                    attributes.put("dimension", queryVector == null ? 0 : queryVector.dimension());
-                }
-                safeFinishSpan(embeddingSpan, "SUCCESS", null, null);
-            } catch (RuntimeException ex) {
-                safeFinishSpan(embeddingSpan, "FAILED", errorCode(ex), errorMessage(ex));
-                throw ex;
-            }
+            EmbeddingVectorDTO queryVector = precomputedQueryVector == null
+                    ? embedQuery(query, traceId, parentSpanId)
+                    : precomputedQueryVector;
             if (queryVector == null || queryVector.dimension() == 0) {
                 return List.of();
             }
@@ -339,6 +344,27 @@ public class DefaultPostgresRagEngine implements RagEngine {
                     .toList();
         } catch (RuntimeException ignored) {
             return List.of();
+        }
+    }
+
+    private EmbeddingVectorDTO embedQuery(String query, String traceId, Long parentSpanId) {
+        if (embeddingService == null) {
+            return null;
+        }
+        ObjectNode embeddingAttributes = OBJECT_MAPPER.createObjectNode()
+                .put("queryChars", query == null ? 0 : query.length());
+        TraceSpanDTO embeddingSpan = safeStartSpan(traceId, parentSpanId, "rag.embedding", "RAG", embeddingAttributes);
+        try {
+            EmbeddingVectorDTO queryVector = embeddingService.embed(query);
+            if (embeddingSpan != null && embeddingSpan.attributes() instanceof ObjectNode attributes) {
+                attributes.put("model", queryVector == null ? "" : queryVector.model());
+                attributes.put("dimension", queryVector == null ? 0 : queryVector.dimension());
+            }
+            safeFinishSpan(embeddingSpan, "SUCCESS", null, null);
+            return queryVector;
+        } catch (RuntimeException ex) {
+            safeFinishSpan(embeddingSpan, "FAILED", errorCode(ex), errorMessage(ex));
+            throw ex;
         }
     }
 

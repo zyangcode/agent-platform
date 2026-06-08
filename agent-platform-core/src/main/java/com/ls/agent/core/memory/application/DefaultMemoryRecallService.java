@@ -92,6 +92,21 @@ public class DefaultMemoryRecallService implements MemoryRecallService {
             String traceId,
             Long parentSpanId
     ) {
+        return recall(tenantId, applicationId, userId, profileId, query, filter, null, traceId, parentSpanId);
+    }
+
+    @Override
+    public List<MemoryDTO> recall(
+            Long tenantId,
+            Long applicationId,
+            Long userId,
+            Long profileId,
+            String query,
+            MemoryRecallFilter filter,
+            EmbeddingVectorDTO queryVector,
+            String traceId,
+            Long parentSpanId
+    ) {
         MemoryRecallFilter resolvedFilter = filter == null
                 ? MemoryRecallFilter.builder().build()
                 : filter;
@@ -104,6 +119,7 @@ public class DefaultMemoryRecallService implements MemoryRecallService {
                 query,
                 resolvedFilter,
                 limit,
+                queryVector,
                 traceId,
                 parentSpanId
         );
@@ -171,26 +187,17 @@ public class DefaultMemoryRecallService implements MemoryRecallService {
             String query,
             MemoryRecallFilter filter,
             int limit,
+            EmbeddingVectorDTO precomputedQueryVector,
             String traceId,
             Long parentSpanId
     ) {
-        if (embeddingService == null || vectorStore == null || query == null || query.isBlank() || limit <= 0) {
+        if (vectorStore == null || query == null || query.isBlank() || limit <= 0) {
             return List.of();
         }
         try {
-            TraceSpanDTO embeddingSpan = safeStartSpan(traceId, parentSpanId, "memory.embedding", attributes().put("queryChars", query.length()));
-            EmbeddingVectorDTO queryVector;
-            try {
-                queryVector = embeddingService.embed(query);
-                if (embeddingSpan != null && embeddingSpan.attributes() instanceof com.fasterxml.jackson.databind.node.ObjectNode attributes) {
-                    attributes.put("model", queryVector == null ? "" : queryVector.model());
-                    attributes.put("dimension", queryVector == null ? 0 : queryVector.dimension());
-                }
-                safeFinishSpan(embeddingSpan, "SUCCESS", null, null);
-            } catch (RuntimeException ex) {
-                safeFinishSpan(embeddingSpan, "FAILED", errorCode(ex), errorMessage(ex));
-                throw ex;
-            }
+            EmbeddingVectorDTO queryVector = precomputedQueryVector == null
+                    ? embedQuery(query, traceId, parentSpanId)
+                    : precomputedQueryVector;
             if (queryVector == null || queryVector.dimension() == 0) {
                 return List.of();
             }
@@ -254,6 +261,25 @@ public class DefaultMemoryRecallService implements MemoryRecallService {
                     .toList();
         } catch (RuntimeException ex) {
             return List.of();
+        }
+    }
+
+    private EmbeddingVectorDTO embedQuery(String query, String traceId, Long parentSpanId) {
+        if (embeddingService == null) {
+            return null;
+        }
+        TraceSpanDTO embeddingSpan = safeStartSpan(traceId, parentSpanId, "memory.embedding", attributes().put("queryChars", query.length()));
+        try {
+            EmbeddingVectorDTO queryVector = embeddingService.embed(query);
+            if (embeddingSpan != null && embeddingSpan.attributes() instanceof com.fasterxml.jackson.databind.node.ObjectNode attributes) {
+                attributes.put("model", queryVector == null ? "" : queryVector.model());
+                attributes.put("dimension", queryVector == null ? 0 : queryVector.dimension());
+            }
+            safeFinishSpan(embeddingSpan, "SUCCESS", null, null);
+            return queryVector;
+        } catch (RuntimeException ex) {
+            safeFinishSpan(embeddingSpan, "FAILED", errorCode(ex), errorMessage(ex));
+            throw ex;
         }
     }
 

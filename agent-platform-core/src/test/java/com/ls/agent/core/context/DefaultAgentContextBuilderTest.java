@@ -21,7 +21,9 @@ import com.ls.agent.core.profile.api.ProfileService;
 import com.ls.agent.core.profile.dto.ProfileDTO;
 import com.ls.agent.core.profile.dto.ProfileMcpToolBindingDTO;
 import com.ls.agent.core.profile.dto.ProfileSkillBindingDTO;
+import com.ls.agent.core.rag.api.EmbeddingService;
 import com.ls.agent.core.rag.api.RagSearchService;
+import com.ls.agent.core.rag.dto.EmbeddingVectorDTO;
 import com.ls.agent.core.rag.dto.RagSearchResultDTO;
 import com.ls.agent.core.skill.api.SkillRegistry;
 import com.ls.agent.core.skill.dto.SkillDTO;
@@ -32,6 +34,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -55,6 +58,7 @@ class DefaultAgentContextBuilderTest {
     private final ExperienceSkillResolver experienceSkillResolver = mock(ExperienceSkillResolver.class);
     private final RagSearchService ragSearchService = mock(RagSearchService.class);
     private final TraceService traceService = mock(TraceService.class);
+    private final EmbeddingService embeddingService = mock(EmbeddingService.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final DefaultAgentContextBuilder builder = new DefaultAgentContextBuilder(
             profileService,
@@ -65,7 +69,8 @@ class DefaultAgentContextBuilderTest {
             modelConfigService,
             experienceSkillResolver,
             ragSearchService,
-            traceService
+            traceService,
+            embeddingService
     );
 
     @Test
@@ -175,45 +180,35 @@ class DefaultAgentContextBuilderTest {
 
         ArgumentCaptor<StartTraceSpanCommand> captor = ArgumentCaptor.forClass(StartTraceSpanCommand.class);
         verify(traceService, times(10)).startSpan(captor.capture());
-        assertThat(captor.getAllValues()).extracting("spanName")
-                .containsExactly(
-                        "memory.recall",
-                        "experience.resolve",
-                        "api.messages.compose",
-                        "rag.search",
-                        "context.slot.compose",
-                        "context.slot.compose",
-                        "context.slot.compose",
-                        "context.slot.compose",
-                        "context.slot.compose",
-                        "context.slot.compose"
-                );
+        List<StartTraceSpanCommand> spanStarts = captor.getAllValues();
+        assertThat(spanStarts).extracting("spanName")
+                .contains("memory.recall", "rag.search", "experience.resolve", "api.messages.compose");
         assertThat(captor.getAllValues()).allSatisfy(command -> {
             assertThat(command.traceId()).isEqualTo("trace-ctx");
             assertThat(command.parentSpanId()).isEqualTo(42L);
             assertThat(command.spanType()).isEqualTo("CONTEXT");
         });
-        StartTraceSpanCommand memorySpan = captor.getAllValues().get(0);
+        StartTraceSpanCommand memorySpan = spanStart(spanStarts, "memory.recall");
         assertThat(memorySpan.attributes().get("limit").asInt()).isEqualTo(5);
         assertThat(memorySpan.attributes().get("recalledCount").asInt()).isZero();
-        StartTraceSpanCommand experienceSpan = captor.getAllValues().get(1);
+        StartTraceSpanCommand experienceSpan = spanStart(spanStarts, "experience.resolve");
         assertThat(experienceSpan.attributes().get("profileType").asText()).isEqualTo("GENERAL");
         assertThat(experienceSpan.attributes().get("limit").asInt()).isEqualTo(3);
         assertThat(experienceSpan.attributes().get("resolvedCount").asInt()).isEqualTo(1);
-        StartTraceSpanCommand composeSpan = captor.getAllValues().get(2);
+        StartTraceSpanCommand composeSpan = spanStart(spanStarts, "api.messages.compose");
         assertThat(composeSpan.attributes().get("maxContextTokens").asInt()).isEqualTo(1_000);
         assertThat(composeSpan.attributes().get("apiMessages").asInt()).isEqualTo(2);
         assertThat(composeSpan.attributes().get("conversationMessages").asInt()).isEqualTo(1);
         assertThat(composeSpan.attributes().get("estimatedTokens").asInt()).isPositive();
-        StartTraceSpanCommand ragSpan = captor.getAllValues().get(3);
+        StartTraceSpanCommand ragSpan = spanStart(spanStarts, "rag.search");
         assertThat(ragSpan.attributes().get("topK").asInt()).isEqualTo(5);
         assertThat(ragSpan.attributes().get("searchService").asText()).isNotBlank();
         assertThat(ragSpan.attributes().has("vectorStoreAvailable")).isFalse();
         assertThat(ragSpan.attributes().get("returnedCount").asInt()).isZero();
-        assertThat(captor.getAllValues().subList(4, 10))
+        assertThat(spanStarts.subList(4, 10))
                 .extracting(command -> command.attributes().get("slotKind").asText())
                 .containsExactly("PROFILE", "TASK_MEMORY", "EXPERIENCE", "RAG_RECALL", "TOOLS", "HISTORY");
-        assertThat(captor.getAllValues().subList(4, 10))
+        assertThat(spanStarts.subList(4, 10))
                 .allSatisfy(command -> {
                     assertThat(command.attributes().get("tokenBudget").asInt()).isGreaterThanOrEqualTo(0);
                     assertThat(command.attributes().get("usedTokens").asInt()).isGreaterThanOrEqualTo(0);
@@ -259,6 +254,150 @@ class DefaultAgentContextBuilderTest {
                 .doesNotContain("Avoid noon exercise during high heat and prefer shaded courts.");
         assertThat(result.contextBudgetSnapshot().ragTokens()).isPositive();
         assertThat(result.contextBudgetSnapshot().memoryTokens()).isZero();
+    }
+
+    @Test
+    void buildContextReusesOneQueryEmbeddingForMemoryAndRagRetrieval() {
+        EmbeddingVectorDTO queryVector = new EmbeddingVectorDTO("mock", new float[]{0.1f, 0.2f, 0.3f});
+        when(embeddingService.embed("shared vector query")).thenReturn(queryVector);
+        AtomicReference<EmbeddingVectorDTO> memoryVector = new AtomicReference<>();
+        AtomicReference<EmbeddingVectorDTO> ragVector = new AtomicReference<>();
+        MemoryRecallService vectorAwareMemoryService = new MemoryRecallService() {
+            @Override
+            public List<MemoryDTO> recall(Long tenantId, Long applicationId, Long userId, Long profileId, String query, int limit) {
+                throw new AssertionError("filter overload should be used");
+            }
+
+            @Override
+            public List<MemoryDTO> recall(Long tenantId, Long applicationId, Long userId, Long profileId, String query, MemoryRecallFilter filter) {
+                throw new AssertionError("precomputed vector overload should be used");
+            }
+
+            @Override
+            public List<MemoryDTO> recall(
+                    Long tenantId,
+                    Long applicationId,
+                    Long userId,
+                    Long profileId,
+                    String query,
+                    MemoryRecallFilter filter,
+                    EmbeddingVectorDTO queryVector,
+                    String traceId,
+                    Long parentSpanId
+            ) {
+                memoryVector.set(queryVector);
+                return List.of(memory("Shared vector memory."));
+            }
+        };
+        RagSearchService vectorAwareRagSearchService = new RagSearchService() {
+            @Override
+            public List<RagSearchResultDTO> search(Long tenantId, Long applicationId, Long userId, Long profileId, String query, int topK) {
+                throw new AssertionError("precomputed vector overload should be used");
+            }
+
+            @Override
+            public List<RagSearchResultDTO> search(
+                    Long tenantId,
+                    Long applicationId,
+                    Long userId,
+                    Long profileId,
+                    String query,
+                    int topK,
+                    EmbeddingVectorDTO queryVector,
+                    String traceId,
+                    Long parentSpanId
+            ) {
+                ragVector.set(queryVector);
+                return List.of(new RagSearchResultDTO(10L, 100L, "Shared Vector Doc",
+                        "RAG used the shared query vector.", "kb://shared", 0.91));
+            }
+        };
+        DefaultAgentContextBuilder vectorBuilder = builderWith(vectorAwareMemoryService, vectorAwareRagSearchService, embeddingService);
+        prepareDefaultContext("shared vector query");
+
+        AgentContextDTO result = vectorBuilder.build(defaultCommand("shared vector query"));
+
+        assertThat(result.apiMessages().get(0).content())
+                .contains("Shared vector memory.")
+                .contains("RAG used the shared query vector.");
+        assertThat(memoryVector.get()).isSameAs(queryVector);
+        assertThat(ragVector.get()).isSameAs(queryVector);
+        verify(embeddingService, times(1)).embed("shared vector query");
+    }
+
+    @Test
+    void buildContextKeepsRagResultsWhenMemoryRetrievalFails() {
+        EmbeddingVectorDTO queryVector = new EmbeddingVectorDTO("mock", new float[]{0.7f});
+        when(embeddingService.embed("memory path fails")).thenReturn(queryVector);
+        MemoryRecallService failingMemoryService = new MemoryRecallService() {
+            @Override
+            public List<MemoryDTO> recall(Long tenantId, Long applicationId, Long userId, Long profileId, String query, int limit) {
+                throw new IllegalStateException("memory down");
+            }
+
+            @Override
+            public List<MemoryDTO> recall(Long tenantId, Long applicationId, Long userId, Long profileId, String query, MemoryRecallFilter filter) {
+                throw new IllegalStateException("memory down");
+            }
+
+            @Override
+            public List<MemoryDTO> recall(
+                    Long tenantId,
+                    Long applicationId,
+                    Long userId,
+                    Long profileId,
+                    String query,
+                    MemoryRecallFilter filter,
+                    EmbeddingVectorDTO queryVector,
+                    String traceId,
+                    Long parentSpanId
+            ) {
+                throw new IllegalStateException("memory down");
+            }
+        };
+        RagSearchService successfulRagSearchService = (tenantId, applicationId, userId, profileId, query, topK) ->
+                List.of(new RagSearchResultDTO(10L, 100L, "RAG Fallback",
+                        "RAG remains available when memory fails.", "kb://rag", 0.9));
+        DefaultAgentContextBuilder vectorBuilder = builderWith(failingMemoryService, successfulRagSearchService, embeddingService);
+        prepareDefaultContext("memory path fails");
+
+        AgentContextDTO result = vectorBuilder.build(defaultCommand("memory path fails"));
+
+        assertThat(result.apiMessages().get(0).content())
+                .contains("RAG remains available when memory fails.")
+                .doesNotContain("Long-term memories:");
+        assertThat(result.contextBudgetSnapshot().ragTokens()).isPositive();
+        assertThat(result.contextBudgetSnapshot().memoryTokens()).isZero();
+    }
+
+    @Test
+    void buildContextKeepsMemoryResultsWhenRagRetrievalFails() {
+        EmbeddingVectorDTO queryVector = new EmbeddingVectorDTO("mock", new float[]{0.8f});
+        when(embeddingService.embed("rag path fails")).thenReturn(queryVector);
+        MemoryRecallService successfulMemoryService = new MemoryRecallService() {
+            @Override
+            public List<MemoryDTO> recall(Long tenantId, Long applicationId, Long userId, Long profileId, String query, int limit) {
+                return List.of(memory("Memory remains available when RAG fails."));
+            }
+
+            @Override
+            public List<MemoryDTO> recall(Long tenantId, Long applicationId, Long userId, Long profileId, String query, MemoryRecallFilter filter) {
+                return List.of(memory("Memory remains available when RAG fails."));
+            }
+        };
+        RagSearchService failingRagSearchService = (tenantId, applicationId, userId, profileId, query, topK) -> {
+            throw new IllegalStateException("rag down");
+        };
+        DefaultAgentContextBuilder vectorBuilder = builderWith(successfulMemoryService, failingRagSearchService, embeddingService);
+        prepareDefaultContext("rag path fails");
+
+        AgentContextDTO result = vectorBuilder.build(defaultCommand("rag path fails"));
+
+        assertThat(result.apiMessages().get(0).content())
+                .contains("Memory remains available when RAG fails.")
+                .doesNotContain("RAG references:");
+        assertThat(result.contextBudgetSnapshot().memoryTokens()).isPositive();
+        assertThat(result.contextBudgetSnapshot().ragTokens()).isZero();
     }
 
     @Test
@@ -753,6 +892,56 @@ class DefaultAgentContextBuilderTest {
         assertThat(result.apiMessages()).extracting("content")
                 .doesNotContain("old message should be trimmed because it is far from the current turn")
                 .contains("recent answer should remain");
+    }
+
+    private StartTraceSpanCommand spanStart(List<StartTraceSpanCommand> spanStarts, String spanName) {
+        return spanStarts.stream()
+                .filter(command -> spanName.equals(command.spanName()))
+                .findFirst()
+                .orElseThrow();
+    }
+
+    private void prepareDefaultContext(String userInput) {
+        when(profileService.getProfile(1L, 10001L, 50001L)).thenReturn(profile());
+        when(skillRegistry.listAvailableSkills(1L, List.of(1L))).thenReturn(List.of(skill()));
+        when(mcpToolRegistry.listAvailableTools(1L, List.of(1L))).thenReturn(List.of(mcpTool()));
+        when(messageHistoryService.listRecentMessages(1L, 20001L, 10001L, 50001L, 90001L, 20))
+                .thenReturn(List.of());
+        when(experienceSkillResolver.resolve(1L, 20001L, 10001L, 50001L, "GENERAL", userInput, 3))
+                .thenReturn(List.of());
+    }
+
+    private BuildAgentContextCommand defaultCommand(String userInput) {
+        return new BuildAgentContextCommand(
+                1L,
+                10001L,
+                20001L,
+                50001L,
+                90001L,
+                userInput,
+                1_000,
+                null,
+                null
+        );
+    }
+
+    private DefaultAgentContextBuilder builderWith(
+            MemoryRecallService memoryRecallService,
+            RagSearchService ragSearchService,
+            EmbeddingService embeddingService
+    ) {
+        return new DefaultAgentContextBuilder(
+                profileService,
+                skillRegistry,
+                mcpToolRegistry,
+                messageHistoryService,
+                memoryRecallService,
+                modelConfigService,
+                experienceSkillResolver,
+                ragSearchService,
+                traceService,
+                embeddingService
+        );
     }
 
     private ProfileDTO profile() {
