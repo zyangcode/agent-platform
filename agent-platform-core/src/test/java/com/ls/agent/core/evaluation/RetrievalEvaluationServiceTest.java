@@ -59,7 +59,7 @@ class RetrievalEvaluationServiceTest {
     @Test
     void evaluateUsesBestRankWhenCaseHasMultipleExpectedIds() {
         List<RetrievalEvaluationCase> cases = List.of(
-                testCase("rag-multi", "rag", "multiple valid chunks", List.of("chunk-9", "chunk-3"))
+                testCase("rag-multi", "rag", "multiple valid chunks", List.of("chunk-9", "chunk-3", "chunk-5"))
         );
         Map<String, RetrievalPrediction> predictions = Map.of(
                 "rag-multi", prediction("rag-multi", List.of("chunk-1", "chunk-3", "chunk-9"))
@@ -69,6 +69,23 @@ class RetrievalEvaluationServiceTest {
 
         assertThat(result.hitCount()).isEqualTo(1);
         assertThat(result.meanReciprocalRank()).isEqualTo(0.5);
+        assertThat(result.recallAtK()).isEqualTo(2.0 / 3.0);
+    }
+
+    @Test
+    void evaluateAveragesRecallAcrossCases() {
+        List<RetrievalEvaluationCase> cases = List.of(
+                testCase("rag-half", "rag", "partial chunk recall", List.of("chunk-1", "chunk-2")),
+                testCase("memory-full", "memory", "full memory recall", List.of("mem-1"))
+        );
+        Map<String, RetrievalPrediction> predictions = Map.of(
+                "rag-half", prediction("rag-half", List.of("chunk-1", "chunk-9")),
+                "memory-full", prediction("memory-full", List.of("mem-1", "mem-2"))
+        );
+
+        RetrievalEvaluationResult result = service.evaluate(cases, predictions, 5);
+
+        assertThat(result.recallAtK()).isEqualTo(0.75);
     }
 
     @Test

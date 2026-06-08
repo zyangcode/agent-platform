@@ -29,12 +29,14 @@ public class RetrievalEvaluationService {
         Map<String, RetrievalPrediction> safePredictions = predictions == null ? Map.of() : predictions;
         int hitCount = 0;
         double reciprocalRankSum = 0.0;
+        double recallSum = 0.0;
         List<RetrievalEvaluationMiss> misses = new ArrayList<>();
 
         for (RetrievalEvaluationCase evaluationCase : cases) {
             List<String> expectedIds = normalizedIds(evaluationCase.expectedIds());
             List<String> returnedIdsWithinK = topKIds(safePredictions.get(evaluationCase.id()), topK);
             int firstRank = firstExpectedRank(expectedIds, returnedIdsWithinK);
+            recallSum += recall(expectedIds, returnedIdsWithinK);
 
             if (firstRank > 0) {
                 hitCount++;
@@ -56,6 +58,7 @@ public class RetrievalEvaluationService {
                 hitCount,
                 hitCount / (double) totalCases,
                 reciprocalRankSum / totalCases,
+                recallSum / totalCases,
                 misses
         );
     }
@@ -77,6 +80,18 @@ public class RetrievalEvaluationService {
             }
         }
         return -1;
+    }
+
+    private double recall(List<String> expectedIds, List<String> returnedIds) {
+        if (expectedIds == null || expectedIds.isEmpty()) {
+            return 0.0;
+        }
+        Set<String> expected = new HashSet<>(expectedIds);
+        long matched = returnedIds.stream()
+                .filter(expected::contains)
+                .distinct()
+                .count();
+        return matched / (double) expected.size();
     }
 
     private List<String> normalizedIds(List<String> ids) {

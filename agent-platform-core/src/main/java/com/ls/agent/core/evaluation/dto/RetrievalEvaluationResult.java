@@ -7,6 +7,7 @@ public record RetrievalEvaluationResult(
         int hitCount,
         double hitRate,
         double meanReciprocalRank,
+        double recallAtK,
         List<RetrievalEvaluationMiss> misses
 ) {
     public RetrievalEvaluationResult {
