@@ -78,7 +78,8 @@ public class RagSlotSource implements ContextSlotSource {
             return content;
         } catch (Exception ex) {
             safeFinishSpan(span, "FAILED", "RAG_SEARCH_FAILED", ex.getMessage());
-            throw ex;
+            this.lastResults = List.of();
+            return ContextSlotContent.empty(slot.kind());
         }
     }
 

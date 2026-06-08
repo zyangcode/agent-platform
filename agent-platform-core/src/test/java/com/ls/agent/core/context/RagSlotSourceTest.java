@@ -84,6 +84,35 @@ class RagSlotSourceTest {
     }
 
     @Test
+    void fetchDegradesToEmptyContentWhenRagSearchFails() {
+        TraceService traceService = mock(TraceService.class);
+        when(traceService.startSpan(any(StartTraceSpanCommand.class)))
+                .thenAnswer(invocation -> {
+                    StartTraceSpanCommand start = invocation.getArgument(0);
+                    return new TraceSpanDTO(77001L, start.traceId(), start.parentSpanId(), start.spanName(),
+                            start.spanType(), start.component(), "RUNNING", LocalDateTime.now(), null, null,
+                            null, null, start.attributes(), LocalDateTime.now());
+                });
+        RagSlotSource source = new RagSlotSource((tenantId, applicationId, userId, profileId, query, topK) -> {
+            throw new IllegalStateException("rag down");
+        }, traceService);
+
+        ContextSlotContent content = source.fetch(
+                ContextSlot.of(ContextSlotKind.RAG_RECALL, 100),
+                tracedCommand("query")
+        );
+
+        assertThat(content.kind()).isEqualTo(ContextSlotKind.RAG_RECALL);
+        assertThat(content.content()).isEmpty();
+        assertThat(content.usedTokens()).isZero();
+        assertThat(content.truncated()).isFalse();
+        ArgumentCaptor<FinishTraceSpanCommand> finishCaptor = ArgumentCaptor.forClass(FinishTraceSpanCommand.class);
+        verify(traceService).finishSpan(finishCaptor.capture());
+        assertThat(finishCaptor.getValue().status()).isEqualTo("FAILED");
+        assertThat(finishCaptor.getValue().errorCode()).isEqualTo("RAG_SEARCH_FAILED");
+    }
+
+    @Test
     void fetchPassesRagSearchSpanAsParentForInternalRagTrace() {
         TraceService traceService = mock(TraceService.class);
         when(traceService.startSpan(any(StartTraceSpanCommand.class)))

@@ -974,6 +974,7 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
         if (!shouldWritePersistentMemory(context)) {
             return;
         }
+        String memoryStrategyMode = memoryStrategyMode(context.profile());
         List<RecordMemoryCommand> preferences = preferenceExtractor.extract(
                 command.tenantId(),
                 command.userId(),
@@ -994,10 +995,15 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
                     command.profileId(),
                     MEMORY_TYPE_SUMMARY,
                     "User: " + command.userInput() + "\nAssistant: " + assistantMessage,
-                    conversationId
+                    conversationId,
+                    null,
+                    List.of(),
+                    null,
+                    null,
+                    memoryStrategyMode
             ));
             for (RecordMemoryCommand preference : preferences) {
-                memoryWriteService.record(preference);
+                memoryWriteService.record(withMemoryStrategy(preference, memoryStrategyMode));
             }
             safeFinishSpan(span, "SUCCESS", null, null);
         } catch (Exception ex) {
@@ -1009,6 +1015,23 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
     private boolean shouldWritePersistentMemory(AgentContextDTO context) {
         String mode = memoryStrategyMode(context.profile());
         return "READ_WRITE".equals(mode);
+    }
+
+    private RecordMemoryCommand withMemoryStrategy(RecordMemoryCommand command, String memoryStrategyMode) {
+        return new RecordMemoryCommand(
+                command.tenantId(),
+                command.userId(),
+                command.applicationId(),
+                command.profileId(),
+                command.memoryType(),
+                command.content(),
+                command.sourceConversationId(),
+                command.memoryCategory(),
+                command.tags(),
+                command.importance(),
+                command.slotHint(),
+                memoryStrategyMode
+        );
     }
 
     private String memoryStrategyMode(ProfileDTO profile) {

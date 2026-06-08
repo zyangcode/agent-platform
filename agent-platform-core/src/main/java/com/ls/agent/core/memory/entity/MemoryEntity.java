@@ -2,6 +2,8 @@ package com.ls.agent.core.memory.entity;
 
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.ls.agent.core.support.persistence.JsonNodeTypeHandler;
 import com.ls.agent.core.support.persistence.BaseEntity;
 import com.ls.agent.core.support.persistence.StringArrayTypeHandler;
 
@@ -53,6 +55,9 @@ public class MemoryEntity extends BaseEntity {
     private Long sourceConversationId;
 
     private String status;
+
+    @TableField(typeHandler = JsonNodeTypeHandler.class)
+    private JsonNode metadata;
 
     public Long getTenantId() {
         return tenantId;
@@ -188,5 +193,13 @@ public class MemoryEntity extends BaseEntity {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public JsonNode getMetadata() {
+        return metadata;
+    }
+
+    public void setMetadata(JsonNode metadata) {
+        this.metadata = metadata;
     }
 }

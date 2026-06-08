@@ -210,6 +210,49 @@ class DefaultMemoryRecallServiceTest {
         assertThat(finishCaptor.getAllValues().get(1).attributes().path("resultCount").asInt()).isEqualTo(1);
     }
 
+    @Test
+    void recallCollapsesConflictingPreferencesByCategoryAndTag() {
+        MemoryEntity oldPreference = memory("PREFERENCE", "User prefers long detailed answers.");
+        oldPreference.setId(10L);
+        oldPreference.setMemoryCategory("preference");
+        oldPreference.setTags(new String[]{"answer_style"});
+        oldPreference.setImportance(0.5);
+        oldPreference.setUpdatedAt(LocalDateTime.of(2026, 6, 1, 10, 0));
+
+        MemoryEntity newPreference = memory("PREFERENCE", "User prefers concise answers.");
+        newPreference.setId(11L);
+        newPreference.setMemoryCategory("preference");
+        newPreference.setTags(new String[]{"answer_style"});
+        newPreference.setImportance(0.9);
+        newPreference.setUpdatedAt(LocalDateTime.of(2026, 6, 8, 10, 0));
+
+        MemoryEntity otherPreference = memory("PREFERENCE", "User prefers Java examples.");
+        otherPreference.setId(12L);
+        otherPreference.setMemoryCategory("preference");
+        otherPreference.setTags(new String[]{"language"});
+        otherPreference.setImportance(0.7);
+        otherPreference.setUpdatedAt(LocalDateTime.of(2026, 6, 7, 10, 0));
+
+        when(memoryMapper.selectList(any(Wrapper.class))).thenReturn(List.of(oldPreference, newPreference, otherPreference));
+
+        List<MemoryDTO> result = service.recall(
+                1L,
+                20001L,
+                10001L,
+                50001L,
+                "answer style Java",
+                MemoryRecallFilter.builder()
+                        .categories(List.of("preference"))
+                        .topK(5)
+                        .build()
+        );
+
+        assertThat(result).extracting(MemoryDTO::content).containsExactly(
+                "User prefers concise answers.",
+                "User prefers Java examples."
+        );
+    }
+
     private MemoryEntity memory(String type, String content) {
         MemoryEntity entity = new MemoryEntity();
         entity.setMemoryType(type);

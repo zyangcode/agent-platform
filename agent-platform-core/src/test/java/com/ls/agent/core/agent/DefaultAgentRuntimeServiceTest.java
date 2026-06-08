@@ -146,6 +146,7 @@ class DefaultAgentRuntimeServiceTest {
         ArgumentCaptor<RecordMemoryCommand> memoryCaptor = ArgumentCaptor.forClass(RecordMemoryCommand.class);
         verify(memoryWriteService).record(memoryCaptor.capture());
         assertThat(memoryCaptor.getValue().content()).contains("hello", "done");
+        assertThat(memoryCaptor.getValue().memoryStrategyMode()).isEqualTo("READ_WRITE");
     }
 
     @Test
@@ -163,6 +164,8 @@ class DefaultAgentRuntimeServiceTest {
         assertThat(memoryCaptor.getAllValues().get(1).content()).isEqualTo("用户偏好：傍晚打篮球");
         assertThat(memoryCaptor.getAllValues().get(1).memoryCategory()).isEqualTo("preference");
         assertThat(memoryCaptor.getAllValues().get(1).tags()).containsExactly("preference", "positive");
+        assertThat(memoryCaptor.getAllValues()).extracting(RecordMemoryCommand::memoryStrategyMode)
+                .containsExactly("READ_WRITE", "READ_WRITE");
     }
 
     @Test

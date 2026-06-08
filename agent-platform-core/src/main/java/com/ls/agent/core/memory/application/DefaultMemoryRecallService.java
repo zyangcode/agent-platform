@@ -154,7 +154,7 @@ public class DefaultMemoryRecallService implements MemoryRecallService {
                         .thenComparing(MemoryEntity::getUpdatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
                 .toList();
 
-        List<MemoryEntity> returned = scored.stream()
+        List<MemoryEntity> returned = collapseConflicts(scored).stream()
                 .limit(Math.max(1, limit))
                 .toList();
         touchReturnedMemories(returned);
@@ -248,6 +248,8 @@ public class DefaultMemoryRecallService implements MemoryRecallService {
                                     + Math.max(0.0, Math.min(1.0, memory.getImportance() == null ? 0.5 : memory.getImportance())))
                             .reversed()
                             .thenComparing(MemoryEntity::getUpdatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
+                    .collect(Collectors.collectingAndThen(Collectors.toList(), this::collapseConflicts))
+                    .stream()
                     .limit(Math.max(1, limit))
                     .toList();
         } catch (RuntimeException ex) {
@@ -388,6 +390,46 @@ public class DefaultMemoryRecallService implements MemoryRecallService {
 
     private double minScore(MemoryRecallFilter filter) {
         return filter.minScore() == null ? 0.0 : filter.minScore();
+    }
+
+    private List<MemoryEntity> collapseConflicts(List<MemoryEntity> memories) {
+        if (memories == null || memories.isEmpty()) {
+            return List.of();
+        }
+        Set<String> seenConflictKeys = new HashSet<>();
+        List<MemoryEntity> result = new ArrayList<>();
+        for (MemoryEntity memory : memories) {
+            String key = conflictKey(memory);
+            if (key == null || seenConflictKeys.add(key)) {
+                result.add(memory);
+            }
+        }
+        return result;
+    }
+
+    private String conflictKey(MemoryEntity memory) {
+        String category = normalizeCategory(memory);
+        if (!"preference".equals(category) && !"fact".equals(category)) {
+            return null;
+        }
+        String keyTag = tags(memory.getTags()).stream()
+                .map(tag -> tag.strip().toLowerCase())
+                .filter(this::isStructuredConflictTag)
+                .sorted()
+                .findFirst()
+                .orElse(null);
+        if (keyTag == null) {
+            return null;
+        }
+        return category + ":" + keyTag;
+    }
+
+    private boolean isStructuredConflictTag(String tag) {
+        return tag.startsWith("pref:")
+                || tag.startsWith("key:")
+                || tag.endsWith("_style")
+                || tag.endsWith("_preference")
+                || tag.endsWith("_fact");
     }
 
     private MemoryDTO toDTO(MemoryEntity memory) {
