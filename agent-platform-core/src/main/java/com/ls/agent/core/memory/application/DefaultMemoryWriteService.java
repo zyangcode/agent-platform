@@ -27,6 +27,7 @@ public class DefaultMemoryWriteService implements MemoryWriteService {
 
     private static final String STATUS_ACTIVE = "ACTIVE";
     private static final String STATUS_DISABLED = "DISABLED";
+    private static final String STATUS_SUPERSEDED = "SUPERSEDED";
     private static final int MAX_CONTENT_LENGTH = 2000;
     private static final double SIMILARITY_THRESHOLD = 0.6;
     private static final int DEDUP_LOOKBACK = 5;
@@ -82,9 +83,14 @@ public class DefaultMemoryWriteService implements MemoryWriteService {
         }
         String content = truncateContent(command.content());
         LocalDateTime now = LocalDateTime.now();
+        List<MemoryEntity> candidates = findCandidateMemories(command);
+        MemoryEntity superseded = findSupersededMemory(command, candidates);
+        if (superseded != null) {
+            markSuperseded(superseded);
+        }
 
         // Check for existing similar memory to update instead of insert
-        MemoryEntity existing = findSimilarMemory(command);
+        MemoryEntity existing = superseded == null ? findSimilarMemory(command, candidates) : null;
         if (existing != null) {
             existing.setContent(existing.getContent() + "\n" + content);
             if (existing.getContent().length() > MAX_CONTENT_LENGTH * 2) {
@@ -120,9 +126,18 @@ public class DefaultMemoryWriteService implements MemoryWriteService {
         entity.setSlotHint(command.slotHint());
         entity.setSourceConversationId(command.sourceConversationId());
         entity.setStatus(STATUS_ACTIVE);
-        entity.setMetadata(vectorStatusMetadata("PENDING", null, null));
+        entity.setMetadata(vectorStatusMetadata("PENDING", null, null, superseded == null ? null : superseded.getId()));
         memoryMapper.insert(entity);
         upsertVector(entity);
+    }
+
+    private void markSuperseded(MemoryEntity memory) {
+        memory.setStatus(STATUS_SUPERSEDED);
+        ObjectNode metadata = objectMetadata(memory.getMetadata());
+        metadata.put("superseded_at", LocalDateTime.now().toString());
+        memory.setMetadata(metadata);
+        memoryMapper.updateById(memory);
+        clearVector(memory);
     }
 
     private void upsertVector(MemoryEntity memory) {
@@ -157,14 +172,17 @@ public class DefaultMemoryWriteService implements MemoryWriteService {
         if (memory == null || memory.getId() == null) {
             return;
         }
-        memory.setMetadata(vectorStatusMetadata(status, vector, errorMessage));
+        memory.setMetadata(vectorStatusMetadata(status, vector, errorMessage, metadataLong(memory.getMetadata(), "supersedes_memory_id")));
         memoryMapper.updateById(memory);
     }
 
-    private JsonNode vectorStatusMetadata(String status, EmbeddingVectorDTO vector, String errorMessage) {
+    private JsonNode vectorStatusMetadata(String status, EmbeddingVectorDTO vector, String errorMessage, Long supersedesMemoryId) {
         ObjectNode metadata = JsonNodeFactory.instance.objectNode();
         metadata.put("source_type", "memory");
         metadata.put("vector_index_status", status);
+        if (supersedesMemoryId != null) {
+            metadata.put("supersedes_memory_id", supersedesMemoryId);
+        }
         if (vector != null) {
             metadata.put("embedding_model", vector.model() == null ? "" : vector.model());
             metadata.put("embedding_dimension", vector.dimension());
@@ -182,9 +200,8 @@ public class DefaultMemoryWriteService implements MemoryWriteService {
         return ex.getMessage().length() > 300 ? ex.getMessage().substring(0, 300) : ex.getMessage();
     }
 
-    /** Find an existing memory with similar content to avoid duplicates. */
-    private MemoryEntity findSimilarMemory(RecordMemoryCommand command) {
-        List<MemoryEntity> recent = memoryMapper.selectList(new LambdaQueryWrapper<MemoryEntity>()
+    private List<MemoryEntity> findCandidateMemories(RecordMemoryCommand command) {
+        List<MemoryEntity> memories = memoryMapper.selectList(new LambdaQueryWrapper<MemoryEntity>()
                 .eq(MemoryEntity::getTenantId, command.tenantId())
                 .eq(MemoryEntity::getUserId, command.userId())
                 .eq(MemoryEntity::getStatus, STATUS_ACTIVE)
@@ -205,13 +222,37 @@ public class DefaultMemoryWriteService implements MemoryWriteService {
                 })
                 .orderByDesc(MemoryEntity::getUpdatedAt)
                 .last("limit " + DEDUP_LOOKBACK));
+        return memories == null ? List.of() : memories;
+    }
 
+    /** Find an existing memory with similar content to avoid duplicates. */
+    private MemoryEntity findSimilarMemory(RecordMemoryCommand command, List<MemoryEntity> recent) {
         if (recent == null || recent.isEmpty()) {
             return null;
         }
         for (MemoryEntity existing : recent) {
+            if (isPinned(existing)) {
+                continue;
+            }
             if (contentSimilarity(existing.getContent(), command.content()) >= SIMILARITY_THRESHOLD) {
                 return existing;
+            }
+        }
+        return null;
+    }
+
+    private MemoryEntity findSupersededMemory(RecordMemoryCommand command, List<MemoryEntity> candidates) {
+        String incomingKey = conflictKey(resolveCategory(command), tags(command.tags()));
+        if (incomingKey == null || candidates == null || candidates.isEmpty()) {
+            return null;
+        }
+        for (MemoryEntity candidate : candidates) {
+            if (isPinned(candidate)) {
+                continue;
+            }
+            String existingKey = conflictKey(resolveCategory(candidate), candidate.getTags());
+            if (incomingKey.equals(existingKey) && contentSimilarity(candidate.getContent(), command.content()) < 0.95) {
+                return candidate;
             }
         }
         return null;
@@ -367,6 +408,55 @@ public class DefaultMemoryWriteService implements MemoryWriteService {
             return command.memoryCategory().strip().toLowerCase(Locale.ROOT);
         }
         return command.memoryType().strip().toLowerCase(Locale.ROOT);
+    }
+
+    private String resolveCategory(MemoryEntity memory) {
+        if (memory.getMemoryCategory() != null && !memory.getMemoryCategory().isBlank()) {
+            return memory.getMemoryCategory().strip().toLowerCase(Locale.ROOT);
+        }
+        return memory.getMemoryType() == null ? "" : memory.getMemoryType().strip().toLowerCase(Locale.ROOT);
+    }
+
+    private String conflictKey(String category, String[] tags) {
+        String normalizedCategory = category == null ? "" : category.strip().toLowerCase(Locale.ROOT);
+        if (!"preference".equals(normalizedCategory) && !"fact".equals(normalizedCategory)) {
+            return null;
+        }
+        return List.of(tags == null ? new String[0] : tags).stream()
+                .filter(tag -> tag != null && !tag.isBlank())
+                .map(tag -> tag.strip().toLowerCase(Locale.ROOT))
+                .filter(this::isStructuredConflictTag)
+                .sorted()
+                .findFirst()
+                .map(tag -> normalizedCategory + ":" + tag)
+                .orElse(null);
+    }
+
+    private boolean isStructuredConflictTag(String tag) {
+        return tag.startsWith("pref:")
+                || tag.startsWith("key:")
+                || tag.endsWith("_style")
+                || tag.endsWith("_preference")
+                || tag.endsWith("_fact");
+    }
+
+    private boolean isPinned(MemoryEntity memory) {
+        return memory != null && memory.getMetadata() != null && memory.getMetadata().path("pinned").asBoolean(false);
+    }
+
+    private ObjectNode objectMetadata(JsonNode metadata) {
+        if (metadata instanceof ObjectNode objectNode) {
+            return objectNode.deepCopy();
+        }
+        return JsonNodeFactory.instance.objectNode();
+    }
+
+    private Long metadataLong(JsonNode metadata, String field) {
+        if (metadata == null || !metadata.hasNonNull(field)) {
+            return null;
+        }
+        long value = metadata.path(field).asLong(0L);
+        return value <= 0 ? null : value;
     }
 
     private String[] tags(List<String> tags) {

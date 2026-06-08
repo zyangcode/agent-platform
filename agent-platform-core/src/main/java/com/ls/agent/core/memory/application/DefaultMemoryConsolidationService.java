@@ -172,6 +172,9 @@ public class DefaultMemoryConsolidationService {
                 if (candidate.getId() != null && deletedIds.contains(candidate.getId())) {
                     continue;
                 }
+                if (isPinned(keeper) || isPinned(candidate)) {
+                    continue;
+                }
                 if (!sameKind(keeper, candidate) || !isDuplicateContent(keeper.getContent(), candidate.getContent())) {
                     continue;
                 }
@@ -193,6 +196,9 @@ public class DefaultMemoryConsolidationService {
         int decayed = 0;
         LocalDateTime staleBefore = now.minusDays(STALE_DAYS);
         for (MemoryEntity memory : memories) {
+            if (isPinned(memory)) {
+                continue;
+            }
             LocalDateTime accessedAt = memory.getLastAccessedAt();
             if (accessedAt == null || !accessedAt.isBefore(staleBefore)) {
                 continue;
@@ -263,6 +269,12 @@ public class DefaultMemoryConsolidationService {
 
     private int valueOrDefault(Integer value, int defaultValue) {
         return value == null ? defaultValue : value;
+    }
+
+    private boolean isPinned(MemoryEntity memory) {
+        return memory != null
+                && memory.getMetadata() != null
+                && memory.getMetadata().path("pinned").asBoolean(false);
     }
 
     private String normalize(String value) {

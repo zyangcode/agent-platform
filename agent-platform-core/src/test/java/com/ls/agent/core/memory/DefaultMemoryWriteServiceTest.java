@@ -8,6 +8,7 @@ import com.ls.agent.core.rag.api.EmbeddingService;
 import com.ls.agent.core.rag.api.VectorStore;
 import com.ls.agent.core.rag.dto.EmbeddingVectorDTO;
 import com.ls.agent.core.rag.dto.VectorStoreDocumentDTO;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -92,6 +93,87 @@ class DefaultMemoryWriteServiceTest {
         assertThat(captor.getValue().getLastAccessedAt()).isNotNull();
         assertThat(captor.getValue().getImportance()).isEqualTo(0.9);
         assertThat(captor.getValue().getTags()).containsExactly("sports");
+    }
+
+    @Test
+    void recordSupersedesExistingStructuredPreferenceWithSameTag() {
+        MemoryEntity existing = new MemoryEntity();
+        existing.setId(10L);
+        existing.setTenantId(1L);
+        existing.setUserId(10001L);
+        existing.setApplicationId(20001L);
+        existing.setProfileId(50001L);
+        existing.setMemoryType("PREFERENCE");
+        existing.setMemoryCategory("preference");
+        existing.setContent("Answer style should be long and detailed.");
+        existing.setTags(new String[]{"answer_style"});
+        existing.setImportance(0.4);
+        existing.setStatus("ACTIVE");
+        when(memoryMapper.selectList(any())).thenReturn(List.of(existing));
+
+        service.record(new RecordMemoryCommand(
+                1L,
+                10001L,
+                20001L,
+                50001L,
+                "PREFERENCE",
+                "User prefers concise answers.",
+                90001L,
+                "preference",
+                List.of("answer_style"),
+                0.9,
+                "preference"
+        ));
+
+        ArgumentCaptor<MemoryEntity> updateCaptor = ArgumentCaptor.forClass(MemoryEntity.class);
+        verify(memoryMapper).updateById(updateCaptor.capture());
+        assertThat(updateCaptor.getValue().getId()).isEqualTo(10L);
+        assertThat(updateCaptor.getValue().getStatus()).isEqualTo("SUPERSEDED");
+        assertThat(updateCaptor.getValue().getMetadata().path("superseded_at").asText()).isNotBlank();
+        assertThat(updateCaptor.getValue().getMetadata().path("superseded_by_content").isMissingNode()).isTrue();
+
+        ArgumentCaptor<MemoryEntity> insertCaptor = ArgumentCaptor.forClass(MemoryEntity.class);
+        verify(memoryMapper).insert(insertCaptor.capture());
+        assertThat(insertCaptor.getValue().getContent()).isEqualTo("User prefers concise answers.");
+        assertThat(insertCaptor.getValue().getMetadata().path("supersedes_memory_id").asLong()).isEqualTo(10L);
+    }
+
+    @Test
+    void recordDoesNotSupersedePinnedStructuredPreference() {
+        MemoryEntity pinned = new MemoryEntity();
+        pinned.setId(10L);
+        pinned.setTenantId(1L);
+        pinned.setUserId(10001L);
+        pinned.setApplicationId(20001L);
+        pinned.setProfileId(50001L);
+        pinned.setMemoryType("PREFERENCE");
+        pinned.setMemoryCategory("preference");
+        pinned.setContent("Answer style should be long and detailed.");
+        pinned.setTags(new String[]{"answer_style"});
+        pinned.setImportance(0.4);
+        pinned.setStatus("ACTIVE");
+        pinned.setMetadata(JsonNodeFactory.instance.objectNode().put("pinned", true));
+        when(memoryMapper.selectList(any())).thenReturn(List.of(pinned));
+
+        service.record(new RecordMemoryCommand(
+                1L,
+                10001L,
+                20001L,
+                50001L,
+                "PREFERENCE",
+                "User prefers concise answers.",
+                90001L,
+                "preference",
+                List.of("answer_style"),
+                0.9,
+                "preference"
+        ));
+
+        verify(memoryMapper, never()).updateById(pinned);
+        ArgumentCaptor<MemoryEntity> insertCaptor = ArgumentCaptor.forClass(MemoryEntity.class);
+        verify(memoryMapper).insert(insertCaptor.capture());
+        assertThat(insertCaptor.getValue().getMetadata().path("supersedes_memory_id").isMissingNode()).isTrue();
+        assertThat(pinned.getStatus()).isEqualTo("ACTIVE");
     }
 
     @Test
