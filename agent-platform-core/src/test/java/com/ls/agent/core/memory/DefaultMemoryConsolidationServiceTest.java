@@ -31,7 +31,7 @@ class DefaultMemoryConsolidationServiceTest {
     private final DefaultMemoryConsolidationService service = new DefaultMemoryConsolidationService(memoryMapper, traceService, vectorStore);
 
     @Test
-    void consolidateExpiresExpiredMemoriesAndDecaysStaleImportance() {
+    void consolidateArchivesExpiredMemoriesAndDecaysStaleImportance() {
         MemoryEntity expired = memory(1L, "old expired preference", 0.9);
         expired.setExpiresAt(LocalDateTime.now().minusDays(1));
 
@@ -43,10 +43,13 @@ class DefaultMemoryConsolidationServiceTest {
         MemoryConsolidationResult result = service.consolidate(1L, 10001L, 20001L, 50001L);
 
         ArgumentCaptor<MemoryEntity> captor = ArgumentCaptor.forClass(MemoryEntity.class);
-        verify(memoryMapper).updateById(captor.capture());
-        verify(memoryMapper).deleteById(1L);
-        assertThat(captor.getValue().getId()).isEqualTo(2L);
-        assertThat(captor.getValue().getImportance()).isLessThan(0.6);
+        verify(memoryMapper, org.mockito.Mockito.times(2)).updateById(captor.capture());
+        assertThat(captor.getAllValues().get(0).getId()).isEqualTo(1L);
+        assertThat(captor.getAllValues().get(0).getStatus()).isEqualTo("ARCHIVED");
+        assertThat(captor.getAllValues().get(1).getId()).isEqualTo(2L);
+        assertThat(captor.getAllValues().get(1).getImportance()).isLessThan(0.6);
+        verify(memoryMapper, never()).deleteById(1L);
+        verify(vectorStore).deleteByDocument("memory", 1L, 20001L, 10001L, 50001L, 1L);
         assertThat(result.expiredCount()).isEqualTo(1);
         assertThat(result.decayedCount()).isEqualTo(1);
     }
