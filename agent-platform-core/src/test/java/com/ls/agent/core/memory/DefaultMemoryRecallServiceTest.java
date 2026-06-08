@@ -203,7 +203,13 @@ class DefaultMemoryRecallServiceTest {
         when(traceService.startSpan(any(StartTraceSpanCommand.class)))
                 .thenAnswer(invocation -> {
                     StartTraceSpanCommand command = invocation.getArgument(0);
-                    long id = "memory.embedding".equals(command.spanName()) ? 70001L : 70002L;
+                    long id = switch (command.spanName()) {
+                        case "memory.recall" -> 70000L;
+                        case "memory.embedding" -> 70001L;
+                        case "memory.vector.search" -> 70002L;
+                        case "memory.keyword.search" -> 70003L;
+                        default -> 70999L;
+                    };
                     return new TraceSpanDTO(id, command.traceId(), command.parentSpanId(), command.spanName(),
                             command.spanType(), command.component(), "RUNNING", LocalDateTime.now(), null,
                             null, null, null, command.attributes(), LocalDateTime.now());
@@ -234,20 +240,25 @@ class DefaultMemoryRecallServiceTest {
 
         assertThat(result).hasSize(1);
         ArgumentCaptor<StartTraceSpanCommand> startCaptor = ArgumentCaptor.forClass(StartTraceSpanCommand.class);
-        verify(traceService, org.mockito.Mockito.times(2)).startSpan(startCaptor.capture());
+        verify(traceService, org.mockito.Mockito.times(4)).startSpan(startCaptor.capture());
         assertThat(startCaptor.getAllValues()).extracting(StartTraceSpanCommand::spanName)
-                .containsExactly("memory.embedding", "memory.vector.search");
-        assertThat(startCaptor.getAllValues()).allSatisfy(command -> {
-            assertThat(command.traceId()).isEqualTo("trace-1");
-            assertThat(command.parentSpanId()).isEqualTo(42L);
-            assertThat(command.component()).isEqualTo("core.memory");
-        });
+                .containsExactly("memory.recall", "memory.embedding", "memory.vector.search", "memory.keyword.search");
+        assertThat(startCaptor.getAllValues()).allSatisfy(command -> assertThat(command.traceId()).isEqualTo("trace-1"));
+        assertThat(startCaptor.getAllValues().get(0).parentSpanId()).isEqualTo(42L);
+        assertThat(startCaptor.getAllValues().subList(1, 4))
+                .allSatisfy(command -> assertThat(command.parentSpanId()).isEqualTo(70000L));
+        assertThat(startCaptor.getAllValues()).allSatisfy(command -> assertThat(command.component()).isEqualTo("core.memory"));
+        assertThat(startCaptor.getAllValues().get(0).attributes().path("topK").asInt()).isEqualTo(5);
+        assertThat(startCaptor.getAllValues().get(0).attributes().path("queryChars").isMissingNode()).isTrue();
+        assertThat(startCaptor.getAllValues().get(3).attributes().path("keywordCount").asInt()).isEqualTo(3);
         ArgumentCaptor<FinishTraceSpanCommand> finishCaptor = ArgumentCaptor.forClass(FinishTraceSpanCommand.class);
-        verify(traceService, org.mockito.Mockito.times(2)).finishSpan(finishCaptor.capture());
+        verify(traceService, org.mockito.Mockito.times(4)).finishSpan(finishCaptor.capture());
         assertThat(finishCaptor.getAllValues()).extracting(FinishTraceSpanCommand::status)
-                .containsExactly("SUCCESS", "SUCCESS");
+                .containsExactly("SUCCESS", "SUCCESS", "SUCCESS", "SUCCESS");
         assertThat(finishCaptor.getAllValues().get(0).attributes().path("dimension").asInt()).isEqualTo(2);
         assertThat(finishCaptor.getAllValues().get(1).attributes().path("resultCount").asInt()).isEqualTo(1);
+        assertThat(finishCaptor.getAllValues().get(2).attributes().path("candidateCount").asInt()).isZero();
+        assertThat(finishCaptor.getAllValues().get(3).attributes().path("returnedCount").asInt()).isEqualTo(1);
     }
 
     @Test

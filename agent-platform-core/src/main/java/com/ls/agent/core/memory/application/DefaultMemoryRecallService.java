@@ -113,32 +113,54 @@ public class DefaultMemoryRecallService implements MemoryRecallService {
                 : filter;
         int limit = resolvedFilter.resolvedTopK(5);
         List<String> keywords = extractKeywords(query);
-        List<MemoryEntity> vectorMemories = recallByVector(
-                tenantId,
-                applicationId,
-                userId,
-                profileId,
-                query,
-                resolvedFilter,
-                limit,
-                queryVector,
-                traceId,
-                parentSpanId
-        );
-        List<MemoryEntity> keywordMemories = recallByKeyword(
-                tenantId,
-                applicationId,
-                userId,
-                profileId,
-                resolvedFilter,
-                limit,
-                keywords
-        );
-        List<MemoryEntity> returned = mergeRecallCandidates(vectorMemories, keywordMemories, keywords, limit);
-        touchReturnedMemories(returned);
-        return returned.stream()
-                .map(this::toDTO)
-                .toList();
+        TraceSpanDTO recallSpan = safeStartSpan(traceId, parentSpanId, "memory.recall",
+                attributes()
+                        .put("topK", limit)
+                        .put("categoryCount", resolvedFilter.categories().size())
+                        .put("requiredTagCount", resolvedFilter.requireTags().size())
+                        .put("keywordCount", keywords.size())
+                        .put("profileScoped", profileId != null));
+        try {
+            Long childParentSpanId = recallSpan == null ? parentSpanId : recallSpan.id();
+            List<MemoryEntity> vectorMemories = recallByVector(
+                    tenantId,
+                    applicationId,
+                    userId,
+                    profileId,
+                    query,
+                    resolvedFilter,
+                    limit,
+                    queryVector,
+                    traceId,
+                    childParentSpanId
+            );
+            List<MemoryEntity> keywordMemories = recallByKeyword(
+                    tenantId,
+                    applicationId,
+                    userId,
+                    profileId,
+                    resolvedFilter,
+                    limit,
+                    keywords,
+                    traceId,
+                    childParentSpanId
+            );
+            List<MemoryEntity> returned = mergeRecallCandidates(vectorMemories, keywordMemories, keywords, limit);
+            if (recallSpan != null && recallSpan.attributes() instanceof com.fasterxml.jackson.databind.node.ObjectNode attributes) {
+                attributes.put("vectorCandidateCount", vectorMemories == null ? 0 : vectorMemories.size());
+                attributes.put("keywordCandidateCount", keywordMemories == null ? 0 : keywordMemories.size());
+                attributes.put("returnedCount", returned.size());
+            }
+            touchReturnedMemories(returned);
+            List<MemoryDTO> result = returned.stream()
+                    .map(this::toDTO)
+                    .toList();
+            safeFinishSpan(recallSpan, "SUCCESS", null, null);
+            return result;
+        } catch (RuntimeException ex) {
+            safeFinishSpan(recallSpan, "FAILED", errorCode(ex), errorMessage(ex));
+            throw ex;
+        }
     }
 
     private List<MemoryEntity> recallByKeyword(
@@ -148,8 +170,14 @@ public class DefaultMemoryRecallService implements MemoryRecallService {
             Long profileId,
             MemoryRecallFilter resolvedFilter,
             int limit,
-            List<String> keywords
+            List<String> keywords,
+            String traceId,
+            Long parentSpanId
     ) {
+        TraceSpanDTO keywordSpan = safeStartSpan(traceId, parentSpanId, "memory.keyword.search",
+                attributes()
+                        .put("topK", Math.max(1, limit * FETCH_MULTIPLIER))
+                        .put("keywordCount", keywords == null ? 0 : keywords.size()));
         LambdaQueryWrapper<MemoryEntity> wrapper = baseWrapper(tenantId, applicationId, userId, profileId);
 
         // Add keyword-based filtering if keywords exist
@@ -168,28 +196,38 @@ public class DefaultMemoryRecallService implements MemoryRecallService {
         wrapper.orderByDesc(MemoryEntity::getUpdatedAt)
                 .last("limit " + Math.max(1, limit * FETCH_MULTIPLIER));
 
-        List<MemoryEntity> candidates = memoryMapper.selectList(wrapper);
-        if ((candidates == null || candidates.isEmpty()) && !keywords.isEmpty()) {
-            candidates = memoryMapper.selectList(baseWrapper(tenantId, applicationId, userId, profileId)
-                    .orderByDesc(MemoryEntity::getUpdatedAt)
-                    .last("limit " + Math.max(1, limit * FETCH_MULTIPLIER)));
-        }
-        if (candidates == null) {
-            candidates = List.of();
-        }
+        try {
+            List<MemoryEntity> candidates = memoryMapper.selectList(wrapper);
+            if ((candidates == null || candidates.isEmpty()) && !keywords.isEmpty()) {
+                candidates = memoryMapper.selectList(baseWrapper(tenantId, applicationId, userId, profileId)
+                        .orderByDesc(MemoryEntity::getUpdatedAt)
+                        .last("limit " + Math.max(1, limit * FETCH_MULTIPLIER)));
+            }
+            if (candidates == null) {
+                candidates = List.of();
+            }
 
-        LocalDateTime minUpdatedAt = resolvedFilter.maxAge() == null
-                ? null
-                : LocalDateTime.now().minus(resolvedFilter.maxAge());
-        List<MemoryEntity> scored = candidates.stream()
-                .filter(memory -> matchesFilter(memory, resolvedFilter, minUpdatedAt))
-                .filter(memory -> score(memory, keywords) >= minScore(resolvedFilter))
-                .sorted(Comparator
-                        .<MemoryEntity>comparingDouble(m -> score(m, keywords))
-                        .reversed()
-                        .thenComparing(MemoryEntity::getUpdatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
-                .toList();
-        return scored;
+            LocalDateTime minUpdatedAt = resolvedFilter.maxAge() == null
+                    ? null
+                    : LocalDateTime.now().minus(resolvedFilter.maxAge());
+            List<MemoryEntity> scored = candidates.stream()
+                    .filter(memory -> matchesFilter(memory, resolvedFilter, minUpdatedAt))
+                    .filter(memory -> score(memory, keywords) >= minScore(resolvedFilter))
+                    .sorted(Comparator
+                            .<MemoryEntity>comparingDouble(m -> score(m, keywords))
+                            .reversed()
+                            .thenComparing(MemoryEntity::getUpdatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
+                    .toList();
+            if (keywordSpan != null && keywordSpan.attributes() instanceof com.fasterxml.jackson.databind.node.ObjectNode attributes) {
+                attributes.put("candidateCount", candidates.size());
+                attributes.put("resultCount", scored.size());
+            }
+            safeFinishSpan(keywordSpan, "SUCCESS", null, null);
+            return scored;
+        } catch (RuntimeException ex) {
+            safeFinishSpan(keywordSpan, "FAILED", errorCode(ex), errorMessage(ex));
+            throw ex;
+        }
     }
 
     private List<MemoryEntity> mergeRecallCandidates(
