@@ -309,8 +309,75 @@ class DefaultAgentRuntimeServiceTest {
                 .containsExactly(
                         org.assertj.core.groups.Tuple.tuple("action", "weather"),
                         org.assertj.core.groups.Tuple.tuple("observation", "weather")
-                );
+        );
         verify(modelInvokeService, times(2)).invoke(any(ModelInvokeCommand.class));
+    }
+
+    @Test
+    void runStoresReflectionMemoryAfterSuccessfulToolExecution() {
+        when(conversationRepository.findConversationById(90001L)).thenReturn(conversation());
+        when(contextBuilder.build(any(BuildAgentContextCommand.class))).thenReturn(contextWithWeatherSkill());
+        when(agentToolResolver.resolve(any())).thenReturn(List.of(agentTool("weather", AgentToolSourceType.SKILL)));
+        when(modelInvokeService.invoke(any(ModelInvokeCommand.class)))
+                .thenReturn(modelResult("@skill:weather {\"city\":\"Chongqing\"}"))
+                .thenReturn(modelResult("Chongqing is cloudy."));
+        when(agentToolDispatcher.dispatch(any())).thenReturn(new AgentToolDispatchResult(
+                true,
+                "weather",
+                AgentToolSourceType.SKILL,
+                objectMapper.createObjectNode()
+                        .put("city", "Chongqing")
+                        .put("summary", "cloudy"),
+                null
+        ));
+
+        service.run(commandWithInput(90001L, "Check Chongqing weather"));
+
+        ArgumentCaptor<RecordMemoryCommand> memoryCaptor = ArgumentCaptor.forClass(RecordMemoryCommand.class);
+        verify(memoryWriteService, times(2)).record(memoryCaptor.capture());
+        assertThat(memoryCaptor.getAllValues()).extracting(RecordMemoryCommand::memoryType)
+                .containsExactly("SUMMARY", "REFLECTION");
+        RecordMemoryCommand reflection = memoryCaptor.getAllValues().get(1);
+        assertThat(reflection.memoryCategory()).isEqualTo("reflection");
+        assertThat(reflection.tags()).containsExactly("reflection", "tool_success", "tool:weather");
+        assertThat(reflection.content())
+                .contains("Tool execution succeeded")
+                .contains("weather")
+                .contains("Check Chongqing weather")
+                .contains("Chongqing is cloudy.");
+        assertThat(reflection.memoryStrategyMode()).isEqualTo("READ_WRITE");
+    }
+
+    @Test
+    void runStoresToolFailureMemoryAfterFailedToolExecution() {
+        when(conversationRepository.findConversationById(90001L)).thenReturn(conversation());
+        when(contextBuilder.build(any(BuildAgentContextCommand.class))).thenReturn(contextWithWeatherSkill());
+        when(agentToolResolver.resolve(any())).thenReturn(List.of(agentTool("weather", AgentToolSourceType.SKILL)));
+        when(modelInvokeService.invoke(any(ModelInvokeCommand.class)))
+                .thenReturn(modelResult("@skill:weather {\"city\":\"Chongqing\"}"))
+                .thenReturn(modelResult("I could not fetch the weather."));
+        when(agentToolDispatcher.dispatch(any())).thenReturn(new AgentToolDispatchResult(
+                false,
+                "weather",
+                AgentToolSourceType.SKILL,
+                null,
+                "weather api timeout"
+        ));
+
+        service.run(commandWithInput(90001L, "Check Chongqing weather"));
+
+        ArgumentCaptor<RecordMemoryCommand> memoryCaptor = ArgumentCaptor.forClass(RecordMemoryCommand.class);
+        verify(memoryWriteService, times(3)).record(memoryCaptor.capture());
+        assertThat(memoryCaptor.getAllValues()).extracting(RecordMemoryCommand::memoryType)
+                .containsExactly("SUMMARY", "TOOL_FAILURE", "REFLECTION");
+        RecordMemoryCommand toolFailure = memoryCaptor.getAllValues().get(1);
+        assertThat(toolFailure.memoryCategory()).isEqualTo("tool_failure");
+        assertThat(toolFailure.tags()).containsExactly("tool_failure", "tool:weather");
+        assertThat(toolFailure.content())
+                .contains("Tool execution failed")
+                .contains("weather")
+                .contains("api timeout");
+        assertThat(toolFailure.memoryStrategyMode()).isEqualTo("READ_WRITE");
     }
 
     @Test
@@ -796,9 +863,10 @@ class DefaultAgentRuntimeServiceTest {
         verify(conversationRepository, times(2)).insertMessage(messageCaptor.capture());
         assertThat(messageCaptor.getAllValues().get(1).getContent()).isEqualTo("The result is 3.");
         ArgumentCaptor<RecordMemoryCommand> memoryCaptor = ArgumentCaptor.forClass(RecordMemoryCommand.class);
-        verify(memoryWriteService).record(memoryCaptor.capture());
-        assertThat(memoryCaptor.getValue().content()).contains("The result is 3.");
-        assertThat(memoryCaptor.getValue().content())
+        verify(memoryWriteService, times(2)).record(memoryCaptor.capture());
+        RecordMemoryCommand summary = memoryCaptor.getAllValues().get(0);
+        assertThat(summary.content()).contains("The result is 3.");
+        assertThat(summary.content())
                 .doesNotContain("@skill:")
                 .doesNotContain("[tool crash]")
                 .doesNotContain("\"debug\"");

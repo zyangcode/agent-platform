@@ -141,18 +141,40 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
         return run(command, teamEventSink, null);
     }
 
+    /**
+     * 执行智能体运行的核心方法。
+     * 支持团队模式、单智能体 ReAct 循环、工具调用以及流式输出。
+     *
+     * @param command 运行命令，包含用户输入、配置 ID 等
+     * @param teamEventSink 团队事件接收器，用于团队协作模式下的进度同步
+     * @param streamCallback 模型流式回调，用于实现打字机效果
+     * @return 智能体运行结果，包含最终回复、Token 消耗及工具执行事件
+     */
     @Override
     public AgentRunResult run(AgentRunCommand command, TeamEventSink teamEventSink, ModelStreamCallback streamCallback) {
+        // 1. 基础参数校验
         validate(command);
+        
+        // 2. 开启链路追踪：记录 Agent 运行的总 Span
         TraceSpanDTO runSpan = safeStartSpan(command.traceId(), null, "agent_runtime.run", "AGENT",
                 objectMapper.createObjectNode().put("profileId", command.profileId()));
+        
         try {
+            // 3. 确保会话存在（复用已有会话或创建新会话），并校验会话归属
             Long conversationId = ensureConversation(command);
+            
+            // 4. 构建 Agent 执行上下文（包含记忆、提示词、可用工具等）
             AgentContextDTO context = buildContext(command, conversationId, spanId(runSpan));
+            
+            // 5. 判断是否为“团队模式” (Team Mode)
             if (isTeamMode(command, context)) {
+                // A. 保存用户的原始输入消息
                 saveMessage(conversationId, command.traceId(), "user", command.userInput(), null);
+                // B. 标记当前 Span 为成功（因为后续交给 TeamRuntime 处理）
                 safeFinishSpan(runSpan, "SUCCESS", null, null);
+                // C. 转发给团队执行引擎处理
                 AgentRunResult result = teamRuntimeService.run(withConversationId(command, conversationId), teamEventSink);
+                // D. 保存团队生成的最终回复消息
                 saveMessage(
                         conversationId,
                         command.traceId(),
@@ -160,14 +182,22 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
                         result.assistantMessage(),
                         result.usage() == null ? null : result.usage().completionTokens()
                 );
+                // E. 记录/更新长期记忆
                 saveMemory(command, context, spanId(runSpan), conversationId, result.assistantMessage());
                 return result;
             }
 
+            // 6. 单智能体模式：保存用户消息
             saveMessage(conversationId, command.traceId(), "user", command.userInput(), null);
+            
+            // 7. 进入单智能体 ReAct 循环（思考 -> 调工具 -> 观察 -> 再思考）
             List<AgentToolEventDTO> toolEvents = new ArrayList<>();
             ModelInvokeResult modelResult = runModelLoop(command, context, spanId(runSpan), toolEvents, streamCallback);
+            
+            // 8. 构建最终回答（可能包含后处理逻辑）
             String finalAssistantMessage = buildFinalAnswer(command, spanId(runSpan), modelResult.assistantMessage());
+            
+            // 9. 保存 AI 的最终回复消息
             saveMessage(
                     conversationId,
                     command.traceId(),
@@ -175,10 +205,16 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
                     finalAssistantMessage,
                     modelResult.usage() == null ? null : modelResult.usage().completionTokens()
             );
-            saveMemory(command, context, spanId(runSpan), conversationId, finalAssistantMessage);
+            
+            // 10. 记录/更新长期记忆
+            saveMemory(command, context, spanId(runSpan), conversationId, finalAssistantMessage, toolEvents);
+            
+            // 11. 标记 Span 成功并返回结果
             safeFinishSpan(runSpan, "SUCCESS", null, null);
             return new AgentRunResult(conversationId, finalAssistantMessage, modelResult.usage(), toolEvents, context.ragSearchResults());
+            
         } catch (Exception ex) {
+            // 12. 异常处理：标记 Span 失败并向上抛出
             safeFinishSpan(runSpan, "FAILED", errorCode(ex), errorMessage(ex));
             throw ex;
         }
@@ -212,6 +248,17 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
         }
     }
 
+    /**
+     * 运行智能体的 ReAct (Reasoning and Acting) 核心循环。
+     * 该循环允许智能体多次调用模型进行思考，并根据模型的要求执行工具调用。
+     *
+     * @param command 运行命令
+     * @param context Agent 执行上下文
+     * @param parentSpanId 父链路跟踪 ID
+     * @param toolEvents 用于记录工具执行事件的列表
+     * @param streamCallback 模型流式回调
+     * @return 最终的模型调用结果
+     */
     private ModelInvokeResult runModelLoop(
             AgentRunCommand command,
             AgentContextDTO context,
@@ -219,8 +266,12 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
             List<AgentToolEventDTO> toolEvents,
             ModelStreamCallback streamCallback
     ) {
+        // 1. 初始化对话历史消息列表
         List<ModelMessage> messages = new ArrayList<>(context.apiMessages());
+        // 2. 解析并获取当前上下文下所有可用的工具列表
         List<AgentToolDTO> availableTools = safeTools(agentToolResolver.resolve(context));
+        
+        // 3. 检查是否存在待处理的工具调用（例如需要人工确认的高风险工具）
         ModelInvokeResult resumedResult = resumePendingToolCallIfPresent(
                 command,
                 context,
@@ -231,19 +282,30 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
                 streamCallback
         );
         if (resumedResult != null) {
+            // 如果恢复了待处理调用并直接得到了结果，则直接返回
             return resumedResult;
         }
-        int toolCallCount = 0;
-        boolean repaired = false;
-        Consumer<String> progress = command.progressCallback();
+
+        int toolCallCount = 0; // 累计工具调用次数
+        boolean repaired = false; // 标记是否进行过指令修复
+        Consumer<String> progress = command.progressCallback(); // 获取进度回调
+
+        // 4. 开始 ReAct 循环，最大步数由 MAX_AGENT_STEPS 限制
         for (int step = 0; step < MAX_AGENT_STEPS; step++) {
+            // A. 消息压缩：确保消息历史不超出模型的 Token 预算
             messages = compactMessages(command, parentSpanId, messages);
+            
+            // B. 准备流式缓冲区：在 Agent 模式下，中间思考过程通常不直接流向前端，除非是最终回复
             BufferedStreamCallback bufferedStream = streamCallback == null
                     ? null
                     : new BufferedStreamCallback();
+            
+            // C. 推送进度状态
             if (progress != null) {
                 progress.accept(step == 0 ? "正在分析..." : "正在进一步推理...");
             }
+
+            // D. 调用模型进行推理
             ModelInvokeResult result = invokeModel(
                     command,
                     context,
@@ -253,15 +315,21 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
                     step + 1,
                     bufferedStream
             );
+
+            // E. 解析模型回复中的工具调用请求 (如 @skill:xxx)
             ToolRequestBatch toolRequestBatch;
             try {
                 toolRequestBatch = toolRequestBatchFrom(result);
             } catch (Exception ex) {
+                // 如果解析失败，记录错误并尝试进行兜底直接回答
                 messages.add(new ModelMessage("assistant", result.assistantMessage()));
                 messages.add(new ModelMessage("tool", "[tool call parse error] " + errorMessage(ex)));
                 return fallbackDirectAnswer(command, context, messages, parentSpanId, streamCallback);
             }
+
+            // F. 如果模型没有请求调用任何工具
             if (toolRequestBatch.isEmpty()) {
+                // 尝试进行指令修复：有时模型可能由于指令遵循能力问题，没有按正确格式输出工具调用
                 if (!repaired) {
                     ToolRequestBatch repairedToolRequestBatch = repairMissingToolRequestBatch(
                             command,
@@ -271,30 +339,41 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
                     if (!repairedToolRequestBatch.isEmpty()) {
                         repaired = true;
                         messages.add(new ModelMessage("assistant", result.assistantMessage()));
+                        // 执行修复后的工具调用
                         for (ToolExecutionResult toolResult : executeToolBatch(command, repairedToolRequestBatch, availableTools, parentSpanId, step + 1)) {
                             recordToolEvents(toolEvents, toolResult.toolCall(), toolResult.output());
                             messages.add(new ModelMessage("tool", compactMessage(command, parentSpanId, "tool", toolResult.output())));
                         }
                         toolCallCount += repairedToolRequestBatch.toolCalls().size();
+                        // 检查工具调用上限
                         if (toolCallCount >= MAX_TOOL_CALLS) {
                             return fallbackDirectAnswer(command, context, messages, parentSpanId, streamCallback);
                         }
-                        continue;
+                        continue; // 继续下一轮循环，让模型观察工具执行结果
                     }
                 }
+                
+                // 确定没有工具调用且无需修复，则认为这是最终回答
                 if (streamCallback == null) {
                     return result;
                 }
+                // 如果开启了流式输出，将缓冲区中的最终内容刷给前端
                 flushBufferedVisibleAnswer(streamCallback, result.assistantMessage(), bufferedStream);
                 return result;
             }
+
+            // G. 模型请求了工具调用：记录 Assistant 的回复
             messages.add(new ModelMessage("assistant", result.assistantMessage()));
+            
+            // H. 校验工具调用的合法性（权限、参数等）
             List<AgentToolValidationResult> validations = validateToolRequestBatch(
                     command,
                     parentSpanId,
                     toolRequestBatch,
                     availableTools
             );
+            
+            // I. 如果存在非法调用，将错误信息反馈给模型，尝试让其修正
             if (hasInvalidToolCall(validations)) {
                 for (AgentToolValidationResult validation : validations) {
                     if (!validation.valid()) {
@@ -303,19 +382,31 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
                 }
                 return fallbackDirectAnswer(command, context, messages, parentSpanId, streamCallback);
             }
+
             repaired = true;
+            // J. 推送进度状态
             if (progress != null) {
                 progress.accept("正在执行工具调用...");
             }
+            
+            // K. 批量执行工具调用
             for (ToolExecutionResult toolResult : executeToolBatch(command, toolRequestBatch, availableTools, parentSpanId, step + 1)) {
+                // 记录执行事件（用于前端展示执行过程）
                 recordToolEvents(toolEvents, toolResult.toolCall(), toolResult.output());
+                // 将工具输出作为观察结果 (Observation) 加入对话历史
                 messages.add(new ModelMessage("tool", compactMessage(command, parentSpanId, "tool", toolResult.output())));
             }
+
+            // L. 统计调用次数并检查是否超出上限
             toolCallCount += toolRequestBatch.toolCalls().size();
             if (toolCallCount >= MAX_TOOL_CALLS) {
+                // 超出上限强制结束，进行兜底回答
                 return fallbackDirectAnswer(command, context, messages, parentSpanId, streamCallback);
             }
+            // 继续下一轮循环，让模型根据工具执行结果进行下一步思考
         }
+
+        // 5. 达到最大步数仍未结束，推送进度并进行最终兜底回复
         if (progress != null) {
             progress.accept("正在生成回复...");
         }
@@ -855,9 +946,12 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
                 validation.call().arguments()
         ));
         if (!result.success()) {
-            return result.errorMessage() == null || result.errorMessage().isBlank()
-                    ? "[tool failed] " + validation.call().toolName()
+            String errorMessage = result.errorMessage() == null || result.errorMessage().isBlank()
+                    ? validation.call().toolName()
                     : result.errorMessage();
+            return errorMessage.startsWith("[tool failed]")
+                    ? errorMessage
+                    : "[tool failed] " + errorMessage;
         }
         return result.output() == null || result.output().isNull() ? "[empty]" : result.output().toString();
     }
@@ -971,6 +1065,17 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
     }
 
     private void saveMemory(AgentRunCommand command, AgentContextDTO context, Long parentSpanId, Long conversationId, String assistantMessage) {
+        saveMemory(command, context, parentSpanId, conversationId, assistantMessage, List.of());
+    }
+
+    private void saveMemory(
+            AgentRunCommand command,
+            AgentContextDTO context,
+            Long parentSpanId,
+            Long conversationId,
+            String assistantMessage,
+            List<AgentToolEventDTO> toolEvents
+    ) {
         if (!shouldWritePersistentMemory(context)) {
             return;
         }
@@ -983,10 +1088,18 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
                 conversationId,
                 command.userInput()
         );
+        List<RecordMemoryCommand> experienceMemories = experienceMemories(
+                command,
+                conversationId,
+                assistantMessage,
+                toolEvents,
+                memoryStrategyMode
+        );
         TraceSpanDTO span = safeStartSpan(command.traceId(), parentSpanId, "memory.write", "MEMORY",
                 objectMapper.createObjectNode()
                         .put("summaryCount", 1)
-                        .put("preferenceCount", preferences.size()));
+                        .put("preferenceCount", preferences.size())
+                        .put("experienceCount", experienceMemories.size()));
         try {
             memoryWriteService.record(new RecordMemoryCommand(
                     command.tenantId(),
@@ -1005,11 +1118,108 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
             for (RecordMemoryCommand preference : preferences) {
                 memoryWriteService.record(withMemoryStrategy(preference, memoryStrategyMode));
             }
+            for (RecordMemoryCommand experienceMemory : experienceMemories) {
+                memoryWriteService.record(experienceMemory);
+            }
             safeFinishSpan(span, "SUCCESS", null, null);
         } catch (Exception ex) {
             safeFinishSpan(span, "FAILED", errorCode(ex), errorMessage(ex));
             throw ex;
         }
+    }
+
+    private List<RecordMemoryCommand> experienceMemories(
+            AgentRunCommand command,
+            Long conversationId,
+            String assistantMessage,
+            List<AgentToolEventDTO> toolEvents,
+            String memoryStrategyMode
+    ) {
+        if (toolEvents == null || toolEvents.isEmpty()) {
+            return List.of();
+        }
+        List<AgentToolEventDTO> observations = toolEvents.stream()
+                .filter(event -> event != null && !"action".equals(event.type()))
+                .toList();
+        if (observations.isEmpty()) {
+            return List.of();
+        }
+        List<RecordMemoryCommand> memories = new ArrayList<>();
+        for (AgentToolEventDTO event : observations) {
+            if (isToolFailureOutput(event.content())) {
+                memories.add(new RecordMemoryCommand(
+                        command.tenantId(),
+                        command.userId(),
+                        command.applicationId(),
+                        command.profileId(),
+                        "TOOL_FAILURE",
+                        toolFailureMemoryContent(command, event),
+                        conversationId,
+                        "tool_failure",
+                        List.of("tool_failure", "tool:" + event.toolName()),
+                        0.7,
+                        "EXPERIENCE_SKILL",
+                        memoryStrategyMode
+                ));
+            }
+        }
+        memories.add(new RecordMemoryCommand(
+                command.tenantId(),
+                command.userId(),
+                command.applicationId(),
+                command.profileId(),
+                "REFLECTION",
+                reflectionMemoryContent(command, assistantMessage, observations),
+                conversationId,
+                "reflection",
+                reflectionTags(observations),
+                0.55,
+                "EXPERIENCE_SKILL",
+                memoryStrategyMode
+        ));
+        return memories;
+    }
+
+    private String toolFailureMemoryContent(AgentRunCommand command, AgentToolEventDTO event) {
+        return "Tool execution failed. "
+                + "Tool: " + event.toolName() + ". "
+                + "User request: " + summarizeText(command.userInput()) + ". "
+                + "Failure: " + summarizeText(event.content());
+    }
+
+    private String reflectionMemoryContent(
+            AgentRunCommand command,
+            String assistantMessage,
+            List<AgentToolEventDTO> observations
+    ) {
+        boolean failed = observations.stream().anyMatch(event -> isToolFailureOutput(event.content()));
+        String tools = observations.stream()
+                .map(AgentToolEventDTO::toolName)
+                .filter(name -> name != null && !name.isBlank())
+                .distinct()
+                .limit(5)
+                .toList()
+                .toString();
+        return (failed ? "Tool execution completed with failures. " : "Tool execution succeeded. ")
+                + "Tools: " + tools + ". "
+                + "User request: " + summarizeText(command.userInput()) + ". "
+                + "Final answer: " + summarizeText(assistantMessage);
+    }
+
+    private List<String> reflectionTags(List<AgentToolEventDTO> observations) {
+        List<String> tags = new ArrayList<>();
+        tags.add("reflection");
+        tags.add(observations.stream().anyMatch(event -> isToolFailureOutput(event.content()))
+                ? "tool_failure"
+                : "tool_success");
+        observations.stream()
+                .map(AgentToolEventDTO::toolName)
+                .filter(name -> name != null && !name.isBlank())
+                .distinct()
+                .limit(3)
+                .map(name -> "tool:" + name)
+                .forEach(tags::add);
+        return tags;
     }
 
     private boolean shouldWritePersistentMemory(AgentContextDTO context) {
