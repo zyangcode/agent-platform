@@ -2,12 +2,18 @@ package com.ls.agent.core.rag;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ls.agent.core.rag.api.EmbeddingService;
+import com.ls.agent.core.rag.api.HypotheticalDocumentService;
+import com.ls.agent.core.rag.api.QueryExpansionService;
 import com.ls.agent.core.rag.api.RagEngine;
 import com.ls.agent.core.rag.api.RagSearchService;
+import com.ls.agent.core.rag.api.RetrievalReranker;
 import com.ls.agent.core.rag.api.VectorStore;
 import com.ls.agent.core.rag.application.DefaultLocalRagEngine;
 import com.ls.agent.core.rag.application.DefaultPostgresRagEngine;
 import com.ls.agent.core.rag.application.MockEmbeddingService;
+import com.ls.agent.core.rag.application.MockHypotheticalDocumentService;
+import com.ls.agent.core.rag.application.MockQueryExpansionService;
+import com.ls.agent.core.rag.application.MockRetrievalReranker;
 import com.ls.agent.core.rag.application.MockVectorStore;
 import com.ls.agent.core.rag.application.OpenAiCompatibleEmbeddingService;
 import com.ls.agent.core.rag.application.QdrantVectorStore;
@@ -35,6 +41,12 @@ class RagSearchServiceConfigurationTest {
             assertThat(context.getBean(EmbeddingService.class)).isInstanceOf(MockEmbeddingService.class);
             assertThat(context).hasSingleBean(VectorStore.class);
             assertThat(context.getBean(VectorStore.class)).isInstanceOf(MockVectorStore.class);
+            assertThat(context).hasSingleBean(RetrievalReranker.class);
+            assertThat(context.getBean(RetrievalReranker.class)).isNotInstanceOf(MockRetrievalReranker.class);
+            assertThat(context).hasSingleBean(QueryExpansionService.class);
+            assertThat(context.getBean(QueryExpansionService.class)).isNotInstanceOf(MockQueryExpansionService.class);
+            assertThat(context).hasSingleBean(HypotheticalDocumentService.class);
+            assertThat(context.getBean(HypotheticalDocumentService.class)).isNotInstanceOf(MockHypotheticalDocumentService.class);
         });
     }
 
@@ -102,6 +114,25 @@ class RagSearchServiceConfigurationTest {
                 .run(context -> {
                     assertThat(context).hasSingleBean(EmbeddingService.class);
                     assertThat(context.getBean(EmbeddingService.class)).isInstanceOf(OpenAiCompatibleEmbeddingService.class);
+                });
+    }
+
+    @Test
+    void registersMockRetrievalEnhancersOnlyWhenEnabled() {
+        contextRunner
+                .withPropertyValues(
+                        "agent.rag.reranker.enabled=true",
+                        "agent.rag.reranker.provider=mock",
+                        "agent.rag.query-expansion.enabled=true",
+                        "agent.rag.hyde.enabled=true"
+                )
+                .run(context -> {
+                    assertThat(context).hasSingleBean(RetrievalReranker.class);
+                    assertThat(context.getBean(RetrievalReranker.class)).isInstanceOf(MockRetrievalReranker.class);
+                    assertThat(context).hasSingleBean(QueryExpansionService.class);
+                    assertThat(context.getBean(QueryExpansionService.class)).isInstanceOf(MockQueryExpansionService.class);
+                    assertThat(context).hasSingleBean(HypotheticalDocumentService.class);
+                    assertThat(context.getBean(HypotheticalDocumentService.class)).isInstanceOf(MockHypotheticalDocumentService.class);
                 });
     }
 }

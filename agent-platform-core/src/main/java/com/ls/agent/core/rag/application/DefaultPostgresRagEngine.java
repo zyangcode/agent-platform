@@ -4,7 +4,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.ls.agent.core.rag.api.EmbeddingService;
+import com.ls.agent.core.rag.api.HypotheticalDocumentService;
+import com.ls.agent.core.rag.api.QueryExpansionService;
 import com.ls.agent.core.rag.api.RagEngine;
+import com.ls.agent.core.rag.api.RetrievalReranker;
 import com.ls.agent.core.rag.api.VectorStore;
 import com.ls.agent.core.rag.command.IngestKnowledgeDocumentCommand;
 import com.ls.agent.core.rag.dto.EmbeddingVectorDTO;
@@ -27,6 +30,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -40,6 +44,8 @@ public class DefaultPostgresRagEngine implements RagEngine {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final double RRF_K = 60.0;
+    private static final int MAX_EXPANDED_QUERIES = 3;
+    private static final int MAX_HYPOTHETICAL_DOCUMENTS = 1;
 
     private final KnowledgeDocumentMapper documentMapper;
     private final KnowledgeChunkMapper chunkMapper;
@@ -47,6 +53,9 @@ public class DefaultPostgresRagEngine implements RagEngine {
     private final EmbeddingService embeddingService;
     private final VectorStore vectorStore;
     private final TraceService traceService;
+    private final RetrievalReranker retrievalReranker;
+    private final QueryExpansionService queryExpansionService;
+    private final HypotheticalDocumentService hypotheticalDocumentService;
 
     public DefaultPostgresRagEngine(
             KnowledgeDocumentMapper documentMapper,
@@ -74,12 +83,32 @@ public class DefaultPostgresRagEngine implements RagEngine {
             VectorStore vectorStore,
             TraceService traceService
     ) {
+        this(documentMapper, chunkMapper, textSplitter, embeddingService, vectorStore, traceService,
+                null, null, null);
+    }
+
+    public DefaultPostgresRagEngine(
+            KnowledgeDocumentMapper documentMapper,
+            KnowledgeChunkMapper chunkMapper,
+            TextSplitter textSplitter,
+            EmbeddingService embeddingService,
+            VectorStore vectorStore,
+            TraceService traceService,
+            RetrievalReranker retrievalReranker,
+            QueryExpansionService queryExpansionService,
+            HypotheticalDocumentService hypotheticalDocumentService
+    ) {
         this.documentMapper = documentMapper;
         this.chunkMapper = chunkMapper;
         this.textSplitter = textSplitter == null ? new TextSplitter() : textSplitter;
         this.embeddingService = embeddingService;
         this.vectorStore = vectorStore;
         this.traceService = traceService;
+        this.retrievalReranker = retrievalReranker == null ? RetrievalReranker.noop() : retrievalReranker;
+        this.queryExpansionService = queryExpansionService == null ? QueryExpansionService.noop() : queryExpansionService;
+        this.hypotheticalDocumentService = hypotheticalDocumentService == null
+                ? HypotheticalDocumentService.noop()
+                : hypotheticalDocumentService;
     }
 
     @Override
@@ -203,7 +232,24 @@ public class DefaultPostgresRagEngine implements RagEngine {
                 queryVector,
                 traceId, parentSpanId);
         List<RagSearchResultDTO> keywordResults = searchByKeyword(tenantId, applicationId, userId, profileId, query, topK);
-        return mergeSearchResults(vectorResults, keywordResults, topK);
+        List<List<RagSearchResultDTO>> resultGroups = new ArrayList<>();
+        resultGroups.add(vectorResults);
+        resultGroups.add(keywordResults);
+        resultGroups.addAll(searchEnhancedRecallPaths(
+                tenantId,
+                applicationId,
+                userId,
+                profileId,
+                query,
+                topK,
+                traceId,
+                parentSpanId
+        ));
+        List<RagSearchResultDTO> mergedResults = mergeSearchResults(
+                resultGroups,
+                topK
+        );
+        return safeRerank(query, mergedResults, topK);
     }
 
     private List<RagSearchResultDTO> searchByKeyword(
@@ -235,22 +281,111 @@ public class DefaultPostgresRagEngine implements RagEngine {
         }
     }
 
-    private List<RagSearchResultDTO> mergeSearchResults(
-            List<RagSearchResultDTO> vectorResults,
-            List<RagSearchResultDTO> keywordResults,
+    private List<List<RagSearchResultDTO>> searchEnhancedRecallPaths(
+            Long tenantId,
+            Long applicationId,
+            Long userId,
+            Long profileId,
+            String query,
+            int topK,
+            String traceId,
+            Long parentSpanId
+    ) {
+        List<String> additionalQueries = additionalQueries(query);
+        if (additionalQueries.isEmpty()) {
+            return List.of();
+        }
+        List<List<RagSearchResultDTO>> resultGroups = new ArrayList<>();
+        for (String additionalQuery : additionalQueries) {
+            resultGroups.add(searchByVector(tenantId, applicationId, userId, profileId, additionalQuery, topK,
+                    null, traceId, parentSpanId));
+            resultGroups.add(searchByKeyword(tenantId, applicationId, userId, profileId, additionalQuery, topK));
+        }
+        return resultGroups;
+    }
+
+    private List<String> additionalQueries(String query) {
+        LinkedHashSet<String> queries = new LinkedHashSet<>();
+        addQueries(queries, safeExpand(query), query, MAX_EXPANDED_QUERIES);
+        addQueries(queries, safeGenerateHypotheticalDocuments(query), query, MAX_HYPOTHETICAL_DOCUMENTS);
+        return queries.stream()
+                .limit(MAX_EXPANDED_QUERIES + MAX_HYPOTHETICAL_DOCUMENTS)
+                .toList();
+    }
+
+    private List<String> safeExpand(String query) {
+        try {
+            return queryExpansionService.expand(query, MAX_EXPANDED_QUERIES);
+        } catch (RuntimeException ex) {
+            return List.of();
+        }
+    }
+
+    private List<String> safeGenerateHypotheticalDocuments(String query) {
+        try {
+            return hypotheticalDocumentService.generate(query, MAX_HYPOTHETICAL_DOCUMENTS);
+        } catch (RuntimeException ex) {
+            return List.of();
+        }
+    }
+
+    private void addQueries(LinkedHashSet<String> target, List<String> source, String originalQuery, int limit) {
+        if (source == null || source.isEmpty() || limit <= 0) {
+            return;
+        }
+        for (String candidate : source) {
+            if (candidate == null) {
+                continue;
+            }
+            String normalized = candidate.strip();
+            if (!normalized.isBlank() && !normalized.equals(originalQuery)) {
+                target.add(normalized);
+            }
+            if (target.size() >= limit) {
+                break;
+            }
+        }
+    }
+
+    private List<RagSearchResultDTO> safeRerank(
+            String query,
+            List<RagSearchResultDTO> candidates,
             int topK
     ) {
-        List<RagSearchResultDTO> safeVectorResults = vectorResults == null ? List.of() : vectorResults;
-        List<RagSearchResultDTO> safeKeywordResults = keywordResults == null ? List.of() : keywordResults;
-        if (safeVectorResults.isEmpty()) {
-            return safeKeywordResults;
+        try {
+            List<RagSearchResultDTO> reranked = retrievalReranker.rerank(query, candidates, topK);
+            return reranked == null ? List.of() : reranked.stream()
+                    .limit(Math.max(1, topK))
+                    .toList();
+        } catch (RuntimeException ex) {
+            return candidates == null ? List.of() : candidates.stream()
+                    .limit(Math.max(1, topK))
+                    .toList();
         }
-        if (safeKeywordResults.isEmpty()) {
-            return safeVectorResults;
+    }
+
+    private List<RagSearchResultDTO> mergeSearchResults(
+            List<List<RagSearchResultDTO>> resultGroups,
+            int topK
+    ) {
+        if (resultGroups == null) {
+            return List.of();
+        }
+        List<List<RagSearchResultDTO>> nonEmptyGroups = resultGroups.stream()
+                .filter(group -> group != null && !group.isEmpty())
+                .toList();
+        if (nonEmptyGroups.isEmpty()) {
+            return List.of();
+        }
+        if (nonEmptyGroups.size() == 1) {
+            return nonEmptyGroups.get(0).stream()
+                    .limit(Math.max(1, topK))
+                    .toList();
         }
         Map<String, FusedRagResult> fused = new java.util.LinkedHashMap<>();
-        addRankedRagResults(fused, safeVectorResults);
-        addRankedRagResults(fused, safeKeywordResults);
+        for (List<RagSearchResultDTO> group : nonEmptyGroups) {
+            addRankedRagResults(fused, group);
+        }
         return fused.values().stream()
                 .sorted(java.util.Comparator
                         .<FusedRagResult>comparingDouble(FusedRagResult::score)

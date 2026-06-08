@@ -1,8 +1,11 @@
 package com.ls.agent.core.rag.application;
 
 import com.ls.agent.core.rag.api.EmbeddingService;
+import com.ls.agent.core.rag.api.HypotheticalDocumentService;
+import com.ls.agent.core.rag.api.QueryExpansionService;
 import com.ls.agent.core.rag.api.RagEngine;
 import com.ls.agent.core.rag.api.RagSearchService;
+import com.ls.agent.core.rag.api.RetrievalReranker;
 import com.ls.agent.core.rag.api.VectorStore;
 import com.ls.agent.core.rag.mapper.KnowledgeChunkMapper;
 import com.ls.agent.core.rag.mapper.KnowledgeDocumentMapper;
@@ -72,6 +75,42 @@ public class RagSearchServiceConfiguration {
     }
 
     @Bean
+    @ConditionalOnExpression("'${agent.rag.reranker.provider:noop}' == 'mock' && '${agent.rag.reranker.enabled:false}' == 'true'")
+    public RetrievalReranker mockRetrievalReranker() {
+        return new MockRetrievalReranker();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(RetrievalReranker.class)
+    public RetrievalReranker retrievalReranker() {
+        return RetrievalReranker.noop();
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "agent.rag.query-expansion", name = "enabled", havingValue = "true")
+    public QueryExpansionService mockQueryExpansionService() {
+        return new MockQueryExpansionService();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(QueryExpansionService.class)
+    public QueryExpansionService queryExpansionService() {
+        return QueryExpansionService.noop();
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "agent.rag.hyde", name = "enabled", havingValue = "true")
+    public HypotheticalDocumentService mockHypotheticalDocumentService() {
+        return new MockHypotheticalDocumentService();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(HypotheticalDocumentService.class)
+    public HypotheticalDocumentService hypotheticalDocumentService() {
+        return HypotheticalDocumentService.noop();
+    }
+
+    @Bean
     @ConditionalOnProperty(prefix = "spring.datasource", name = "url")
     public RagEngine postgresRagEngine(
             KnowledgeDocumentMapper documentMapper,
@@ -79,10 +118,13 @@ public class RagSearchServiceConfiguration {
             TextSplitter textSplitter,
             EmbeddingService embeddingService,
             VectorStore vectorStore,
+            RetrievalReranker retrievalReranker,
+            QueryExpansionService queryExpansionService,
+            HypotheticalDocumentService hypotheticalDocumentService,
             ObjectProvider<TraceService> traceServiceProvider
     ) {
         return new DefaultPostgresRagEngine(documentMapper, chunkMapper, textSplitter, embeddingService, vectorStore,
-                traceServiceProvider.getIfAvailable());
+                traceServiceProvider.getIfAvailable(), retrievalReranker, queryExpansionService, hypotheticalDocumentService);
     }
 
     @Bean

@@ -1,7 +1,10 @@
 package com.ls.agent.core.rag;
 
 import com.ls.agent.core.rag.application.DefaultPostgresRagEngine;
+import com.ls.agent.core.rag.api.HypotheticalDocumentService;
 import com.ls.agent.core.rag.api.EmbeddingService;
+import com.ls.agent.core.rag.api.QueryExpansionService;
+import com.ls.agent.core.rag.api.RetrievalReranker;
 import com.ls.agent.core.rag.api.VectorStore;
 import com.ls.agent.core.rag.application.TextSplitter;
 import com.ls.agent.core.rag.command.IngestKnowledgeDocumentCommand;
@@ -421,6 +424,228 @@ class DefaultPostgresRagEngineTest {
         assertThat(results).extracting(RagSearchResultDTO::content)
                 .anySatisfy(content -> assertThat(content).contains("dry court"))
                 .anySatisfy(content -> assertThat(content).contains("warmups"));
+    }
+
+    @Test
+    void searchAppliesRerankerAfterHybridFusion() {
+        KnowledgeChunkEntity first = new KnowledgeChunkEntity();
+        first.setId(91001L);
+        first.setDocumentId(90001L);
+        first.setTitle("First");
+        first.setContent("ordinary context");
+        first.setKeywordScore(5.0);
+        KnowledgeChunkEntity second = new KnowledgeChunkEntity();
+        second.setId(91002L);
+        second.setDocumentId(90002L);
+        second.setTitle("Second");
+        second.setContent("preferred exact evidence");
+        second.setKeywordScore(1.0);
+        when(chunkMapper.searchActiveChunks(
+                eq(1L),
+                eq(20001L),
+                eq(10001L),
+                eq(50001L),
+                eq(List.of("rerank", "query")),
+                eq("rerank query"),
+                eq(5)
+        )).thenReturn(List.of(first, second));
+        RetrievalReranker reranker = (query, candidates, topK) -> candidates.stream()
+                .sorted(java.util.Comparator.comparing(result -> result.content().contains("preferred") ? 0 : 1))
+                .limit(topK)
+                .toList();
+        DefaultPostgresRagEngine rerankEngine = new DefaultPostgresRagEngine(
+                documentMapper,
+                chunkMapper,
+                new TextSplitter(),
+                null,
+                null,
+                null,
+                reranker,
+                QueryExpansionService.noop(),
+                HypotheticalDocumentService.noop()
+        );
+
+        List<RagSearchResultDTO> results = rerankEngine.search(
+                1L,
+                20001L,
+                10001L,
+                50001L,
+                "rerank query",
+                5
+        );
+
+        assertThat(results).extracting(RagSearchResultDTO::chunkId)
+                .containsExactly(91002L, 91001L);
+    }
+
+    @Test
+    void searchUsesExpandedQueriesAsAdditionalRecallPaths() {
+        EmbeddingVectorDTO originalVector = new EmbeddingVectorDTO("mock", new float[]{1.0f, 0.0f});
+        EmbeddingVectorDTO expandedVector = new EmbeddingVectorDTO("mock", new float[]{0.0f, 1.0f});
+        when(embeddingService.embed("refund")).thenReturn(originalVector);
+        when(embeddingService.embed("return rule")).thenReturn(expandedVector);
+        when(vectorStore.search(new VectorSearchQueryDTO(
+                1L,
+                20001L,
+                10001L,
+                50001L,
+                originalVector,
+                5
+        ))).thenReturn(List.of());
+        when(vectorStore.search(new VectorSearchQueryDTO(
+                1L,
+                20001L,
+                10001L,
+                50001L,
+                expandedVector,
+                5
+        ))).thenReturn(List.of(new VectorSearchResultDTO("vec-91003", 90003L, 91003L, 0.91)));
+        KnowledgeChunkEntity original = new KnowledgeChunkEntity();
+        original.setId(91001L);
+        original.setDocumentId(90001L);
+        original.setTitle("Original");
+        original.setContent("refund policy");
+        original.setKeywordScore(1.0);
+        KnowledgeChunkEntity expanded = new KnowledgeChunkEntity();
+        expanded.setId(91002L);
+        expanded.setDocumentId(90002L);
+        expanded.setTitle("Expanded");
+        expanded.setContent("return rule");
+        expanded.setKeywordScore(1.0);
+        KnowledgeChunkEntity expandedVectorChunk = new KnowledgeChunkEntity();
+        expandedVectorChunk.setId(91003L);
+        expandedVectorChunk.setDocumentId(90003L);
+        expandedVectorChunk.setTitle("Expanded Vector");
+        expandedVectorChunk.setContent("semantic return policy");
+        when(chunkMapper.searchActiveChunks(
+                eq(1L),
+                eq(20001L),
+                eq(10001L),
+                eq(50001L),
+                eq(List.of("refund")),
+                eq("refund"),
+                eq(5)
+        )).thenReturn(List.of(original));
+        when(chunkMapper.searchActiveChunks(
+                eq(1L),
+                eq(20001L),
+                eq(10001L),
+                eq(50001L),
+                eq(List.of("return", "rule")),
+                eq("return rule"),
+                eq(5)
+        )).thenReturn(List.of(expanded));
+        when(chunkMapper.selectActiveChunksByIds(1L, 20001L, 10001L, 50001L, List.of(91003L)))
+                .thenReturn(List.of(expandedVectorChunk));
+        QueryExpansionService queryExpansionService = (query, maxQueries) -> List.of("return rule");
+        DefaultPostgresRagEngine expandedEngine = new DefaultPostgresRagEngine(
+                documentMapper,
+                chunkMapper,
+                new TextSplitter(),
+                embeddingService,
+                vectorStore,
+                null,
+                RetrievalReranker.noop(),
+                queryExpansionService,
+                HypotheticalDocumentService.noop()
+        );
+
+        List<RagSearchResultDTO> results = expandedEngine.search(
+                1L,
+                20001L,
+                10001L,
+                50001L,
+                "refund",
+                5
+        );
+
+        assertThat(results).extracting(RagSearchResultDTO::chunkId)
+                .containsExactlyInAnyOrder(91001L, 91002L, 91003L);
+    }
+
+    @Test
+    void searchUsesHypotheticalDocumentsAsAdditionalRecallPaths() {
+        EmbeddingVectorDTO originalVector = new EmbeddingVectorDTO("mock", new float[]{1.0f, 0.0f});
+        EmbeddingVectorDTO hydeVector = new EmbeddingVectorDTO("mock", new float[]{0.0f, 1.0f});
+        when(embeddingService.embed("that issue")).thenReturn(originalVector);
+        when(embeddingService.embed("context retrieval timeout")).thenReturn(hydeVector);
+        when(vectorStore.search(new VectorSearchQueryDTO(
+                1L,
+                20001L,
+                10001L,
+                50001L,
+                originalVector,
+                5
+        ))).thenReturn(List.of());
+        when(vectorStore.search(new VectorSearchQueryDTO(
+                1L,
+                20001L,
+                10001L,
+                50001L,
+                hydeVector,
+                5
+        ))).thenReturn(List.of(new VectorSearchResultDTO("vec-91003", 90003L, 91003L, 0.91)));
+        KnowledgeChunkEntity original = new KnowledgeChunkEntity();
+        original.setId(91001L);
+        original.setDocumentId(90001L);
+        original.setTitle("Original");
+        original.setContent("unclear reference");
+        original.setKeywordScore(1.0);
+        KnowledgeChunkEntity hyde = new KnowledgeChunkEntity();
+        hyde.setId(91002L);
+        hyde.setDocumentId(90002L);
+        hyde.setTitle("HyDE");
+        hyde.setContent("context retrieval timeout");
+        hyde.setKeywordScore(1.0);
+        KnowledgeChunkEntity hydeVectorChunk = new KnowledgeChunkEntity();
+        hydeVectorChunk.setId(91003L);
+        hydeVectorChunk.setDocumentId(90003L);
+        hydeVectorChunk.setTitle("HyDE Vector");
+        hydeVectorChunk.setContent("context builder retrieval deadline");
+        when(chunkMapper.searchActiveChunks(
+                eq(1L),
+                eq(20001L),
+                eq(10001L),
+                eq(50001L),
+                eq(List.of("that", "issue")),
+                eq("that issue"),
+                eq(5)
+        )).thenReturn(List.of(original));
+        when(chunkMapper.searchActiveChunks(
+                eq(1L),
+                eq(20001L),
+                eq(10001L),
+                eq(50001L),
+                eq(List.of("context", "retrieval", "timeout")),
+                eq("context retrieval timeout"),
+                eq(5)
+        )).thenReturn(List.of(hyde));
+        when(chunkMapper.selectActiveChunksByIds(1L, 20001L, 10001L, 50001L, List.of(91003L)))
+                .thenReturn(List.of(hydeVectorChunk));
+        HypotheticalDocumentService hypotheticalDocumentService = (query, maxDocuments) -> List.of("context retrieval timeout");
+        DefaultPostgresRagEngine hydeEngine = new DefaultPostgresRagEngine(
+                documentMapper,
+                chunkMapper,
+                new TextSplitter(),
+                embeddingService,
+                vectorStore,
+                null,
+                RetrievalReranker.noop(),
+                QueryExpansionService.noop(),
+                hypotheticalDocumentService
+        );
+
+        List<RagSearchResultDTO> results = hydeEngine.search(
+                1L,
+                20001L,
+                10001L,
+                50001L,
+                "that issue",
+                5
+        );
+
+        assertThat(results).extracting(RagSearchResultDTO::chunkId)
+                .containsExactlyInAnyOrder(91001L, 91002L, 91003L);
     }
 
     @Test
