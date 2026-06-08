@@ -82,7 +82,8 @@ class MemoryControllerTest {
                                 "preference",
                                 List.of("sports", "style"),
                                 0.9,
-                                "preference"
+                                "preference",
+                                true
                         ))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.id").value(88));
@@ -95,6 +96,7 @@ class MemoryControllerTest {
         assertThat(captor.getValue().profileId()).isEqualTo(50001L);
         assertThat(captor.getValue().memoryId()).isEqualTo(88L);
         assertThat(captor.getValue().content()).isEqualTo("User prefers concise basketball advice.");
+        assertThat(captor.getValue().pinned()).isTrue();
     }
 
     @Test
@@ -125,7 +127,8 @@ class MemoryControllerTest {
                 LocalDateTime.parse("2026-06-01T09:00:00"),
                 LocalDateTime.parse("2026-06-01T10:00:00"),
                 "preference",
-                "ACTIVE"
+                "ACTIVE",
+                true
         );
     }
 

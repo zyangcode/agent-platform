@@ -18,7 +18,8 @@ public record MemoryRecordDTO(
         LocalDateTime createdAt,
         LocalDateTime updatedAt,
         String slotHint,
-        String status
+        String status,
+        boolean pinned
 ) {
 
     public MemoryRecordDTO {

@@ -1,6 +1,9 @@
 package com.ls.agent.core.memory.application;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.ls.agent.common.error.BizException;
 import com.ls.agent.common.error.ErrorCode;
 import com.ls.agent.core.memory.api.MemoryManagementService;
@@ -109,6 +112,11 @@ public class DefaultMemoryManagementService implements MemoryManagementService {
         }
         if (command.slotHint() != null) {
             memory.setSlotHint(command.slotHint().isBlank() ? null : command.slotHint().strip());
+        }
+        if (command.pinned() != null) {
+            ObjectNode metadata = objectMetadata(memory.getMetadata());
+            metadata.put("pinned", command.pinned());
+            memory.setMetadata(metadata);
         }
         memoryMapper.updateById(memory);
         if (reindex) {
@@ -238,8 +246,20 @@ public class DefaultMemoryManagementService implements MemoryManagementService {
                 memory.getCreatedAt(),
                 memory.getUpdatedAt(),
                 memory.getSlotHint(),
-                memory.getStatus()
+                memory.getStatus(),
+                isPinned(memory)
         );
+    }
+
+    private boolean isPinned(MemoryEntity memory) {
+        return memory != null && memory.getMetadata() != null && memory.getMetadata().path("pinned").asBoolean(false);
+    }
+
+    private ObjectNode objectMetadata(JsonNode metadata) {
+        if (metadata instanceof ObjectNode objectNode) {
+            return objectNode.deepCopy();
+        }
+        return JsonNodeFactory.instance.objectNode();
     }
 
     private void validateUpdate(UpdateMemoryCommand command) {

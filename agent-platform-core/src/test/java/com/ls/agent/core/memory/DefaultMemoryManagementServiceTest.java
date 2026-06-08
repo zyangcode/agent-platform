@@ -10,6 +10,7 @@ import com.ls.agent.core.rag.api.EmbeddingService;
 import com.ls.agent.core.rag.api.VectorStore;
 import com.ls.agent.core.rag.dto.EmbeddingVectorDTO;
 import com.ls.agent.core.rag.dto.VectorStoreDocumentDTO;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -76,7 +77,8 @@ class DefaultMemoryManagementServiceTest {
                 "preference",
                 List.of("sports", "style"),
                 0.9,
-                "preference"
+                "preference",
+                null
         ));
 
         ArgumentCaptor<MemoryEntity> memoryCaptor = ArgumentCaptor.forClass(MemoryEntity.class);
@@ -94,6 +96,37 @@ class DefaultMemoryManagementServiceTest {
         assertThat(vectorCaptor.getValue().vectorId()).isEqualTo("memory-88");
         assertThat(vectorCaptor.getValue().documentId()).isEqualTo(88L);
         assertThat(vectorCaptor.getValue().chunkId()).isEqualTo(88L);
+    }
+
+    @Test
+    void updateCanPinMemoryAndPreservesExistingMetadata() {
+        MemoryEntity existing = memory(88L, "User likes evening basketball.");
+        existing.setMetadata(JsonNodeFactory.instance.objectNode()
+                .put("source_type", "memory")
+                .put("vector_index_status", "INDEXED"));
+        when(memoryMapper.selectById(88L)).thenReturn(existing);
+
+        MemoryRecordDTO result = service.update(new UpdateMemoryCommand(
+                1L,
+                20001L,
+                10001L,
+                50001L,
+                88L,
+                null,
+                null,
+                null,
+                null,
+                null,
+                true
+        ));
+
+        ArgumentCaptor<MemoryEntity> memoryCaptor = ArgumentCaptor.forClass(MemoryEntity.class);
+        verify(memoryMapper).updateById(memoryCaptor.capture());
+        assertThat(memoryCaptor.getValue().getMetadata().path("source_type").asText()).isEqualTo("memory");
+        assertThat(memoryCaptor.getValue().getMetadata().path("vector_index_status").asText()).isEqualTo("INDEXED");
+        assertThat(memoryCaptor.getValue().getMetadata().path("pinned").asBoolean()).isTrue();
+        assertThat(result.pinned()).isTrue();
+        verify(vectorStore, never()).upsert(any(VectorStoreDocumentDTO.class));
     }
 
     @Test
@@ -153,6 +186,7 @@ class DefaultMemoryManagementServiceTest {
                 "preference",
                 List.of(),
                 0.5,
+                null,
                 null
         ));
 
