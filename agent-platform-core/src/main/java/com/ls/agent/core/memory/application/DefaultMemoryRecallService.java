@@ -493,15 +493,30 @@ public class DefaultMemoryRecallService implements MemoryRecallService {
         if (memories == null || memories.isEmpty()) {
             return List.of();
         }
-        Set<String> seenConflictKeys = new HashSet<>();
+        Map<String, Integer> conflictIndexes = new HashMap<>();
         List<MemoryEntity> result = new ArrayList<>();
         for (MemoryEntity memory : memories) {
             String key = conflictKey(memory);
-            if (key == null || seenConflictKeys.add(key)) {
+            if (key == null) {
                 result.add(memory);
+                continue;
+            }
+            Integer existingIndex = conflictIndexes.get(key);
+            if (existingIndex == null) {
+                conflictIndexes.put(key, result.size());
+                result.add(memory);
+                continue;
+            }
+            MemoryEntity existing = result.get(existingIndex);
+            if (isPinned(memory) && !isPinned(existing)) {
+                result.set(existingIndex, memory);
             }
         }
         return result;
+    }
+
+    private boolean isPinned(MemoryEntity memory) {
+        return memory != null && memory.getMetadata() != null && memory.getMetadata().path("pinned").asBoolean(false);
     }
 
     private String conflictKey(MemoryEntity memory) {

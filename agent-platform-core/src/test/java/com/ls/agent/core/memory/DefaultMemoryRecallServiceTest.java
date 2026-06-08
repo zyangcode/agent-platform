@@ -15,6 +15,7 @@ import com.ls.agent.core.trace.api.TraceService;
 import com.ls.agent.core.trace.command.FinishTraceSpanCommand;
 import com.ls.agent.core.trace.command.StartTraceSpanCommand;
 import com.ls.agent.core.trace.dto.TraceSpanDTO;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -290,6 +291,40 @@ class DefaultMemoryRecallServiceTest {
                 "User prefers concise answers.",
                 "User prefers Java examples."
         );
+    }
+
+    @Test
+    void recallKeepsPinnedMemoryWhenConflictingPreferenceWouldOtherwiseRankHigher() {
+        MemoryEntity pinnedPreference = memory("PREFERENCE", "User prefers long detailed answers.");
+        pinnedPreference.setId(10L);
+        pinnedPreference.setMemoryCategory("preference");
+        pinnedPreference.setTags(new String[]{"answer_style"});
+        pinnedPreference.setImportance(0.2);
+        pinnedPreference.setUpdatedAt(LocalDateTime.of(2026, 6, 1, 10, 0));
+        pinnedPreference.setMetadata(JsonNodeFactory.instance.objectNode().put("pinned", true));
+
+        MemoryEntity highRankPreference = memory("PREFERENCE", "User prefers concise answers.");
+        highRankPreference.setId(11L);
+        highRankPreference.setMemoryCategory("preference");
+        highRankPreference.setTags(new String[]{"answer_style"});
+        highRankPreference.setImportance(1.0);
+        highRankPreference.setUpdatedAt(LocalDateTime.of(2026, 6, 8, 10, 0));
+
+        when(memoryMapper.selectList(any(Wrapper.class))).thenReturn(List.of(highRankPreference, pinnedPreference));
+
+        List<MemoryDTO> result = service.recall(
+                1L,
+                20001L,
+                10001L,
+                50001L,
+                "answer style",
+                MemoryRecallFilter.builder()
+                        .categories(List.of("preference"))
+                        .topK(5)
+                        .build()
+        );
+
+        assertThat(result).extracting(MemoryDTO::content).containsExactly("User prefers long detailed answers.");
     }
 
     private MemoryEntity memory(String type, String content) {
