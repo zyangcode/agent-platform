@@ -104,9 +104,27 @@ public class RagSearchServiceConfiguration {
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "agent.rag.query-expansion", name = "enabled", havingValue = "true")
+    @ConditionalOnExpression("'${agent.rag.query-expansion.provider:noop}' == 'mock' && '${agent.rag.query-expansion.enabled:false}' == 'true'")
     public QueryExpansionService mockQueryExpansionService() {
         return new MockQueryExpansionService();
+    }
+
+    @Bean
+    @ConditionalOnExpression("'${agent.rag.query-expansion.provider:noop}' == 'openai-compatible' && '${agent.rag.query-expansion.enabled:false}' == 'true'")
+    public QueryExpansionService openAiCompatibleQueryExpansionService(
+            ObjectMapper objectMapper,
+            @Value("${agent.rag.query-expansion.enabled:false}") boolean enabled,
+            @Value("${agent.rag.query-expansion.base-url:https://api.openai.com/v1}") String baseUrl,
+            @Value("${agent.rag.query-expansion.api-key:}") String apiKey,
+            @Value("${agent.rag.query-expansion.model:gpt-4o-mini}") String model,
+            @Value("${agent.rag.query-expansion.temperature:0.1}") double temperature,
+            @Value("${agent.rag.query-expansion.path:/chat/completions}") String path,
+            @Value("${agent.rag.query-expansion.timeout-ms:3000}") int timeoutMs
+    ) {
+        return new OpenAiCompatibleQueryExpansionService(
+                new OpenAiCompatibleQueryExpansionServiceProperties(enabled, baseUrl, apiKey, model, temperature, path, timeoutMs),
+                objectMapper
+        );
     }
 
     @Bean

@@ -16,6 +16,7 @@ import com.ls.agent.core.rag.application.MockQueryExpansionService;
 import com.ls.agent.core.rag.application.MockRetrievalReranker;
 import com.ls.agent.core.rag.application.MockVectorStore;
 import com.ls.agent.core.rag.application.OpenAiCompatibleEmbeddingService;
+import com.ls.agent.core.rag.application.OpenAiCompatibleQueryExpansionService;
 import com.ls.agent.core.rag.application.OpenAiCompatibleRetrievalReranker;
 import com.ls.agent.core.rag.application.QdrantVectorStore;
 import com.ls.agent.core.rag.application.RagSearchServiceConfiguration;
@@ -125,6 +126,7 @@ class RagSearchServiceConfigurationTest {
                         "agent.rag.reranker.enabled=true",
                         "agent.rag.reranker.provider=mock",
                         "agent.rag.query-expansion.enabled=true",
+                        "agent.rag.query-expansion.provider=mock",
                         "agent.rag.hyde.enabled=true"
                 )
                 .run(context -> {
@@ -151,6 +153,23 @@ class RagSearchServiceConfigurationTest {
                 .run(context -> {
                     assertThat(context).hasSingleBean(RetrievalReranker.class);
                     assertThat(context.getBean(RetrievalReranker.class)).isInstanceOf(OpenAiCompatibleRetrievalReranker.class);
+                });
+    }
+
+    @Test
+    void registersOpenAiCompatibleQueryExpansionWhenEnabled() {
+        contextRunner
+                .withPropertyValues(
+                        "agent.rag.query-expansion.enabled=true",
+                        "agent.rag.query-expansion.provider=openai-compatible",
+                        "agent.rag.query-expansion.base-url=https://llm.example.com/v1",
+                        "agent.rag.query-expansion.api-key=sk-test",
+                        "agent.rag.query-expansion.model=gpt-4o-mini",
+                        "agent.rag.query-expansion.path=/chat/completions"
+                )
+                .run(context -> {
+                    assertThat(context).hasSingleBean(QueryExpansionService.class);
+                    assertThat(context.getBean(QueryExpansionService.class)).isInstanceOf(OpenAiCompatibleQueryExpansionService.class);
                 });
     }
 }
