@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="drawio" version="26.0.0">
+  <diagram name="最终版">
+    <mxGraphModel dx="1900" dy="1250" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1900" pageHeight="1250" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="title" value="LangGraph4j 多 Agent 核心运作图 - 最终增强版" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=24;fontStyle=1;fontColor=#111827;" vertex="1" parent="1">
+          <mxGeometry x="280" y="20" width="1340" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="scope" value="定位：在第一版稳定后逐步增强。入口仍保留 DefaultTeamRuntimeService，不新增并行主入口；增强点包括并发执行、ReAct 子图、统一记忆写入、Checkpoint、Human-in-the-loop 和可视化。" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ecfdf5;strokeColor=#16a34a;fontSize=14;fontStyle=1;fontColor=#14532d;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="80" y="90" width="1740" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="entry_lane" value="1. 对外入口仍保持兼容" style="swimlane;startSize=34;whiteSpace=wrap;html=1;fillColor=#fff7ed;strokeColor=#ea580c;fontStyle=1;fontSize=14;fontColor=#7c2d12;" vertex="1" parent="1">
+          <mxGeometry x="80" y="210" width="250" height="650" as="geometry"/>
+        </mxCell>
+        <mxCell id="profile" value="Profile&#xa;executionMode = TEAM" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fed7aa;strokeColor=#ea580c;fontSize=12;fontStyle=1;fontColor=#7c2d12;" vertex="1" parent="1">
+          <mxGeometry x="110" y="285" width="190" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="agent_runtime" value="DefaultAgentRuntimeService&#xa;单 Agent 保持原链路&#xa;Team 委托 TeamRuntimeService" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffedd5;strokeColor=#ea580c;fontSize=12;fontStyle=1;fontColor=#7c2d12;" vertex="1" parent="1">
+          <mxGeometry x="110" y="420" width="190" height="85" as="geometry"/>
+        </mxCell>
+        <mxCell id="team_api" value="TeamRuntimeService&#xa;接口不变" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffedd5;strokeColor=#ea580c;fontSize=12;fontStyle=1;fontColor=#7c2d12;" vertex="1" parent="1">
+          <mxGeometry x="110" y="570" width="190" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="team_impl" value="DefaultTeamRuntimeService&#xa;唯一默认 Team 实现&#xa;内部调用 LangGraph4j Graph" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#16a34a;fontSize=12;fontStyle=1;fontColor=#14532d;" vertex="1" parent="1">
+          <mxGeometry x="110" y="705" width="190" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="main_lane" value="2. 最终版宏观 StateGraph" style="swimlane;startSize=34;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontStyle=1;fontSize=14;fontColor=#1e3a8a;" vertex="1" parent="1">
+          <mxGeometry x="380" y="210" width="1040" height="650" as="geometry"/>
+        </mxCell>
+        <mxCell id="start" value="START" style="ellipse;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#16a34a;fontSize=13;fontStyle=1;fontColor=#14532d;" vertex="1" parent="1">
+          <mxGeometry x="420" y="305" width="80" height="46" as="geometry"/>
+        </mxCell>
+        <mxCell id="build_context" value="build_context&#xa;Team 专用 Context Schema&#xa;Memory / RAG / Skill / MCP 快照" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#2563eb;fontSize=12;fontStyle=1;fontColor=#1e3a8a;" vertex="1" parent="1">
+          <mxGeometry x="540" y="280" width="170" height="96" as="geometry"/>
+        </mxCell>
+        <mxCell id="plan" value="plan&#xa;Planner 只规划&#xa;输出 task DAG" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#2563eb;fontSize=12;fontStyle=1;fontColor=#1e3a8a;" vertex="1" parent="1">
+          <mxGeometry x="750" y="280" width="145" height="96" as="geometry"/>
+        </mxCell>
+        <mxCell id="validate" value="validate_plan&#xa;Schema / DAG / limits / tool permission" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#d97706;fontSize=12;fontStyle=1;fontColor=#78350f;" vertex="1" parent="1">
+          <mxGeometry x="935" y="280" width="170" height="96" as="geometry"/>
+        </mxCell>
+        <mxCell id="schedule" value="schedule&#xa;按 dependsOn 分层&#xa;生成 ready task batch" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#2563eb;fontSize=12;fontStyle=1;fontColor=#1e3a8a;" vertex="1" parent="1">
+          <mxGeometry x="1145" y="280" width="170" height="96" as="geometry"/>
+        </mxCell>
+        <mxCell id="execute" value="execute_batch&#xa;并发执行 ready tasks&#xa;内部支持 TOOL / MODEL / REACT" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ede9fe;strokeColor=#7c3aed;fontSize=12;fontStyle=1;fontColor=#4c1d95;" vertex="1" parent="1">
+          <mxGeometry x="1135" y="470" width="185" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="evaluate" value="evaluate_tasks&#xa;检查子任务结果&#xa;失败原因 / 是否仍有 ready tasks" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#d97706;fontSize=12;fontStyle=1;fontColor=#78350f;" vertex="1" parent="1">
+          <mxGeometry x="900" y="470" width="185" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="review" value="global_review&#xa;Reviewer 只审查&#xa;不规划 / 不执行 / 不调工具" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#d97706;fontSize=12;fontStyle=1;fontColor=#78350f;" vertex="1" parent="1">
+          <mxGeometry x="675" y="470" width="175" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="route" value="route_after_review&#xa;RETRY / REPLAN / FINAL / HUMAN_APPROVAL" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#d97706;fontSize=11;fontStyle=1;fontColor=#78350f;" vertex="1" parent="1">
+          <mxGeometry x="460" y="445" width="155" height="150" as="geometry"/>
+        </mxCell>
+        <mxCell id="reflect" value="reflect&#xa;基于完整轨迹生成 MemoryWriteCandidate" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#16a34a;fontSize=12;fontStyle=1;fontColor=#14532d;" vertex="1" parent="1">
+          <mxGeometry x="635" y="690" width="190" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="finalize_memory" value="finalize_memory_writes&#xa;准入 / 脱敏 / 去重 / 冲突处理&#xa;失败不阻塞最终回答" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#16a34a;fontSize=12;fontStyle=1;fontColor=#14532d;" vertex="1" parent="1">
+          <mxGeometry x="870" y="690" width="220" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="final" value="final_answer&#xa;统一聚合最终答案&#xa;说明风险 / 来源 / 未完成项" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#16a34a;fontSize=12;fontStyle=1;fontColor=#14532d;" vertex="1" parent="1">
+          <mxGeometry x="1135" y="690" width="185" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="end" value="END" style="ellipse;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#16a34a;fontSize=13;fontStyle=1;fontColor=#14532d;" vertex="1" parent="1">
+          <mxGeometry x="1330" y="712" width="70" height="46" as="geometry"/>
+        </mxCell>
+        <mxCell id="side_lane" value="3. 最终版侧边能力" style="swimlane;startSize=34;whiteSpace=wrap;html=1;fillColor=#f8fafc;strokeColor=#64748b;fontStyle=1;fontSize=14;fontColor=#334155;" vertex="1" parent="1">
+          <mxGeometry x="1470" y="210" width="350" height="650" as="geometry"/>
+        </mxCell>
+        <mxCell id="state" value="TeamGraphState / Checkpoint&#xa;可恢复快照&#xa;支持 resume / time travel&#xa;敏感字段必须先设计准入规则" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#f1f5f9;strokeColor=#64748b;fontSize=12;fontStyle=1;fontColor=#334155;" vertex="1" parent="1">
+          <mxGeometry x="1510" y="280" width="270" height="115" as="geometry"/>
+        </mxCell>
+        <mxCell id="memory" value="Memory / RAG / Experience&#xa;读：角色上下文快照&#xa;写：Reflect -> Finalize 统一收口&#xa;工具原文不直接入长期记忆" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#16a34a;fontSize=12;fontStyle=1;fontColor=#14532d;" vertex="1" parent="1">
+          <mxGeometry x="1510" y="435" width="270" height="120" as="geometry"/>
+        </mxCell>
+        <mxCell id="observe" value="SSE / Trace / Token / limits&#xa;并发事件统一分配 step&#xa;Trace 记录 graph / node / task / tool / memory.write&#xa;limits 增加 maxParallelTasks / maxReplans / maxReActSteps" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fee2e2;strokeColor=#dc2626;fontSize=11;fontStyle=1;fontColor=#7f1d1d;" vertex="1" parent="1">
+          <mxGeometry x="1510" y="600" width="270" height="145" as="geometry"/>
+        </mxCell>
+        <mxCell id="human" value="Human-in-the-loop&#xa;高风险工具 / 高成本任务 / 记忆写入争议&#xa;pending -> approve / reject -> resume" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#d97706;fontSize=12;fontStyle=1;fontColor=#78350f;" vertex="1" parent="1">
+          <mxGeometry x="1510" y="785" width="270" height="105" as="geometry"/>
+        </mxCell>
+        <mxCell id="exec_lane" value="4. execute_batch 最终内部结构" style="swimlane;startSize=34;whiteSpace=wrap;html=1;fillColor=#f5f3ff;strokeColor=#7c3aed;fontStyle=1;fontSize=14;fontColor=#4c1d95;" vertex="1" parent="1">
+          <mxGeometry x="80" y="920" width="1280" height="230" as="geometry"/>
+        </mxCell>
+        <mxCell id="ready" value="readyTaskIds&#xa;同层可执行任务" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ede9fe;strokeColor=#7c3aed;fontSize=12;fontStyle=1;fontColor=#4c1d95;" vertex="1" parent="1">
+          <mxGeometry x="120" y="1010" width="150" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="pool" value="bounded parallel pool&#xa;maxParallelTasks&#xa;timeout / cancel / ordered merge" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ede9fe;strokeColor=#7c3aed;fontSize=12;fontStyle=1;fontColor=#4c1d95;" vertex="1" parent="1">
+          <mxGeometry x="330" y="990" width="200" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="tool_task" value="TOOL_TASK&#xa;AgentToolDispatcher&#xa;Skill / MCP" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffedd5;strokeColor=#ea580c;fontSize=12;fontStyle=1;fontColor=#7c2d12;" vertex="1" parent="1">
+          <mxGeometry x="600" y="970" width="170" height="85" as="geometry"/>
+        </mxCell>
+        <mxCell id="model_task" value="MODEL_TASK&#xa;单步模型分析/生成&#xa;不调工具" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#2563eb;fontSize=12;fontStyle=1;fontColor=#1e3a8a;" vertex="1" parent="1">
+          <mxGeometry x="820" y="970" width="170" height="85" as="geometry"/>
+        </mxCell>
+        <mxCell id="react_task" value="REACT_TASK&#xa;子图 think -> tool -> observe -> finish&#xa;maxReActSteps / tool limit" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fee2e2;strokeColor=#dc2626;fontSize=12;fontStyle=1;fontColor=#7f1d1d;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="970" width="250" height="85" as="geometry"/>
+        </mxCell>
+        <mxCell id="merge" value="合并 ExecutionResultDTO&#xa;按 task 顺序稳定输出，写回 TeamGraphState，再进入 evaluate_tasks" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ede9fe;strokeColor=#7c3aed;fontSize=12;fontStyle=1;fontColor=#4c1d95;" vertex="1" parent="1">
+          <mxGeometry x="650" y="1090" width="470" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="e1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#ea580c;strokeWidth=3;endArrow=block;endFill=1;" edge="1" parent="1" source="profile" target="agent_runtime"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#ea580c;strokeWidth=3;endArrow=block;endFill=1;" edge="1" parent="1" source="agent_runtime" target="team_api"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#16a34a;strokeWidth=3;endArrow=block;endFill=1;" edge="1" parent="1" source="team_api" target="team_impl"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e4" value="invoke graph" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#16a34a;strokeWidth=4;endArrow=block;endFill=1;fontColor=#166534;fontSize=12;" edge="1" parent="1" source="team_impl" target="start"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="355" y="750"/><mxPoint x="355" y="328"/></Array></mxGeometry></mxCell>
+        <mxCell id="m1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#2563eb;strokeWidth=4;endArrow=block;endFill=1;" edge="1" parent="1" source="start" target="build_context"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="m2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#2563eb;strokeWidth=4;endArrow=block;endFill=1;" edge="1" parent="1" source="build_context" target="plan"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="m3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#2563eb;strokeWidth=4;endArrow=block;endFill=1;" edge="1" parent="1" source="plan" target="validate"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="m4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#2563eb;strokeWidth=4;endArrow=block;endFill=1;" edge="1" parent="1" source="validate" target="schedule"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="m5" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#2563eb;strokeWidth=4;endArrow=block;endFill=1;" edge="1" parent="1" source="schedule" target="execute"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1230" y="425"/><mxPoint x="1228" y="425"/></Array></mxGeometry></mxCell>
+        <mxCell id="m6" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#2563eb;strokeWidth=4;endArrow=block;endFill=1;" edge="1" parent="1" source="execute" target="evaluate"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="m7" value="全部完成" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#2563eb;strokeWidth=4;endArrow=block;endFill=1;fontColor=#1e40af;fontSize=12;" edge="1" parent="1" source="evaluate" target="review"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="m8" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#2563eb;strokeWidth=4;endArrow=block;endFill=1;" edge="1" parent="1" source="review" target="route"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="m9" value="FINAL" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#16a34a;strokeWidth=4;endArrow=block;endFill=1;fontColor=#166534;fontSize=12;" edge="1" parent="1" source="route" target="reflect"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="538" y="640"/><mxPoint x="730" y="640"/></Array></mxGeometry></mxCell>
+        <mxCell id="m10" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#16a34a;strokeWidth=4;endArrow=block;endFill=1;" edge="1" parent="1" source="reflect" target="finalize_memory"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="m11" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#16a34a;strokeWidth=4;endArrow=block;endFill=1;" edge="1" parent="1" source="finalize_memory" target="final"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="m12" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#16a34a;strokeWidth=4;endArrow=block;endFill=1;" edge="1" parent="1" source="final" target="end"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="r1" value="还有 ready tasks" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#2563eb;strokeWidth=3;dashed=1;dashPattern=8 4;endArrow=block;endFill=1;fontColor=#1e40af;fontSize=11;" edge="1" parent="1" source="evaluate" target="schedule"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="993" y="620"/><mxPoint x="1230" y="620"/></Array></mxGeometry></mxCell>
+        <mxCell id="r2" value="RETRY" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#dc2626;strokeWidth=3;dashed=1;dashPattern=8 4;endArrow=block;endFill=1;fontColor=#991b1b;fontSize=11;" edge="1" parent="1" source="route" target="execute"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="538" y="405"/><mxPoint x="1228" y="405"/></Array></mxGeometry></mxCell>
+        <mxCell id="r3" value="REPLAN" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#dc2626;strokeWidth=3;dashed=1;dashPattern=8 4;endArrow=block;endFill=1;fontColor=#991b1b;fontSize=11;" edge="1" parent="1" source="route" target="plan"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="538" y="405"/><mxPoint x="823" y="405"/></Array></mxGeometry></mxCell>
+        <mxCell id="r4" value="HUMAN_APPROVAL pending/resume" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#d97706;strokeWidth=3;dashed=1;dashPattern=8 4;endArrow=block;endFill=1;fontColor=#92400e;fontSize=11;" edge="1" parent="1" source="route" target="human"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="s1" value="checkpoint" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#64748b;strokeWidth=2;dashed=1;dashPattern=6 4;endArrow=block;endFill=1;fontColor=#475569;fontSize=11;" edge="1" parent="1" source="execute" target="state"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="s2" value="memory read/write" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#16a34a;strokeWidth=2;dashed=1;dashPattern=6 4;endArrow=block;endFill=1;fontColor=#166534;fontSize=11;" edge="1" parent="1" source="finalize_memory" target="memory"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="s3" value="events / trace / token" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#64748b;strokeWidth=2;dashed=1;dashPattern=6 4;endArrow=block;endFill=1;fontColor=#475569;fontSize=11;" edge="1" parent="1" source="review" target="observe"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="x1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#7c3aed;strokeWidth=3;endArrow=block;endFill=1;" edge="1" parent="1" source="ready" target="pool"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="x2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#7c3aed;strokeWidth=3;endArrow=block;endFill=1;" edge="1" parent="1" source="pool" target="tool_task"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="x3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#7c3aed;strokeWidth=3;endArrow=block;endFill=1;" edge="1" parent="1" source="pool" target="model_task"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="x4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#7c3aed;strokeWidth=3;endArrow=block;endFill=1;" edge="1" parent="1" source="pool" target="react_task"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="x5" value="results" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#7c3aed;strokeWidth=3;endArrow=block;endFill=1;fontColor=#6b21a8;fontSize=11;" edge="1" parent="1" source="tool_task" target="merge"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="x6" value="results" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#7c3aed;strokeWidth=3;endArrow=block;endFill=1;fontColor=#6b21a8;fontSize=11;" edge="1" parent="1" source="model_task" target="merge"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="x7" value="results" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#7c3aed;strokeWidth=3;endArrow=block;endFill=1;fontColor=#6b21a8;fontSize=11;" edge="1" parent="1" source="react_task" target="merge"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="x8" value="write back" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#7c3aed;strokeWidth=3;dashed=1;dashPattern=6 4;endArrow=block;endFill=1;fontColor=#6b21a8;fontSize=11;" edge="1" parent="1" source="merge" target="evaluate"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1420" y="1115"/><mxPoint x="1420" y="620"/><mxPoint x="993" y="620"/></Array></mxGeometry></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

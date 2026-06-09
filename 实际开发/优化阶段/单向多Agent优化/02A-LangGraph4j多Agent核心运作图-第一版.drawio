@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="drawio" version="26.0.0">
+  <diagram name="第一版">
+    <mxGraphModel dx="1600" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="title" value="LangGraph4j 多 Agent 核心运作图 - 第一版落地方案" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=24;fontStyle=1;fontColor=#111827;" vertex="1" parent="1">
+          <mxGeometry x="240" y="20" width="1120" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="scope" value="定位：保留 DefaultTeamRuntimeService 作为 TeamRuntimeService 默认入口，只把内部手写编排替换成 LangGraph4j StateGraph。第一版不做任务并发、ReAct 子图、Reflect 记忆写入、Checkpoint、Human-in-the-loop。" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff7ed;strokeColor=#ea580c;fontSize=14;fontStyle=1;fontColor=#7c2d12;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="80" y="90" width="1440" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="entry_lane" value="1. 外部入口保持不变" style="swimlane;startSize=34;whiteSpace=wrap;html=1;fillColor=#f8fafc;strokeColor=#64748b;fontStyle=1;fontSize=14;fontColor=#334155;" vertex="1" parent="1">
+          <mxGeometry x="80" y="210" width="260" height="590" as="geometry"/>
+        </mxCell>
+        <mxCell id="profile" value="Profile&#xa;executionMode = TEAM&#xa;用户/前端/Gateway 不新增运行模式" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0f2fe;strokeColor=#0284c7;fontSize=12;fontStyle=1;fontColor=#075985;" vertex="1" parent="1">
+          <mxGeometry x="110" y="285" width="200" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="agent_runtime" value="DefaultAgentRuntimeService&#xa;仍然负责单 Agent / Team 分流" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#2563eb;fontSize=12;fontStyle=1;fontColor=#1e3a8a;" vertex="1" parent="1">
+          <mxGeometry x="110" y="430" width="200" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="team_api" value="TeamRuntimeService&#xa;接口保留&#xa;对外行为不变" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#2563eb;fontSize=12;fontStyle=1;fontColor=#1e3a8a;" vertex="1" parent="1">
+          <mxGeometry x="110" y="575" width="200" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="team_impl" value="DefaultTeamRuntimeService&#xa;名字保留&#xa;内部调用 TeamGraphFactory / CompiledGraph" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#16a34a;fontSize=12;fontStyle=1;fontColor=#14532d;" vertex="1" parent="1">
+          <mxGeometry x="110" y="710" width="200" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="main_lane" value="2. 第一版 LangGraph4j 主状态机" style="swimlane;startSize=34;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontStyle=1;fontSize=14;fontColor=#1e3a8a;" vertex="1" parent="1">
+          <mxGeometry x="390" y="210" width="830" height="590" as="geometry"/>
+        </mxCell>
+        <mxCell id="start" value="START" style="ellipse;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#16a34a;fontSize=13;fontStyle=1;fontColor=#14532d;" vertex="1" parent="1">
+          <mxGeometry x="430" y="310" width="80" height="46" as="geometry"/>
+        </mxCell>
+        <mxCell id="build_context" value="build_context&#xa;AgentContextBuilder&#xa;AgentToolResolver" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#2563eb;fontSize=12;fontStyle=1;fontColor=#1e3a8a;" vertex="1" parent="1">
+          <mxGeometry x="550" y="288" width="150" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="plan" value="plan&#xa;TeamPlanner&#xa;emit team_plan" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#2563eb;fontSize=12;fontStyle=1;fontColor=#1e3a8a;" vertex="1" parent="1">
+          <mxGeometry x="740" y="288" width="135" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="validate" value="validate_plan&#xa;TaskPlanValidator&#xa;TeamRunLimiter" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#d97706;fontSize=12;fontStyle=1;fontColor=#78350f;" vertex="1" parent="1">
+          <mxGeometry x="915" y="288" width="155" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="schedule" value="schedule&#xa;TaskDependencySorter&#xa;第一版串行排序" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#2563eb;fontSize=12;fontStyle=1;fontColor=#1e3a8a;" vertex="1" parent="1">
+          <mxGeometry x="1105" y="288" width="150" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="execute" value="execute_batch&#xa;串行执行 scheduledTasks&#xa;DefaultTeamExecutor&#xa;Skill / MCP 仍走原链路" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ede9fe;strokeColor=#7c3aed;fontSize=12;fontStyle=1;fontColor=#4c1d95;" vertex="1" parent="1">
+          <mxGeometry x="1045" y="480" width="190" height="105" as="geometry"/>
+        </mxCell>
+        <mxCell id="review" value="review&#xa;TeamAnswerDraftBuilder&#xa;TeamReviewer&#xa;emit team_review" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#d97706;fontSize=12;fontStyle=1;fontColor=#78350f;" vertex="1" parent="1">
+          <mxGeometry x="805" y="480" width="180" height="105" as="geometry"/>
+        </mxCell>
+        <mxCell id="route" value="route_after_review&#xa;RETRY / REPLAN / FINAL&#xa;确定性代码路由" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#d97706;fontSize=11;fontStyle=1;fontColor=#78350f;" vertex="1" parent="1">
+          <mxGeometry x="585" y="455" width="155" height="150" as="geometry"/>
+        </mxCell>
+        <mxCell id="final" value="final_answer&#xa;TeamFinalAnswerBuilder&#xa;fallbackModelAnswer&#xa;emit team_final" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#16a34a;fontSize=12;fontStyle=1;fontColor=#14532d;" vertex="1" parent="1">
+          <mxGeometry x="735" y="660" width="175" height="95" as="geometry"/>
+        </mxCell>
+        <mxCell id="end" value="END" style="ellipse;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#16a34a;fontSize=13;fontStyle=1;fontColor=#14532d;" vertex="1" parent="1">
+          <mxGeometry x="960" y="685" width="78" height="46" as="geometry"/>
+        </mxCell>
+        <mxCell id="side_lane" value="3. 第一版保留的侧边护栏" style="swimlane;startSize=34;whiteSpace=wrap;html=1;fillColor=#f8fafc;strokeColor=#64748b;fontStyle=1;fontSize=14;fontColor=#334155;" vertex="1" parent="1">
+          <mxGeometry x="1270" y="210" width="250" height="590" as="geometry"/>
+        </mxCell>
+        <mxCell id="state" value="TeamGraphState&#xa;只放业务状态&#xa;不放 Spring Bean / Mapper / MCP Client" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#f1f5f9;strokeColor=#64748b;fontSize=12;fontStyle=1;fontColor=#334155;" vertex="1" parent="1">
+          <mxGeometry x="1300" y="285" width="190" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="events" value="SSE 事件顺序保持&#xa;team_start / team_plan&#xa;team_task_* / team_review&#xa;team_retry / team_final" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fee2e2;strokeColor=#dc2626;fontSize=12;fontStyle=1;fontColor=#7f1d1d;" vertex="1" parent="1">
+          <mxGeometry x="1300" y="430" width="190" height="115" as="geometry"/>
+        </mxCell>
+        <mxCell id="trace" value="Trace / Token / limits&#xa;沿用现有 span 与 TeamRunLimiter&#xa;maxTasks / maxRetries / maxToolCalls / maxModelCalls / timeoutMs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#d97706;fontSize=11;fontStyle=1;fontColor=#78350f;" vertex="1" parent="1">
+          <mxGeometry x="1300" y="590" width="190" height="125" as="geometry"/>
+        </mxCell>
+        <mxCell id="no_scope" value="第一版明确不做：任务并发、REACT_TASK、Reflect、FinalizeMemoryWrites、Checkpoint、Human-in-the-loop、新 Team 表、LangGraphTeamRuntimeService 并行 Bean。" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fee2e2;strokeColor=#dc2626;fontSize=13;fontStyle=1;fontColor=#7f1d1d;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="80" y="845" width="1440" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="e1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#2563eb;strokeWidth=3;endArrow=block;endFill=1;" edge="1" parent="1" source="profile" target="agent_runtime"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#2563eb;strokeWidth=3;endArrow=block;endFill=1;" edge="1" parent="1" source="agent_runtime" target="team_api"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#16a34a;strokeWidth=3;endArrow=block;endFill=1;" edge="1" parent="1" source="team_api" target="team_impl"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e4" value="run graph" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#16a34a;strokeWidth=4;endArrow=block;endFill=1;fontColor=#166534;fontSize=12;" edge="1" parent="1" source="team_impl" target="start"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="360" y="750"/><mxPoint x="360" y="333"/></Array></mxGeometry></mxCell>
+        <mxCell id="m1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#2563eb;strokeWidth=4;endArrow=block;endFill=1;" edge="1" parent="1" source="start" target="build_context"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="m2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#2563eb;strokeWidth=4;endArrow=block;endFill=1;" edge="1" parent="1" source="build_context" target="plan"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="m3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#2563eb;strokeWidth=4;endArrow=block;endFill=1;" edge="1" parent="1" source="plan" target="validate"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="m4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#2563eb;strokeWidth=4;endArrow=block;endFill=1;" edge="1" parent="1" source="validate" target="schedule"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="m5" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#2563eb;strokeWidth=4;endArrow=block;endFill=1;" edge="1" parent="1" source="schedule" target="execute"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1180" y="430"/><mxPoint x="1140" y="430"/></Array></mxGeometry></mxCell>
+        <mxCell id="m6" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#2563eb;strokeWidth=4;endArrow=block;endFill=1;" edge="1" parent="1" source="execute" target="review"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="m7" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#2563eb;strokeWidth=4;endArrow=block;endFill=1;" edge="1" parent="1" source="review" target="route"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="m8" value="FINAL" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#16a34a;strokeWidth=4;endArrow=block;endFill=1;fontColor=#166534;fontSize=12;" edge="1" parent="1" source="route" target="final"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="663" y="625"/><mxPoint x="823" y="625"/></Array></mxGeometry></mxCell>
+        <mxCell id="m9" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#16a34a;strokeWidth=4;endArrow=block;endFill=1;" edge="1" parent="1" source="final" target="end"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="r1" value="RETRY：只重试 reviewer 指定任务" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#dc2626;strokeWidth=3;dashed=1;dashPattern=8 4;endArrow=block;endFill=1;fontColor=#991b1b;fontSize=11;" edge="1" parent="1" source="route" target="execute"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="663" y="420"/><mxPoint x="1140" y="420"/></Array></mxGeometry></mxCell>
+        <mxCell id="r2" value="REPLAN：重新规划，只执行新增任务" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#dc2626;strokeWidth=3;dashed=1;dashPattern=8 4;endArrow=block;endFill=1;fontColor=#991b1b;fontSize=11;" edge="1" parent="1" source="route" target="plan"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="663" y="405"/><mxPoint x="807" y="405"/></Array></mxGeometry></mxCell>
+        <mxCell id="s1" value="state" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#64748b;strokeWidth=2;dashed=1;dashPattern=6 4;endArrow=block;endFill=1;fontColor=#475569;fontSize=11;" edge="1" parent="1" source="execute" target="state"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="s2" value="events" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#64748b;strokeWidth=2;dashed=1;dashPattern=6 4;endArrow=block;endFill=1;fontColor=#475569;fontSize=11;" edge="1" parent="1" source="review" target="events"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="s3" value="usage / limits" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#64748b;strokeWidth=2;dashed=1;dashPattern=6 4;endArrow=block;endFill=1;fontColor=#475569;fontSize=11;" edge="1" parent="1" source="final" target="trace"><mxGeometry relative="1" as="geometry"/></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
