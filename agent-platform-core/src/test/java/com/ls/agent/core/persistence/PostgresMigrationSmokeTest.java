@@ -3,6 +3,8 @@ package com.ls.agent.core.persistence;
 import com.baomidou.mybatisplus.autoconfigure.MybatisPlusAutoConfiguration;
 import com.ls.agent.core.memory.entity.MemoryEntity;
 import com.ls.agent.core.memory.mapper.MemoryMapper;
+import com.ls.agent.core.quota.entity.QuotaUsageEntity;
+import com.ls.agent.core.quota.mapper.QuotaUsageMapper;
 import com.ls.agent.core.rag.entity.KnowledgeChunkEntity;
 import com.ls.agent.core.rag.mapper.KnowledgeChunkMapper;
 import com.ls.agent.core.support.persistence.MybatisPlusConfiguration;
@@ -90,6 +92,26 @@ class PostgresMigrationSmokeTest {
                         assertThat(chunk.getTitle()).isEqualTo("中文 RAG 指南");
                         assertThat(chunk.getKeywordScore()).isPositive();
                     });
+        });
+    }
+
+    @Test
+    void quotaUsageMigrationAndMapperEnforcePeriodLimitOnRealPostgres() {
+        contextRunner().run(context -> {
+            assertThat(context).hasNotFailed();
+
+            DataSource dataSource = context.getBean(DataSource.class);
+            seedQuotaUsageData(dataSource);
+
+            QuotaUsageMapper quotaUsageMapper = context.getBean(QuotaUsageMapper.class);
+            QuotaUsageEntity dailyUsage = quotaUsage("APPLICATION", 9901L, "DAY", "20260609", 700L);
+            QuotaUsageEntity monthlyUsage = quotaUsage("APPLICATION", 9901L, "MONTH", "202606", 700L);
+
+            assertThat(quotaUsageMapper.reserveTokens(dailyUsage, monthlyUsage, 1000L, 2000L)).isEqualTo(1);
+            assertThat(quotaUsageMapper.reserveTokens(dailyUsage, monthlyUsage, 1000L, 2000L)).isZero();
+
+            quotaUsageMapper.adjustReservedTokens(1L, "APPLICATION", 9901L, "20260609", "202606", -700L);
+            assertThat(quotaUsageMapper.reserveTokens(dailyUsage, monthlyUsage, 1000L, 2000L)).isEqualTo(1);
         });
     }
 
@@ -208,6 +230,33 @@ class PostgresMigrationSmokeTest {
                     )
                     """);
         }
+    }
+
+    private void seedQuotaUsageData(DataSource dataSource) throws Exception {
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement()) {
+            statement.executeUpdate("""
+                    insert into applications (id, tenant_id, owner_user_id, name, description, status)
+                    values (9901, 1, 1, 'Quota Smoke App', 'PostgreSQL quota smoke app', 'ACTIVE')
+                    """);
+        }
+    }
+
+    private QuotaUsageEntity quotaUsage(
+            String subjectType,
+            Long subjectId,
+            String periodType,
+            String periodKey,
+            Long tokens
+    ) {
+        QuotaUsageEntity usage = new QuotaUsageEntity();
+        usage.setTenantId(1L);
+        usage.setSubjectType(subjectType);
+        usage.setSubjectId(subjectId);
+        usage.setPeriodType(periodType);
+        usage.setPeriodKey(periodKey);
+        usage.setReservedTokens(tokens);
+        return usage;
     }
 
     private void assertSearchColumnTriggerAndIndexExist(

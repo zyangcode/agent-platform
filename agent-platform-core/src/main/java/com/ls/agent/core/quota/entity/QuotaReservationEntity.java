@@ -25,6 +25,18 @@ public class QuotaReservationEntity extends VersionedEntity {
     @TableField("actual_tokens")
     private Long actualTokens;
 
+    @TableField("quota_subject_type")
+    private String quotaSubjectType;
+
+    @TableField("quota_subject_id")
+    private Long quotaSubjectId;
+
+    @TableField("quota_day_period_key")
+    private String quotaDayPeriodKey;
+
+    @TableField("quota_month_period_key")
+    private String quotaMonthPeriodKey;
+
     private String status;
 
     public String getTraceId() {
@@ -73,6 +85,38 @@ public class QuotaReservationEntity extends VersionedEntity {
 
     public void setActualTokens(Long actualTokens) {
         this.actualTokens = actualTokens;
+    }
+
+    public String getQuotaSubjectType() {
+        return quotaSubjectType;
+    }
+
+    public void setQuotaSubjectType(String quotaSubjectType) {
+        this.quotaSubjectType = quotaSubjectType;
+    }
+
+    public Long getQuotaSubjectId() {
+        return quotaSubjectId;
+    }
+
+    public void setQuotaSubjectId(Long quotaSubjectId) {
+        this.quotaSubjectId = quotaSubjectId;
+    }
+
+    public String getQuotaDayPeriodKey() {
+        return quotaDayPeriodKey;
+    }
+
+    public void setQuotaDayPeriodKey(String quotaDayPeriodKey) {
+        this.quotaDayPeriodKey = quotaDayPeriodKey;
+    }
+
+    public String getQuotaMonthPeriodKey() {
+        return quotaMonthPeriodKey;
+    }
+
+    public void setQuotaMonthPeriodKey(String quotaMonthPeriodKey) {
+        this.quotaMonthPeriodKey = quotaMonthPeriodKey;
     }
 
     public String getStatus() {

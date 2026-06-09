@@ -21,6 +21,7 @@ class Stage2PersistenceStructureTest {
     private static final Map<String, Class<?>> QUOTA_ENTITY_SUPER_TYPES = Map.of(
             "com.ls.agent.core.quota.entity.QuotaConfigEntity", VersionedEntity.class,
             "com.ls.agent.core.quota.entity.QuotaReservationEntity", VersionedEntity.class,
+            "com.ls.agent.core.quota.entity.QuotaUsageEntity", VersionedEntity.class,
             "com.ls.agent.core.quota.entity.TokenUsageLogEntity", CreatedEntity.class
     );
 
@@ -40,6 +41,7 @@ class Stage2PersistenceStructureTest {
     private static final String[] QUOTA_MAPPER_NAMES = {
             "com.ls.agent.core.quota.mapper.QuotaConfigMapper",
             "com.ls.agent.core.quota.mapper.QuotaReservationMapper",
+            "com.ls.agent.core.quota.mapper.QuotaUsageMapper",
             "com.ls.agent.core.quota.mapper.TokenUsageLogMapper"
     };
 
@@ -82,6 +84,33 @@ class Stage2PersistenceStructureTest {
                 "idx_quota_configs_subject",
                 "idx_quota_reservations_trace",
                 "idx_quota_reservations_status"
+        );
+    }
+
+    @Test
+    void quotaUsageMigrationCreatesAtomicUsageLedger() throws IOException {
+        String sql = readMigration("db/migration/V020__init_quota_usage.sql");
+
+        assertThat(sql).contains(
+                "create table quota_usage",
+                "period_type varchar(16) not null",
+                "period_key varchar(16) not null",
+                "reserved_tokens bigint not null default 0",
+                "unique (tenant_id, subject_type, subject_id, period_type, period_key)",
+                "idx_quota_usage_subject_period"
+        );
+    }
+
+    @Test
+    void quotaReservationMigrationRecordsUsageSubjectAndPeriods() throws IOException {
+        String sql = readMigration("db/migration/V021__extend_quota_reservations_subject.sql");
+
+        assertThat(sql).contains(
+                "add column quota_subject_type varchar(32)",
+                "add column quota_subject_id bigint",
+                "add column quota_day_period_key varchar(16)",
+                "add column quota_month_period_key varchar(16)",
+                "idx_quota_reservations_quota_subject"
         );
     }
 
