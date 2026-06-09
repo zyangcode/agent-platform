@@ -5,12 +5,15 @@ import com.ls.agent.core.rag.api.HypotheticalDocumentService;
 import com.ls.agent.core.rag.api.EmbeddingService;
 import com.ls.agent.core.rag.api.QueryExpansionService;
 import com.ls.agent.core.rag.api.RetrievalReranker;
+import com.ls.agent.core.rag.api.SemanticCacheService;
 import com.ls.agent.core.rag.api.VectorStore;
 import com.ls.agent.core.rag.application.TextSplitter;
 import com.ls.agent.core.rag.command.IngestKnowledgeDocumentCommand;
 import com.ls.agent.core.rag.dto.EmbeddingVectorDTO;
 import com.ls.agent.core.rag.dto.RagIngestResultDTO;
 import com.ls.agent.core.rag.dto.RagSearchResultDTO;
+import com.ls.agent.core.rag.dto.SemanticCacheLookupCommand;
+import com.ls.agent.core.rag.dto.SemanticCachePutCommand;
 import com.ls.agent.core.rag.dto.VectorSearchQueryDTO;
 import com.ls.agent.core.rag.dto.VectorSearchResultDTO;
 import com.ls.agent.core.rag.dto.VectorStoreDocumentDTO;
@@ -31,6 +34,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -39,6 +43,7 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class DefaultPostgresRagEngineTest {
@@ -649,6 +654,106 @@ class DefaultPostgresRagEngineTest {
     }
 
     @Test
+    void searchReturnsSemanticCacheHitWithoutTouchingRetrievalPaths() {
+        EmbeddingVectorDTO queryVector = new EmbeddingVectorDTO("mock", new float[]{1.0f, 0.0f});
+        RagSearchResultDTO cached = new RagSearchResultDTO(
+                90001L,
+                91001L,
+                "Cached",
+                "cached semantic result",
+                "kb://cached",
+                0.99
+        );
+        SemanticCacheService semanticCacheService = new CapturingSemanticCacheService(List.of(cached));
+        DefaultPostgresRagEngine cachedEngine = new DefaultPostgresRagEngine(
+                documentMapper,
+                chunkMapper,
+                new TextSplitter(),
+                embeddingService,
+                vectorStore,
+                null,
+                RetrievalReranker.noop(),
+                QueryExpansionService.noop(),
+                HypotheticalDocumentService.noop(),
+                semanticCacheService
+        );
+
+        List<RagSearchResultDTO> results = cachedEngine.search(
+                1L,
+                20001L,
+                10001L,
+                50001L,
+                "context timeout",
+                5,
+                queryVector,
+                null,
+                null
+        );
+
+        assertThat(results).containsExactly(cached);
+        verifyNoInteractions(vectorStore);
+        verifyNoInteractions(chunkMapper);
+    }
+
+    @Test
+    void searchStoresFinalResultsInSemanticCacheAfterMiss() {
+        EmbeddingVectorDTO queryVector = new EmbeddingVectorDTO("mock", new float[]{1.0f, 0.0f});
+        KnowledgeChunkEntity chunk = new KnowledgeChunkEntity();
+        chunk.setId(91001L);
+        chunk.setDocumentId(90001L);
+        chunk.setTitle("Context");
+        chunk.setContent("Context retrieval timeout uses a bounded fallback.");
+        chunk.setSourceUri("kb://context");
+        chunk.setKeywordScore(2.0);
+        when(chunkMapper.searchActiveChunks(
+                eq(1L),
+                eq(20001L),
+                eq(10001L),
+                eq(50001L),
+                eq(List.of("context", "timeout")),
+                eq("context timeout"),
+                eq(5)
+        )).thenReturn(List.of(chunk));
+        CapturingSemanticCacheService semanticCacheService = new CapturingSemanticCacheService(List.of());
+        DefaultPostgresRagEngine cachedEngine = new DefaultPostgresRagEngine(
+                documentMapper,
+                chunkMapper,
+                new TextSplitter(),
+                null,
+                null,
+                null,
+                RetrievalReranker.noop(),
+                QueryExpansionService.noop(),
+                HypotheticalDocumentService.noop(),
+                semanticCacheService
+        );
+
+        List<RagSearchResultDTO> results = cachedEngine.search(
+                1L,
+                20001L,
+                10001L,
+                50001L,
+                "context timeout",
+                5,
+                queryVector,
+                null,
+                null
+        );
+
+        assertThat(results).extracting(RagSearchResultDTO::chunkId)
+                .containsExactly(91001L);
+        assertThat(semanticCacheService.putCommand).isNotNull();
+        assertThat(semanticCacheService.putCommand.tenantId()).isEqualTo(1L);
+        assertThat(semanticCacheService.putCommand.applicationId()).isEqualTo(20001L);
+        assertThat(semanticCacheService.putCommand.ownerUserId()).isEqualTo(10001L);
+        assertThat(semanticCacheService.putCommand.profileId()).isEqualTo(50001L);
+        assertThat(semanticCacheService.putCommand.query()).isEqualTo("context timeout");
+        assertThat(semanticCacheService.putCommand.queryVector()).isEqualTo(queryVector);
+        assertThat(semanticCacheService.putCommand.results()).extracting(RagSearchResultDTO::chunkId)
+                .containsExactly(91001L);
+    }
+
+    @Test
     void searchRecordsEmbeddingAndVectorSearchTraceSpansWhenTraceContextExists() {
         VectorStore traceObservedVectorStore = new TraceObservedVectorStore();
         DefaultPostgresRagEngine vectorEngine = new DefaultPostgresRagEngine(
@@ -854,6 +959,35 @@ class DefaultPostgresRagEngineTest {
                 Long documentId
         ) {
             return 0;
+        }
+    }
+
+    private static final class CapturingSemanticCacheService implements SemanticCacheService {
+
+        private final List<RagSearchResultDTO> lookupResults;
+        private SemanticCacheLookupCommand lookupCommand;
+        private SemanticCachePutCommand putCommand;
+
+        private CapturingSemanticCacheService(List<RagSearchResultDTO> lookupResults) {
+            this.lookupResults = lookupResults;
+        }
+
+        @Override
+        public boolean enabled() {
+            return true;
+        }
+
+        @Override
+        public Optional<List<RagSearchResultDTO>> lookup(SemanticCacheLookupCommand command) {
+            this.lookupCommand = command;
+            return lookupResults == null || lookupResults.isEmpty()
+                    ? Optional.empty()
+                    : Optional.of(lookupResults);
+        }
+
+        @Override
+        public void put(SemanticCachePutCommand command) {
+            this.putCommand = command;
         }
     }
 }

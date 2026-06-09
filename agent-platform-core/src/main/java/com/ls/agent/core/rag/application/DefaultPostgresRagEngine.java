@@ -8,12 +8,15 @@ import com.ls.agent.core.rag.api.HypotheticalDocumentService;
 import com.ls.agent.core.rag.api.QueryExpansionService;
 import com.ls.agent.core.rag.api.RagEngine;
 import com.ls.agent.core.rag.api.RetrievalReranker;
+import com.ls.agent.core.rag.api.SemanticCacheService;
 import com.ls.agent.core.rag.api.VectorStore;
 import com.ls.agent.core.rag.command.IngestKnowledgeDocumentCommand;
 import com.ls.agent.core.rag.dto.EmbeddingVectorDTO;
 import com.ls.agent.core.rag.dto.RagIngestResultDTO;
 import com.ls.agent.core.rag.dto.RagSearchResultDTO;
 import com.ls.agent.core.rag.dto.RagTextChunkDTO;
+import com.ls.agent.core.rag.dto.SemanticCacheLookupCommand;
+import com.ls.agent.core.rag.dto.SemanticCachePutCommand;
 import com.ls.agent.core.rag.dto.VectorSearchQueryDTO;
 import com.ls.agent.core.rag.dto.VectorSearchResultDTO;
 import com.ls.agent.core.rag.dto.VectorStoreDocumentDTO;
@@ -56,6 +59,7 @@ public class DefaultPostgresRagEngine implements RagEngine {
     private final RetrievalReranker retrievalReranker;
     private final QueryExpansionService queryExpansionService;
     private final HypotheticalDocumentService hypotheticalDocumentService;
+    private final SemanticCacheService semanticCacheService;
 
     public DefaultPostgresRagEngine(
             KnowledgeDocumentMapper documentMapper,
@@ -84,7 +88,7 @@ public class DefaultPostgresRagEngine implements RagEngine {
             TraceService traceService
     ) {
         this(documentMapper, chunkMapper, textSplitter, embeddingService, vectorStore, traceService,
-                null, null, null);
+                null, null, null, null);
     }
 
     public DefaultPostgresRagEngine(
@@ -98,6 +102,22 @@ public class DefaultPostgresRagEngine implements RagEngine {
             QueryExpansionService queryExpansionService,
             HypotheticalDocumentService hypotheticalDocumentService
     ) {
+        this(documentMapper, chunkMapper, textSplitter, embeddingService, vectorStore, traceService,
+                retrievalReranker, queryExpansionService, hypotheticalDocumentService, null);
+    }
+
+    public DefaultPostgresRagEngine(
+            KnowledgeDocumentMapper documentMapper,
+            KnowledgeChunkMapper chunkMapper,
+            TextSplitter textSplitter,
+            EmbeddingService embeddingService,
+            VectorStore vectorStore,
+            TraceService traceService,
+            RetrievalReranker retrievalReranker,
+            QueryExpansionService queryExpansionService,
+            HypotheticalDocumentService hypotheticalDocumentService,
+            SemanticCacheService semanticCacheService
+    ) {
         this.documentMapper = documentMapper;
         this.chunkMapper = chunkMapper;
         this.textSplitter = textSplitter == null ? new TextSplitter() : textSplitter;
@@ -109,6 +129,7 @@ public class DefaultPostgresRagEngine implements RagEngine {
         this.hypotheticalDocumentService = hypotheticalDocumentService == null
                 ? HypotheticalDocumentService.noop()
                 : hypotheticalDocumentService;
+        this.semanticCacheService = semanticCacheService == null ? SemanticCacheService.noop() : semanticCacheService;
     }
 
     @Override
@@ -228,6 +249,18 @@ public class DefaultPostgresRagEngine implements RagEngine {
         if (query == null || query.isBlank() || topK <= 0) {
             return List.of();
         }
+        List<RagSearchResultDTO> cachedResults = lookupSemanticCache(
+                tenantId,
+                applicationId,
+                userId,
+                profileId,
+                query,
+                topK,
+                queryVector
+        );
+        if (cachedResults != null) {
+            return cachedResults;
+        }
         List<RagSearchResultDTO> vectorResults = searchByVector(tenantId, applicationId, userId, profileId, query, topK,
                 queryVector,
                 traceId, parentSpanId);
@@ -249,7 +282,81 @@ public class DefaultPostgresRagEngine implements RagEngine {
                 resultGroups,
                 topK
         );
-        return safeRerank(query, mergedResults, topK);
+        List<RagSearchResultDTO> finalResults = safeRerank(query, mergedResults, topK);
+        putSemanticCache(
+                tenantId,
+                applicationId,
+                userId,
+                profileId,
+                query,
+                topK,
+                queryVector,
+                finalResults
+        );
+        return finalResults;
+    }
+
+    private List<RagSearchResultDTO> lookupSemanticCache(
+            Long tenantId,
+            Long applicationId,
+            Long userId,
+            Long profileId,
+            String query,
+            int topK,
+            EmbeddingVectorDTO queryVector
+    ) {
+        if (!semanticCacheService.enabled() || queryVector == null || queryVector.dimension() == 0) {
+            return null;
+        }
+        try {
+            return semanticCacheService.lookup(new SemanticCacheLookupCommand(
+                    tenantId,
+                    applicationId,
+                    userId,
+                    profileId,
+                    query,
+                    queryVector,
+                    topK
+            )).map(results -> results.stream()
+                    .limit(Math.max(1, topK))
+                    .toList()
+            ).orElse(null);
+        } catch (RuntimeException ex) {
+            return null;
+        }
+    }
+
+    private void putSemanticCache(
+            Long tenantId,
+            Long applicationId,
+            Long userId,
+            Long profileId,
+            String query,
+            int topK,
+            EmbeddingVectorDTO queryVector,
+            List<RagSearchResultDTO> results
+    ) {
+        if (!semanticCacheService.enabled()
+                || queryVector == null
+                || queryVector.dimension() == 0
+                || results == null
+                || results.isEmpty()) {
+            return;
+        }
+        try {
+            semanticCacheService.put(new SemanticCachePutCommand(
+                    tenantId,
+                    applicationId,
+                    userId,
+                    profileId,
+                    query,
+                    queryVector,
+                    topK,
+                    results
+            ));
+        } catch (RuntimeException ex) {
+            // Semantic cache is an optimization; retrieval results are still authoritative.
+        }
     }
 
     private List<RagSearchResultDTO> searchByKeyword(

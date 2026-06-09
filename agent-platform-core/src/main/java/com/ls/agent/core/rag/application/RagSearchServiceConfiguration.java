@@ -6,6 +6,7 @@ import com.ls.agent.core.rag.api.QueryExpansionService;
 import com.ls.agent.core.rag.api.RagEngine;
 import com.ls.agent.core.rag.api.RagSearchService;
 import com.ls.agent.core.rag.api.RetrievalReranker;
+import com.ls.agent.core.rag.api.SemanticCacheService;
 import com.ls.agent.core.rag.api.VectorStore;
 import com.ls.agent.core.rag.mapper.KnowledgeChunkMapper;
 import com.ls.agent.core.rag.mapper.KnowledgeDocumentMapper;
@@ -146,6 +147,26 @@ public class RagSearchServiceConfiguration {
     }
 
     @Bean
+    @ConditionalOnExpression("'${agent.rag.semantic-cache.provider:noop}' == 'memory' && '${agent.rag.semantic-cache.enabled:false}' == 'true'")
+    public SemanticCacheService inMemorySemanticCacheService(
+            @Value("${agent.rag.semantic-cache.enabled:false}") boolean enabled,
+            @Value("${agent.rag.semantic-cache.provider:memory}") String provider,
+            @Value("${agent.rag.semantic-cache.similarity-threshold:0.9}") double similarityThreshold,
+            @Value("${agent.rag.semantic-cache.ttl-ms:60000}") long ttlMs,
+            @Value("${agent.rag.semantic-cache.max-entries:256}") int maxEntries
+    ) {
+        return new InMemorySemanticCacheService(
+                new SemanticCacheProperties(enabled, provider, similarityThreshold, ttlMs, maxEntries)
+        );
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(SemanticCacheService.class)
+    public SemanticCacheService semanticCacheService() {
+        return SemanticCacheService.noop();
+    }
+
+    @Bean
     @ConditionalOnProperty(prefix = "spring.datasource", name = "url")
     public RagEngine postgresRagEngine(
             KnowledgeDocumentMapper documentMapper,
@@ -156,10 +177,12 @@ public class RagSearchServiceConfiguration {
             RetrievalReranker retrievalReranker,
             QueryExpansionService queryExpansionService,
             HypotheticalDocumentService hypotheticalDocumentService,
+            SemanticCacheService semanticCacheService,
             ObjectProvider<TraceService> traceServiceProvider
     ) {
         return new DefaultPostgresRagEngine(documentMapper, chunkMapper, textSplitter, embeddingService, vectorStore,
-                traceServiceProvider.getIfAvailable(), retrievalReranker, queryExpansionService, hypotheticalDocumentService);
+                traceServiceProvider.getIfAvailable(), retrievalReranker, queryExpansionService,
+                hypotheticalDocumentService, semanticCacheService);
     }
 
     @Bean

@@ -10,6 +10,7 @@ import com.ls.agent.core.rag.api.RetrievalReranker;
 import com.ls.agent.core.rag.api.VectorStore;
 import com.ls.agent.core.rag.application.DefaultLocalRagEngine;
 import com.ls.agent.core.rag.application.DefaultPostgresRagEngine;
+import com.ls.agent.core.rag.application.InMemorySemanticCacheService;
 import com.ls.agent.core.rag.application.MockEmbeddingService;
 import com.ls.agent.core.rag.application.MockHypotheticalDocumentService;
 import com.ls.agent.core.rag.application.MockQueryExpansionService;
@@ -21,6 +22,7 @@ import com.ls.agent.core.rag.application.OpenAiCompatibleRetrievalReranker;
 import com.ls.agent.core.rag.application.QdrantVectorStore;
 import com.ls.agent.core.rag.application.RagSearchServiceConfiguration;
 import com.ls.agent.core.rag.application.TextSplitter;
+import com.ls.agent.core.rag.api.SemanticCacheService;
 import com.ls.agent.core.rag.mapper.KnowledgeChunkMapper;
 import com.ls.agent.core.rag.mapper.KnowledgeDocumentMapper;
 import org.junit.jupiter.api.Test;
@@ -49,6 +51,8 @@ class RagSearchServiceConfigurationTest {
             assertThat(context.getBean(QueryExpansionService.class)).isNotInstanceOf(MockQueryExpansionService.class);
             assertThat(context).hasSingleBean(HypotheticalDocumentService.class);
             assertThat(context.getBean(HypotheticalDocumentService.class)).isNotInstanceOf(MockHypotheticalDocumentService.class);
+            assertThat(context).hasSingleBean(SemanticCacheService.class);
+            assertThat(context.getBean(SemanticCacheService.class).enabled()).isFalse();
         });
     }
 
@@ -170,6 +174,23 @@ class RagSearchServiceConfigurationTest {
                 .run(context -> {
                     assertThat(context).hasSingleBean(QueryExpansionService.class);
                     assertThat(context.getBean(QueryExpansionService.class)).isInstanceOf(OpenAiCompatibleQueryExpansionService.class);
+                });
+    }
+
+    @Test
+    void registersInMemorySemanticCacheWhenEnabled() {
+        contextRunner
+                .withPropertyValues(
+                        "agent.rag.semantic-cache.enabled=true",
+                        "agent.rag.semantic-cache.provider=memory",
+                        "agent.rag.semantic-cache.similarity-threshold=0.88",
+                        "agent.rag.semantic-cache.ttl-ms=60000",
+                        "agent.rag.semantic-cache.max-entries=256"
+                )
+                .run(context -> {
+                    assertThat(context).hasSingleBean(SemanticCacheService.class);
+                    assertThat(context.getBean(SemanticCacheService.class)).isInstanceOf(InMemorySemanticCacheService.class);
+                    assertThat(context.getBean(SemanticCacheService.class).enabled()).isTrue();
                 });
     }
 }
