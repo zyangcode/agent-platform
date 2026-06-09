@@ -21,6 +21,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { listApplications } from '@/features/applications/api'
+import { listProfiles } from '@/lib/api/profiles'
 import { ApiError } from '@/lib/api/errors'
 import type {
   Application,
@@ -28,10 +29,13 @@ import type {
   MemoryRecord,
   McpServer,
   McpTool,
+  Profile,
   RagSearchResult,
   Skill,
 } from '@/lib/api/types'
+import { loadLastSelectedApplicationId, saveLastSelectedApplicationId } from '@/lib/application-selection-storage'
 import { useI18n } from '@/lib/i18n/use-i18n'
+import { loadLastSelectedProfileId, saveLastSelectedProfileId } from '@/lib/profile-selection-storage'
 import {
   createRagDocument,
   createExperienceSkill,
@@ -56,6 +60,7 @@ import {
 import { ExperienceSkillTable } from './ExperienceSkillTable'
 import { McpServerTable } from './McpServerTable'
 import { McpToolTable } from './McpToolTable'
+import { selectMemoryProfileId } from './memory-selection-utils'
 import { clampMemoryImportance, formatMemoryTimestamp, parseMemoryTags } from './memory-ui'
 import { SkillTable } from './SkillTable'
 import { filterToolsBySearch } from './tool-filters'
@@ -169,6 +174,7 @@ export function ToolsPage() {
   const [message, setMessage] = useState<string | null>(null)
   const [messageVariant, setMessageVariant] = useState<'default' | 'danger'>('default')
   const [memories, setMemories] = useState<MemoryRecord[]>([])
+  const [memoryProfiles, setMemoryProfiles] = useState<Profile[]>([])
   const [editingMemoryId, setEditingMemoryId] = useState<number | null>(null)
   const [memoryEditForm, setMemoryEditForm] = useState({
     content: '',
@@ -203,6 +209,23 @@ export function ToolsPage() {
   const [submitting, setSubmitting] = useState(false)
 
   const selectedApplication = selectedApplicationId ? Number(selectedApplicationId) : null
+
+  function handleSelectedApplicationChange(value: string) {
+    const applicationId = Number(value)
+    setSelectedApplicationId(value)
+    saveLastSelectedApplicationId(Number.isFinite(applicationId) ? applicationId : null)
+    setMemories([])
+    setMemoryFilters((current) => ({ ...current, profileId: '' }))
+  }
+
+  function handleMemoryProfileChange(value: string) {
+    const profileId = value === 'ALL' ? '' : value
+    setMemoryFilters((current) => ({ ...current, profileId }))
+
+    if (selectedApplication && profileId) {
+      saveLastSelectedProfileId(selectedApplication, Number(profileId))
+    }
+  }
 
   const filteredSkills = useMemo(() => {
     return filterToolsBySearch(
@@ -276,7 +299,9 @@ export function ToolsPage() {
       })
 
       if (!selectedApplication && applicationsPage.records[0]) {
-        setSelectedApplicationId(String(applicationsPage.records[0].applicationId))
+        const applicationId = applicationsPage.records[0].applicationId
+        setSelectedApplicationId(String(applicationId))
+        saveLastSelectedApplicationId(applicationId)
       }
     } catch (error) {
       setState((current) => ({
@@ -293,7 +318,14 @@ export function ToolsPage() {
     async function initializeTools() {
       try {
         const applicationsPage = await listApplications(1, 100)
-        const nextApplicationId = selectedApplicationId || String(applicationsPage.records[0]?.applicationId ?? '')
+        const storedApplicationId = loadLastSelectedApplicationId()
+        const nextApplicationId =
+          selectedApplicationId ||
+          String(
+            applicationsPage.records.some((application) => application.applicationId === storedApplicationId)
+              ? storedApplicationId
+              : applicationsPage.records[0]?.applicationId ?? '',
+          )
         const nextApplication = nextApplicationId ? Number(nextApplicationId) : null
         const [skills, mcpTools, mcpServers, experienceSkillsPage] = await Promise.all([
           listSkills(
@@ -309,6 +341,9 @@ export function ToolsPage() {
 
         if (isMounted) {
           setSelectedApplicationId(nextApplicationId)
+          if (nextApplication) {
+            saveLastSelectedApplicationId(nextApplication)
+          }
           setState({
             applications: applicationsPage.records,
             error: null,
@@ -336,6 +371,52 @@ export function ToolsPage() {
       isMounted = false
     }
   }, [mcpServerStatus, mcpStatus, selectedApplicationId, skillScope, skillStatus, t])
+
+  useEffect(() => {
+    let isMounted = true
+
+    async function loadApplicationProfiles(applicationId: number) {
+      try {
+        const profilesPage = await listProfiles(applicationId, 1, 100)
+        if (!isMounted) {
+          return
+        }
+
+        setMemoryProfiles(profilesPage.records)
+        setMemoryFilters((current) => {
+          const preferredProfileId = current.profileId
+            ? Number(current.profileId)
+            : loadLastSelectedProfileId(applicationId)
+          const nextProfileId = selectMemoryProfileId(profilesPage.records, preferredProfileId)
+
+          if (nextProfileId) {
+            saveLastSelectedProfileId(applicationId, nextProfileId)
+          }
+
+          return {
+            ...current,
+            profileId: nextProfileId ? String(nextProfileId) : '',
+          }
+        })
+      } catch {
+        if (isMounted) {
+          setMemoryProfiles([])
+          setMemoryFilters((current) => ({ ...current, profileId: '' }))
+        }
+      }
+    }
+
+    if (selectedApplication) {
+      void loadApplicationProfiles(selectedApplication)
+    } else {
+      setMemoryProfiles([])
+      setMemoryFilters((current) => ({ ...current, profileId: '' }))
+    }
+
+    return () => {
+      isMounted = false
+    }
+  }, [selectedApplication])
 
   async function handleJarUpload() {
     if (!jarFile) {
@@ -749,7 +830,7 @@ export function ToolsPage() {
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label>{t('application.title')}</Label>
-                <Select onValueChange={setSelectedApplicationId} value={selectedApplicationId}>
+                <Select onValueChange={handleSelectedApplicationChange} value={selectedApplicationId}>
                   <SelectTrigger>
                     <SelectValue placeholder={t('application.noApplicationSelected')} />
                   </SelectTrigger>
@@ -828,7 +909,7 @@ export function ToolsPage() {
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label>{t('application.title')}</Label>
-                <Select onValueChange={setSelectedApplicationId} value={selectedApplicationId}>
+                <Select onValueChange={handleSelectedApplicationChange} value={selectedApplicationId}>
                   <SelectTrigger>
                     <SelectValue placeholder={t('application.noApplicationSelected')} />
                   </SelectTrigger>
@@ -940,7 +1021,7 @@ export function ToolsPage() {
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label>{t('application.title')}</Label>
-                <Select onValueChange={setSelectedApplicationId} value={selectedApplicationId}>
+                <Select onValueChange={handleSelectedApplicationChange} value={selectedApplicationId}>
                   <SelectTrigger>
                     <SelectValue placeholder={t('application.noApplicationSelected')} />
                   </SelectTrigger>
@@ -953,13 +1034,22 @@ export function ToolsPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <FieldInput
-                id="memory-profile"
-                label={t('tools.profileIdOptional')}
-                onChange={(value) => setMemoryFilters((current) => ({ ...current, profileId: value }))}
-                type="number"
-                value={memoryFilters.profileId}
-              />
+              <div className="space-y-2">
+                <Label>{t('tools.profileIdOptional')}</Label>
+                <Select onValueChange={handleMemoryProfileChange} value={memoryFilters.profileId || 'ALL'}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">{t('common.allProfiles')}</SelectItem>
+                    {memoryProfiles.map((profile) => (
+                      <SelectItem key={profile.profileId} value={String(profile.profileId)}>
+                        #{profile.profileId} {profile.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <FilterSelect
                 label={t('tools.memoryCategory')}
                 onChange={(value) => setMemoryFilters((current) => ({ ...current, category: value }))}

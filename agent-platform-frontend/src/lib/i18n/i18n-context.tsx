@@ -9,6 +9,7 @@ const LANGUAGE_STORAGE_KEY = 'agent-platform.locale'
 const defaultDictionary: TranslationDictionary = {
   'common.allApplications': { en: 'All applications', zh: '全部应用' },
   'common.allEntrypoints': { en: 'All entrypoints', zh: '全部入口' },
+  'common.allProfiles': { en: 'All profiles', zh: '全部 Profile' },
   'common.allStatuses': { en: 'All statuses', zh: '全部状态' },
   'common.copy': { en: 'Copy', zh: '复制' },
   'common.copied': { en: 'Copied', zh: '已复制' },
