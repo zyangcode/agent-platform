@@ -76,6 +76,20 @@ class PostgresMigrationSmokeTest {
                         assertThat(chunk.getSourceUri()).isEqualTo("file://profile-rag.md");
                         assertThat(chunk.getKeywordScore()).isPositive();
                     });
+
+            List<KnowledgeChunkEntity> chineseChunks = chunkMapper.searchActiveChunks(
+                    1L, 9001L, 1L, 9001L, List.of("长期", "记忆"), "长期 记忆", 10);
+
+            assertThat(chineseChunks)
+                    .extracting(KnowledgeChunkEntity::getId)
+                    .contains(9103L);
+            assertThat(chineseChunks)
+                    .filteredOn(chunk -> chunk.getId().equals(9103L))
+                    .singleElement()
+                    .satisfies(chunk -> {
+                        assertThat(chunk.getTitle()).isEqualTo("中文 RAG 指南");
+                        assertThat(chunk.getKeywordScore()).isPositive();
+                    });
         });
     }
 
@@ -147,6 +161,17 @@ class PostgresMigrationSmokeTest {
                     )
                     """);
             statement.executeUpdate("""
+                    insert into knowledge_documents (
+                        id, tenant_id, application_id, profile_id, owner_user_id,
+                        title, source_type, source_uri, doc_hash, status, metadata
+                    )
+                    values (
+                        9103, 1, 9001, 9001, 1,
+                        '中文 RAG 指南', 'TEXT', 'file://cn-rag.md',
+                        'cn-rag-hash', 'INDEXED', '{}'::jsonb
+                    )
+                    """);
+            statement.executeUpdate("""
                     insert into knowledge_chunks (
                         id, tenant_id, application_id, document_id, chunk_index,
                         content, content_hash, token_count, vector_id, status, metadata
@@ -168,6 +193,18 @@ class PostgresMigrationSmokeTest {
                         'Global vector recall document should remain visible to a profile scoped query.',
                         'chunk-global-hash', 10, 'chunk-global-vector', 'ACTIVE',
                         '{"documentTitle": "Global RAG Guide", "headingPath": "Shared Search"}'::jsonb
+                    )
+                    """);
+            statement.executeUpdate("""
+                    insert into knowledge_chunks (
+                        id, tenant_id, application_id, document_id, chunk_index,
+                        content, content_hash, token_count, vector_id, status, metadata
+                    )
+                    values (
+                        9103, 1, 9001, 9103, 0,
+                        '记忆系统支持长期记忆、RAG 检索和中文关键词召回。',
+                        'chunk-cn-hash', 18, null, 'ACTIVE',
+                        '{"documentTitle": "中文 RAG 指南", "headingPath": "记忆系统"}'::jsonb
                     )
                     """);
         }

@@ -11,7 +11,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class KnowledgeChunkMapperTest {
 
     @Test
-    void searchActiveChunksUsesPostgresTsvectorRank() throws NoSuchMethodException {
+    void searchActiveChunksUsesPostgresTsvectorRankAndTextFallback() throws NoSuchMethodException {
         Method method = KnowledgeChunkMapper.class.getMethod(
                 "searchActiveChunks",
                 Long.class,
@@ -29,8 +29,8 @@ class KnowledgeChunkMapperTest {
                 "websearch_to_tsquery('simple'",
                 "ts_rank_cd(c.search_vector",
                 "c.search_vector @@ query.ts_query",
+                "c.content ilike",
                 "order by keyword_score desc"
         );
-        assertThat(sql).doesNotContain("c.content ilike");
     }
 }

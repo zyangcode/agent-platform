@@ -35,7 +35,21 @@ public interface KnowledgeChunkMapper extends BaseMapper<KnowledgeChunkEntity> {
             select c.*,
                    d.title as title,
                    d.source_uri as source_uri,
-                   ts_rank_cd(c.search_vector, query.ts_query)::float8 as keyword_score
+                   (
+                       ts_rank_cd(c.search_vector, query.ts_query)
+                       + case
+                           <if test="terms != null and terms.size() > 0">
+                           when (
+                               <foreach collection="terms" item="term" separator=" or ">
+                                   (c.content ilike concat('%', #{term}, '%')
+                                    or d.title ilike concat('%', #{term}, '%')
+                                    or coalesce(c.metadata ->> 'headingPath', '') ilike concat('%', #{term}, '%'))
+                               </foreach>
+                           ) then 0.05
+                           </if>
+                           else 0.0
+                         end
+                   )::float8 as keyword_score
             from knowledge_chunks c
             join knowledge_documents d on d.id = c.document_id
             cross join query
@@ -50,7 +64,18 @@ public interface KnowledgeChunkMapper extends BaseMapper<KnowledgeChunkEntity> {
               </if>
               and c.status = 'ACTIVE'
               and d.status = 'INDEXED'
-              and c.search_vector @@ query.ts_query
+              and (
+                  c.search_vector @@ query.ts_query
+                  <if test="terms != null and terms.size() > 0">
+                  or (
+                      <foreach collection="terms" item="term" separator=" or ">
+                          (c.content ilike concat('%', #{term}, '%')
+                           or d.title ilike concat('%', #{term}, '%')
+                           or coalesce(c.metadata ->> 'headingPath', '') ilike concat('%', #{term}, '%'))
+                      </foreach>
+                  )
+                  </if>
+              )
             order by keyword_score desc, c.chunk_index asc
             limit #{limit}
             </script>
