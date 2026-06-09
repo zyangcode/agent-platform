@@ -1,6 +1,7 @@
 package com.ls.agent.core.mcp;
 
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ls.agent.common.error.BizException;
 import com.ls.agent.core.mcp.application.DefaultMcpServerService;
@@ -9,6 +10,7 @@ import com.ls.agent.core.mcp.application.StdioMcpClient;
 import com.ls.agent.core.mcp.command.CreateMcpServerCommand;
 import com.ls.agent.core.mcp.dto.McpServerDTO;
 import com.ls.agent.core.mcp.entity.McpServerEntity;
+import com.ls.agent.core.mcp.entity.McpToolEntity;
 import com.ls.agent.core.mcp.mapper.McpServerMapper;
 import com.ls.agent.core.mcp.mapper.McpToolMapper;
 import org.junit.jupiter.api.Test;
@@ -20,6 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -89,6 +92,34 @@ class DefaultMcpServerServiceTest {
         assertThat(result.status()).isEqualTo("DISABLED");
     }
 
+    @Test
+    void refreshToolsUpdatesExistingAddsNewAndDisablesMissingTools() {
+        when(mapper.selectById(10L)).thenReturn(activeServer());
+        McpToolEntity existing = tool(1L, "search", "Old search", "AVAILABLE");
+        McpToolEntity removed = tool(2L, "weather.current", "Weather", "AVAILABLE");
+        when(toolMapper.selectList(any(Wrapper.class))).thenReturn(List.of(existing, removed));
+        when(stdioClient.listTools(any())).thenReturn(objectMapper.createObjectNode().set("tools", tools(
+                toolNode("search", "New search"),
+                toolNode("calculator", "Calculator")
+        )));
+
+        McpServerDTO result = service.refreshTools(1L, 10L);
+
+        assertThat(result.mcpServerId()).isEqualTo(10L);
+        ArgumentCaptor<McpToolEntity> updateCaptor = ArgumentCaptor.forClass(McpToolEntity.class);
+        verify(toolMapper, times(2)).updateById(updateCaptor.capture());
+        assertThat(updateCaptor.getAllValues())
+                .extracting(McpToolEntity::getName, McpToolEntity::getDescription, McpToolEntity::getStatus)
+                .contains(
+                        org.assertj.core.groups.Tuple.tuple("search", "New search", "AVAILABLE"),
+                        org.assertj.core.groups.Tuple.tuple("weather.current", "Weather", "DISABLED")
+                );
+        ArgumentCaptor<McpToolEntity> insertCaptor = ArgumentCaptor.forClass(McpToolEntity.class);
+        verify(toolMapper).insert(insertCaptor.capture());
+        assertThat(insertCaptor.getValue().getName()).isEqualTo("calculator");
+        assertThat(insertCaptor.getValue().getStatus()).isEqualTo("AVAILABLE");
+    }
+
     private McpServerEntity activeServer() {
         McpServerEntity entity = new McpServerEntity();
         entity.setId(10L);
@@ -98,5 +129,31 @@ class DefaultMcpServerServiceTest {
         entity.setConnectionConfig(objectMapper.createObjectNode().put("command", "builtin-demo-filesystem-mcp"));
         entity.setStatus("ACTIVE");
         return entity;
+    }
+
+    private McpToolEntity tool(Long id, String name, String description, String status) {
+        McpToolEntity tool = new McpToolEntity();
+        tool.setId(id);
+        tool.setMcpServerId(10L);
+        tool.setName(name);
+        tool.setDescription(description);
+        tool.setStatus(status);
+        return tool;
+    }
+
+    private ArrayNode tools(com.fasterxml.jackson.databind.JsonNode... nodes) {
+        ArrayNode tools = objectMapper.createArrayNode();
+        for (com.fasterxml.jackson.databind.JsonNode node : nodes) {
+            tools.add(node);
+        }
+        return tools;
+    }
+
+    private com.fasterxml.jackson.databind.JsonNode toolNode(String name, String description) {
+        return objectMapper.createObjectNode()
+                .put("name", name)
+                .put("description", description)
+                .set("inputSchema", objectMapper.createObjectNode()
+                        .put("type", "object"));
     }
 }

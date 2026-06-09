@@ -12,4 +12,6 @@ public interface McpServerService {
     List<McpServerDTO> list(Long tenantId, String status);
 
     McpServerDTO disable(Long tenantId, Long mcpServerId);
+
+    McpServerDTO refreshTools(Long tenantId, Long mcpServerId);
 }

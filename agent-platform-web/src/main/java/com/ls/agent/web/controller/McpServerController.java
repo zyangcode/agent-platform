@@ -53,4 +53,12 @@ public class McpServerController {
     ) {
         return ApiResponse.success(mcpServerService.disable(currentUser.tenantId(), mcpServerId));
     }
+
+    @PostMapping("/api/mcp-servers/{mcpServerId}/refresh-tools")
+    public ApiResponse<McpServerDTO> refreshTools(
+            CurrentUser currentUser,
+            @PathVariable("mcpServerId") Long mcpServerId
+    ) {
+        return ApiResponse.success(mcpServerService.refreshTools(currentUser.tenantId(), mcpServerId));
+    }
 }
