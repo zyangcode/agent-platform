@@ -135,9 +135,27 @@ public class RagSearchServiceConfiguration {
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "agent.rag.hyde", name = "enabled", havingValue = "true")
+    @ConditionalOnExpression("'${agent.rag.hyde.provider:noop}' == 'mock' && '${agent.rag.hyde.enabled:false}' == 'true'")
     public HypotheticalDocumentService mockHypotheticalDocumentService() {
         return new MockHypotheticalDocumentService();
+    }
+
+    @Bean
+    @ConditionalOnExpression("'${agent.rag.hyde.provider:noop}' == 'openai-compatible' && '${agent.rag.hyde.enabled:false}' == 'true'")
+    public HypotheticalDocumentService openAiCompatibleHypotheticalDocumentService(
+            ObjectMapper objectMapper,
+            @Value("${agent.rag.hyde.enabled:false}") boolean enabled,
+            @Value("${agent.rag.hyde.base-url:https://api.openai.com/v1}") String baseUrl,
+            @Value("${agent.rag.hyde.api-key:}") String apiKey,
+            @Value("${agent.rag.hyde.model:gpt-4o-mini}") String model,
+            @Value("${agent.rag.hyde.temperature:0.2}") double temperature,
+            @Value("${agent.rag.hyde.path:/chat/completions}") String path,
+            @Value("${agent.rag.hyde.timeout-ms:3000}") int timeoutMs
+    ) {
+        return new OpenAiCompatibleHypotheticalDocumentService(
+                new OpenAiCompatibleHypotheticalDocumentServiceProperties(enabled, baseUrl, apiKey, model, temperature, path, timeoutMs),
+                objectMapper
+        );
     }
 
     @Bean
