@@ -25,18 +25,31 @@ import com.ls.agent.core.model.dto.ModelConfigDTO;
 import com.ls.agent.core.model.dto.ModelMessage;
 import com.ls.agent.core.profile.api.ProfileService;
 import com.ls.agent.core.profile.dto.ProfileDTO;
+import com.ls.agent.core.rag.api.EmbeddingService;
 import com.ls.agent.core.rag.api.RagSearchService;
+import com.ls.agent.core.rag.dto.EmbeddingVectorDTO;
+import com.ls.agent.core.rag.dto.RagSearchResultDTO;
 import com.ls.agent.core.skill.api.SkillRegistry;
 import com.ls.agent.core.skill.dto.SkillDTO;
 import com.ls.agent.core.trace.api.TraceService;
 import com.ls.agent.core.trace.command.FinishTraceSpanCommand;
 import com.ls.agent.core.trace.command.StartTraceSpanCommand;
 import com.ls.agent.core.trace.dto.TraceSpanDTO;
+import jakarta.annotation.PreDestroy;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 
 @Service
 public class DefaultAgentContextBuilder implements AgentContextBuilder {
@@ -44,7 +57,9 @@ public class DefaultAgentContextBuilder implements AgentContextBuilder {
     private static final int DEFAULT_MAX_CONTEXT_TOKENS = 4_000;
     private static final int HISTORY_LIMIT = 20;
     private static final int MEMORY_LIMIT = 5;
+    private static final int RAG_LIMIT = 5;
     private static final int EXPERIENCE_LIMIT = 3;
+    private static final int RETRIEVAL_TIMEOUT_MILLIS = 1_500;
     private static final int MIN_MEMORY_TOKEN_BUDGET = 80;
     private static final int MAX_MEMORY_TOKEN_BUDGET = 1_200;
     private static final int MIN_EXPERIENCE_TOKEN_BUDGET = 80;
@@ -68,6 +83,8 @@ public class DefaultAgentContextBuilder implements AgentContextBuilder {
     private final ExperienceSkillResolver experienceSkillResolver;
     private final RagSearchService ragSearchService;
     private final TraceService traceService;
+    private final EmbeddingService embeddingService;
+    private final ExecutorService retrievalExecutor;
 
     public DefaultAgentContextBuilder(
             ProfileService profileService,
@@ -80,6 +97,23 @@ public class DefaultAgentContextBuilder implements AgentContextBuilder {
             RagSearchService ragSearchService,
             TraceService traceService
     ) {
+        this(profileService, skillRegistry, mcpToolRegistry, messageHistoryService, memoryRecallService,
+                modelConfigService, experienceSkillResolver, ragSearchService, traceService, null);
+    }
+
+    @Autowired
+    public DefaultAgentContextBuilder(
+            ProfileService profileService,
+            SkillRegistry skillRegistry,
+            McpToolRegistry mcpToolRegistry,
+            MessageHistoryService messageHistoryService,
+            MemoryRecallService memoryRecallService,
+            ModelConfigService modelConfigService,
+            ExperienceSkillResolver experienceSkillResolver,
+            RagSearchService ragSearchService,
+            TraceService traceService,
+            EmbeddingService embeddingService
+    ) {
         this.profileService = profileService;
         this.skillRegistry = skillRegistry;
         this.mcpToolRegistry = mcpToolRegistry;
@@ -89,6 +123,13 @@ public class DefaultAgentContextBuilder implements AgentContextBuilder {
         this.experienceSkillResolver = experienceSkillResolver;
         this.ragSearchService = ragSearchService;
         this.traceService = traceService;
+        this.embeddingService = embeddingService;
+        this.retrievalExecutor = Executors.newFixedThreadPool(4, daemonThreadFactory());
+    }
+
+    @PreDestroy
+    public void shutdown() {
+        retrievalExecutor.shutdownNow();
     }
 
     @Override
@@ -102,12 +143,15 @@ public class DefaultAgentContextBuilder implements AgentContextBuilder {
             throw new BizException(ErrorCode.REQUEST_INVALID, "Profile is unavailable");
         }
         int maxTokens = resolveMaxContextTokens(command, profile);
+        ContextBudgetPolicy budgetPolicy = ContextBudgetPolicy.from(maxTokens);
 
         List<Long> skillIds = resolveSkillIds(profile, command.selectedSkillIds());
         List<Long> mcpToolIds = resolveMcpToolIds(profile, command.selectedMcpToolIds());
         List<SkillDTO> skills = skillRegistry.listAvailableSkills(command.tenantId(), skillIds);
         List<McpToolDTO> mcpTools = mcpToolRegistry.listAvailableTools(command.tenantId(), mcpToolIds);
-        List<MemoryDTO> memories = shouldRecallMemory(profile) ? recallMemories(command) : List.of();
+        RetrievalResult retrievalResult = retrieveMemoryAndRag(command, profile, budgetPolicy.ragTokenBudget());
+        List<MemoryDTO> memories = retrievalResult.memories();
+        List<RagSearchResultDTO> ragResults = retrievalResult.ragResults();
         List<ExperienceSkillDTO> experienceSkills = resolveExperienceSkills(command, profile);
         List<ConversationMessageDTO> history = messageHistoryService.listRecentMessages(
                 command.tenantId(),
@@ -118,7 +162,6 @@ public class DefaultAgentContextBuilder implements AgentContextBuilder {
                 HISTORY_LIMIT
         );
 
-        ContextBudgetPolicy budgetPolicy = ContextBudgetPolicy.from(maxTokens);
         TraceSpanDTO composeSpan = safeStartSpan(command.traceId(), command.parentSpanId(), "api.messages.compose", "CONTEXT",
                 attributes().put("maxContextTokens", maxTokens));
         ContextBlocks contextBlocks;
@@ -136,6 +179,7 @@ public class DefaultAgentContextBuilder implements AgentContextBuilder {
                     budgetPolicy.memoryTokenBudget(),
                     budgetPolicy.experienceTokenBudget(),
                     budgetPolicy.ragTokenBudget(),
+                    ragResults,
                     command
             );
             String systemPrompt = contextBlocks.systemPrompt();
@@ -196,6 +240,73 @@ public class DefaultAgentContextBuilder implements AgentContextBuilder {
         );
     }
 
+    private RetrievalResult retrieveMemoryAndRag(
+            BuildAgentContextCommand command,
+            ProfileDTO profile,
+            int ragTokenBudget
+    ) {
+        boolean recallMemory = shouldRecallMemory(profile);
+        boolean recallRag = ragSearchService != null;
+        CompletableFuture<EmbeddingVectorDTO> queryVectorFuture = (recallMemory || recallRag)
+                ? supplyEmbedding(command)
+                : CompletableFuture.completedFuture(null);
+        CompletableFuture<List<MemoryDTO>> memoryFuture = recallMemory
+                ? supplyRetrieval(() -> recallMemories(command, awaitEmbedding(queryVectorFuture)))
+                : CompletableFuture.completedFuture(List.of());
+        CompletableFuture<List<RagSearchResultDTO>> ragFuture = recallRag
+                ? supplyRetrieval(() -> searchRag(command, awaitEmbedding(queryVectorFuture), ragTokenBudget))
+                : CompletableFuture.completedFuture(List.of());
+        return new RetrievalResult(
+                awaitRetrieval(memoryFuture),
+                awaitRetrieval(ragFuture)
+        );
+    }
+
+    private CompletableFuture<EmbeddingVectorDTO> supplyEmbedding(BuildAgentContextCommand command) {
+        return CompletableFuture.supplyAsync(() -> precomputeQueryVector(command), retrievalExecutor);
+    }
+
+    private EmbeddingVectorDTO precomputeQueryVector(BuildAgentContextCommand command) {
+        if (embeddingService == null || command.userInput() == null || command.userInput().isBlank()) {
+            return null;
+        }
+        EmbeddingVectorDTO vector = embeddingService.embed(command.userInput());
+        return vector == null || vector.dimension() == 0 ? null : vector;
+    }
+
+    private EmbeddingVectorDTO awaitEmbedding(CompletableFuture<EmbeddingVectorDTO> future) {
+        try {
+            return future.get(RETRIEVAL_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+        } catch (TimeoutException ex) {
+            future.cancel(true);
+            return null;
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    private <T> CompletableFuture<List<T>> supplyRetrieval(Supplier<List<T>> supplier) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                List<T> result = supplier.get();
+                return result == null ? List.of() : result;
+            } catch (RuntimeException ex) {
+                return List.of();
+            }
+        }, retrievalExecutor);
+    }
+
+    private <T> List<T> awaitRetrieval(CompletableFuture<List<T>> future) {
+        try {
+            return future.get(RETRIEVAL_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+        } catch (TimeoutException ex) {
+            future.cancel(true);
+            return List.of();
+        } catch (Exception ex) {
+            return List.of();
+        }
+    }
+
     private List<ExperienceSkillDTO> resolveExperienceSkills(BuildAgentContextCommand command, ProfileDTO profile) {
         TraceSpanDTO span = safeStartSpan(command.traceId(), command.parentSpanId(), "experience.resolve", "CONTEXT",
                 attributes()
@@ -222,7 +333,7 @@ public class DefaultAgentContextBuilder implements AgentContextBuilder {
         }
     }
 
-    private List<MemoryDTO> recallMemories(BuildAgentContextCommand command) {
+    private List<MemoryDTO> recallMemories(BuildAgentContextCommand command, EmbeddingVectorDTO queryVector) {
         MemoryRecallFilter filter = MemoryRecallFilter.builder()
                 .categories(List.of("summary", "preference", "fact"))
                 .topK(MEMORY_LIMIT)
@@ -237,25 +348,49 @@ public class DefaultAgentContextBuilder implements AgentContextBuilder {
         try {
             List<MemoryDTO> memories;
             if (command.traceId() == null || command.traceId().isBlank()) {
-                memories = memoryRecallService.recall(
-                        command.tenantId(),
-                        command.applicationId(),
-                        command.userId(),
-                        command.profileId(),
-                        command.userInput(),
-                        filter
-                );
+                memories = queryVector == null
+                        ? memoryRecallService.recall(
+                                command.tenantId(),
+                                command.applicationId(),
+                                command.userId(),
+                                command.profileId(),
+                                command.userInput(),
+                                filter
+                        )
+                        : memoryRecallService.recall(
+                                command.tenantId(),
+                                command.applicationId(),
+                                command.userId(),
+                                command.profileId(),
+                                command.userInput(),
+                                filter,
+                                queryVector,
+                                null,
+                                null
+                        );
             } else {
-                memories = memoryRecallService.recall(
-                        command.tenantId(),
-                        command.applicationId(),
-                        command.userId(),
-                        command.profileId(),
-                        command.userInput(),
-                        filter,
-                        command.traceId(),
-                        span == null ? command.parentSpanId() : span.id()
-                );
+                memories = queryVector == null
+                        ? memoryRecallService.recall(
+                                command.tenantId(),
+                                command.applicationId(),
+                                command.userId(),
+                                command.profileId(),
+                                command.userInput(),
+                                filter,
+                                command.traceId(),
+                                span == null ? command.parentSpanId() : span.id()
+                        )
+                        : memoryRecallService.recall(
+                                command.tenantId(),
+                                command.applicationId(),
+                                command.userId(),
+                                command.profileId(),
+                                command.userInput(),
+                                filter,
+                                queryVector,
+                                command.traceId(),
+                                span == null ? command.parentSpanId() : span.id()
+                        );
             }
             List<MemoryDTO> result = memories == null ? List.of() : memories;
             attributes.put("recalledCount", result.size());
@@ -263,6 +398,79 @@ public class DefaultAgentContextBuilder implements AgentContextBuilder {
             return result;
         } catch (Exception ex) {
             safeFinishSpan(span, "FAILED", errorCode(ex), errorMessage(ex));
+            throw ex;
+        }
+    }
+
+    private List<RagSearchResultDTO> searchRag(
+            BuildAgentContextCommand command,
+            EmbeddingVectorDTO queryVector,
+            int ragTokenBudget
+    ) {
+        if (ragSearchService == null) {
+            return List.of();
+        }
+        TraceSpanDTO span = safeStartSpan(command.traceId(), command.parentSpanId(), "rag.search", "CONTEXT",
+                attributes()
+                        .put("topK", RAG_LIMIT)
+                        .put("tokenBudget", Math.max(0, ragTokenBudget))
+                        .put("searchService", ragSearchService.getClass().getSimpleName())
+                        .put("traceAware", command.traceId() != null && !command.traceId().isBlank()));
+        try {
+            List<RagSearchResultDTO> results;
+            if (command.traceId() == null || command.traceId().isBlank()) {
+                results = queryVector == null
+                        ? ragSearchService.search(
+                                command.tenantId(),
+                                command.applicationId(),
+                                command.userId(),
+                                command.profileId(),
+                                command.userInput(),
+                                RAG_LIMIT
+                        )
+                        : ragSearchService.search(
+                                command.tenantId(),
+                                command.applicationId(),
+                                command.userId(),
+                                command.profileId(),
+                                command.userInput(),
+                                RAG_LIMIT,
+                                queryVector,
+                                null,
+                                null
+                        );
+            } else {
+                results = queryVector == null
+                        ? ragSearchService.search(
+                                command.tenantId(),
+                                command.applicationId(),
+                                command.userId(),
+                                command.profileId(),
+                                command.userInput(),
+                                RAG_LIMIT,
+                                command.traceId(),
+                                span == null ? command.parentSpanId() : span.id()
+                        )
+                        : ragSearchService.search(
+                                command.tenantId(),
+                                command.applicationId(),
+                                command.userId(),
+                                command.profileId(),
+                                command.userInput(),
+                                RAG_LIMIT,
+                                queryVector,
+                                command.traceId(),
+                                span == null ? command.parentSpanId() : span.id()
+                        );
+            }
+            List<RagSearchResultDTO> safeResults = results == null ? List.of() : results;
+            if (span != null && span.attributes() instanceof ObjectNode attributes) {
+                attributes.put("returnedCount", safeResults.size());
+            }
+            safeFinishSpan(span, "SUCCESS", null, null);
+            return safeResults;
+        } catch (Exception ex) {
+            safeFinishSpan(span, "FAILED", "RAG_SEARCH_FAILED", errorMessage(ex));
             throw ex;
         }
     }
@@ -364,10 +572,11 @@ public class DefaultAgentContextBuilder implements AgentContextBuilder {
             int memoryTokenBudget,
             int experienceTokenBudget,
             int ragTokenBudget,
+            List<RagSearchResultDTO> ragResults,
             BuildAgentContextCommand command
     ) {
         ProfileSlotSource profileSlotSource = new ProfileSlotSource(profile);
-        RagSlotSource ragSlotSource = new RagSlotSource(ragSearchService, traceService);
+        RagSlotSource ragSlotSource = new RagSlotSource(ragResults);
         ContextSchema schema = new ContextSchema("single-agent-react", List.of(
                 ContextSlot.required(ContextSlotKind.PROFILE, Integer.MAX_VALUE),
                 ContextSlot.of(ContextSlotKind.TASK_MEMORY, memoryTokenBudget),
@@ -593,6 +802,25 @@ public class DefaultAgentContextBuilder implements AgentContextBuilder {
 
     private static int clamp(int value, int min, int max) {
         return Math.max(min, Math.min(max, value));
+    }
+
+    private ThreadFactory daemonThreadFactory() {
+        AtomicInteger sequence = new AtomicInteger(1);
+        return runnable -> {
+            Thread thread = new Thread(runnable, "context-retrieval-" + sequence.getAndIncrement());
+            thread.setDaemon(true);
+            return thread;
+        };
+    }
+
+    private record RetrievalResult(
+            List<MemoryDTO> memories,
+            List<RagSearchResultDTO> ragResults
+    ) {
+        private RetrievalResult {
+            memories = memories == null ? List.of() : List.copyOf(memories);
+            ragResults = ragResults == null ? List.of() : List.copyOf(ragResults);
+        }
     }
 
     private record ContextBudgetPolicy(

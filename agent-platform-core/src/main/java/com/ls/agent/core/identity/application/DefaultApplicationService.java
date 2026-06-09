@@ -149,7 +149,7 @@ public class DefaultApplicationService implements ApplicationService {
     @Override
     @Transactional
     public ApplicationDTO enableApplication(Long tenantId, Long ownerUserId, Long applicationId) {
-        ApplicationEntity application = getOwnedApplication(tenantId, ownerUserId, applicationId);
+        ApplicationEntity application = getOwnedApplicationAnyStatus(tenantId, ownerUserId, applicationId);
         application.setStatus(IdentityConstants.STATUS_ACTIVE);
         applicationMapper.updateById(application);
         return toApplicationDTO(application);
@@ -246,11 +246,19 @@ public class DefaultApplicationService implements ApplicationService {
      * @throws BizException 如果应用不存在或已禁用
      */
     private ApplicationEntity getOwnedApplication(Long tenantId, Long ownerUserId, Long applicationId) {
+        ApplicationEntity application = getOwnedApplicationAnyStatus(tenantId, ownerUserId, applicationId);
+        if (!IdentityConstants.STATUS_ACTIVE.equals(application.getStatus())) {
+            throw new BizException(ErrorCode.APPLICATION_DISABLED);
+        }
+        return application;
+    }
+
+    private ApplicationEntity getOwnedApplicationAnyStatus(Long tenantId, Long ownerUserId, Long applicationId) {
         ApplicationEntity application = applicationMapper.selectOne(new LambdaQueryWrapper<ApplicationEntity>()
                 .eq(ApplicationEntity::getId, applicationId)
                 .eq(ApplicationEntity::getTenantId, tenantId)
                 .eq(ApplicationEntity::getOwnerUserId, ownerUserId));
-        if (application == null || !IdentityConstants.STATUS_ACTIVE.equals(application.getStatus())) {
+        if (application == null) {
             throw new BizException(ErrorCode.APPLICATION_DISABLED);
         }
         return application;

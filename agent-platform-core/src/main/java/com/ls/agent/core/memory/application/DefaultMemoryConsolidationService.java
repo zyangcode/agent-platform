@@ -25,6 +25,7 @@ import java.util.Set;
 public class DefaultMemoryConsolidationService {
 
     private static final String STATUS_ACTIVE = "ACTIVE";
+    private static final String STATUS_ARCHIVED = "ARCHIVED";
     private static final String VECTOR_SOURCE_MEMORY = "memory";
     private static final int STALE_DAYS = 30;
     private static final double DECAY_RATE = 0.85;
@@ -95,7 +96,8 @@ public class DefaultMemoryConsolidationService {
         int expiredCount = 0;
         for (MemoryEntity memory : memories) {
             if (isExpired(memory, now)) {
-                memoryMapper.deleteById(memory.getId());
+                memory.setStatus(STATUS_ARCHIVED);
+                memoryMapper.updateById(memory);
                 deleteMemoryVector(memory);
                 expiredCount++;
             } else {
@@ -172,6 +174,9 @@ public class DefaultMemoryConsolidationService {
                 if (candidate.getId() != null && deletedIds.contains(candidate.getId())) {
                     continue;
                 }
+                if (isPinned(keeper) || isPinned(candidate)) {
+                    continue;
+                }
                 if (!sameKind(keeper, candidate) || !isDuplicateContent(keeper.getContent(), candidate.getContent())) {
                     continue;
                 }
@@ -193,6 +198,9 @@ public class DefaultMemoryConsolidationService {
         int decayed = 0;
         LocalDateTime staleBefore = now.minusDays(STALE_DAYS);
         for (MemoryEntity memory : memories) {
+            if (isPinned(memory)) {
+                continue;
+            }
             LocalDateTime accessedAt = memory.getLastAccessedAt();
             if (accessedAt == null || !accessedAt.isBefore(staleBefore)) {
                 continue;
@@ -263,6 +271,12 @@ public class DefaultMemoryConsolidationService {
 
     private int valueOrDefault(Integer value, int defaultValue) {
         return value == null ? defaultValue : value;
+    }
+
+    private boolean isPinned(MemoryEntity memory) {
+        return memory != null
+                && memory.getMetadata() != null
+                && memory.getMetadata().path("pinned").asBoolean(false);
     }
 
     private String normalize(String value) {

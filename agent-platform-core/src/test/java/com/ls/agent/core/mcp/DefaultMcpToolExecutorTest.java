@@ -13,6 +13,7 @@ import com.ls.agent.core.mcp.entity.McpToolEntity;
 import com.ls.agent.core.mcp.mapper.McpServerMapper;
 import com.ls.agent.core.mcp.mapper.McpToolMapper;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
@@ -20,6 +21,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class DefaultMcpToolExecutorTest {
@@ -61,6 +63,42 @@ class DefaultMcpToolExecutorTest {
         assertThat(calledServer.get()).isSameAs(server);
         assertThat(calledToolName.get()).isEqualTo("read_file");
         assertThat(calledArguments.get().get("path").asText()).isEqualTo("demo.txt");
+    }
+
+    @Test
+    void sameNameToolResolvesOnlyWithinCurrentTenantServer() {
+        McpServerEntity otherTenantServer = server();
+        otherTenantServer.setId(20L);
+        otherTenantServer.setTenantId(2L);
+        McpToolEntity otherTenantTool = tool();
+        otherTenantTool.setId(2L);
+        otherTenantTool.setMcpServerId(20L);
+        McpServerEntity currentTenantServer = server();
+        currentTenantServer.setId(10L);
+        currentTenantServer.setTenantId(1L);
+        McpToolEntity currentTenantTool = tool();
+        currentTenantTool.setId(1L);
+        currentTenantTool.setMcpServerId(10L);
+        StdioMcpClient stdioClient = mock(StdioMcpClient.class);
+        HttpMcpClient httpClient = mock(HttpMcpClient.class);
+        when(stdioClient.callTool(any(), any(), any())).thenReturn(objectMapper.createObjectNode().put("ok", true));
+        DefaultMcpToolExecutor executor = new DefaultMcpToolExecutor(objectMapper, toolMapper, serverMapper, stdioClient, httpClient);
+        when(toolMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(otherTenantTool, currentTenantTool));
+        when(serverMapper.selectList(any(LambdaQueryWrapper.class)))
+                .thenReturn(List.of())
+                .thenReturn(List.of(currentTenantServer));
+
+        McpToolExecuteResult result = executor.execute(new McpToolExecuteCommand(
+                1L,
+                10001L,
+                "read_file",
+                objectMapper.createObjectNode().put("path", "demo.txt")
+        ));
+
+        assertThat(result.success()).isTrue();
+        ArgumentCaptor<McpServerEntity> serverCaptor = ArgumentCaptor.forClass(McpServerEntity.class);
+        verify(stdioClient).callTool(serverCaptor.capture(), any(), any());
+        assertThat(serverCaptor.getValue().getId()).isEqualTo(10L);
     }
 
     private McpServerEntity server() {

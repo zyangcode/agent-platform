@@ -24,6 +24,7 @@ class ArchitectureRulesTest {
             "experience",
             "memory",
             "rag",
+            "evaluation",
             "context",
             "quota",
             "trace",

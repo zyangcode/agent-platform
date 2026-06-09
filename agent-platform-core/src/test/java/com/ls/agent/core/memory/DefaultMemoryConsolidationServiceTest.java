@@ -9,6 +9,7 @@ import com.ls.agent.core.rag.api.VectorStore;
 import com.ls.agent.core.trace.api.TraceService;
 import com.ls.agent.core.trace.command.StartTraceSpanCommand;
 import com.ls.agent.core.trace.dto.TraceSpanDTO;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -18,6 +19,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -29,7 +31,7 @@ class DefaultMemoryConsolidationServiceTest {
     private final DefaultMemoryConsolidationService service = new DefaultMemoryConsolidationService(memoryMapper, traceService, vectorStore);
 
     @Test
-    void consolidateExpiresExpiredMemoriesAndDecaysStaleImportance() {
+    void consolidateArchivesExpiredMemoriesAndDecaysStaleImportance() {
         MemoryEntity expired = memory(1L, "old expired preference", 0.9);
         expired.setExpiresAt(LocalDateTime.now().minusDays(1));
 
@@ -41,10 +43,13 @@ class DefaultMemoryConsolidationServiceTest {
         MemoryConsolidationResult result = service.consolidate(1L, 10001L, 20001L, 50001L);
 
         ArgumentCaptor<MemoryEntity> captor = ArgumentCaptor.forClass(MemoryEntity.class);
-        verify(memoryMapper).updateById(captor.capture());
-        verify(memoryMapper).deleteById(1L);
-        assertThat(captor.getValue().getId()).isEqualTo(2L);
-        assertThat(captor.getValue().getImportance()).isLessThan(0.6);
+        verify(memoryMapper, org.mockito.Mockito.times(2)).updateById(captor.capture());
+        assertThat(captor.getAllValues().get(0).getId()).isEqualTo(1L);
+        assertThat(captor.getAllValues().get(0).getStatus()).isEqualTo("ARCHIVED");
+        assertThat(captor.getAllValues().get(1).getId()).isEqualTo(2L);
+        assertThat(captor.getAllValues().get(1).getImportance()).isLessThan(0.6);
+        verify(memoryMapper, never()).deleteById(1L);
+        verify(vectorStore).deleteByDocument("memory", 1L, 20001L, 10001L, 50001L, 1L);
         assertThat(result.expiredCount()).isEqualTo(1);
         assertThat(result.decayedCount()).isEqualTo(1);
     }
@@ -66,6 +71,34 @@ class DefaultMemoryConsolidationServiceTest {
         assertThat(captor.getValue().getImportance()).isEqualTo(0.9);
         assertThat(captor.getValue().getTags()).containsExactly("sports", "preference");
         assertThat(result.mergedCount()).isEqualTo(1);
+    }
+
+    @Test
+    void consolidateDoesNotDecayPinnedStaleMemory() {
+        MemoryEntity pinned = memory(1L, "Pinned answer style", 0.6);
+        pinned.setLastAccessedAt(LocalDateTime.now().minusDays(60));
+        pinned.setMetadata(JsonNodeFactory.instance.objectNode().put("pinned", true));
+        when(memoryMapper.selectList(any(Wrapper.class))).thenReturn(List.of(pinned));
+
+        MemoryConsolidationResult result = service.consolidate(1L, 10001L, 20001L, 50001L);
+
+        verify(memoryMapper, never()).updateById(pinned);
+        assertThat(pinned.getImportance()).isEqualTo(0.6);
+        assertThat(result.decayedCount()).isZero();
+    }
+
+    @Test
+    void consolidateDoesNotMergePinnedDuplicateMemory() {
+        MemoryEntity pinned = memory(1L, "User likes basketball after work", 0.4);
+        pinned.setMetadata(JsonNodeFactory.instance.objectNode().put("pinned", true));
+        MemoryEntity duplicate = memory(2L, "User likes basketball after work", 0.9);
+        when(memoryMapper.selectList(any(Wrapper.class))).thenReturn(List.of(pinned, duplicate));
+
+        MemoryConsolidationResult result = service.consolidate(1L, 10001L, 20001L, 50001L);
+
+        verify(memoryMapper, never()).deleteById(2L);
+        verify(vectorStore, never()).deleteByDocument("memory", 1L, 20001L, 10001L, 50001L, 2L);
+        assertThat(result.mergedCount()).isZero();
     }
 
     @Test

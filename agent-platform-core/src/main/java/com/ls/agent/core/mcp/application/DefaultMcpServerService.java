@@ -18,6 +18,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 public class DefaultMcpServerService implements McpServerService {
@@ -57,35 +60,68 @@ public class DefaultMcpServerService implements McpServerService {
         return toDTO(entity);
     }
 
+    @Override
+    @Transactional
+    public McpServerDTO refreshTools(Long tenantId, Long mcpServerId) {
+        McpServerEntity server = getOwned(tenantId, mcpServerId);
+        discoverTools(server);
+        return toDTO(server);
+    }
+
     private void discoverTools(McpServerEntity server) {
         try {
-            JsonNode result;
-            if ("STDIO".equalsIgnoreCase(server.getServerType())) {
-                result = stdioMcpClient.listTools(server);
-            } else if ("HTTP".equalsIgnoreCase(server.getServerType())) {
-                result = httpMcpClient.listTools(server);
-            } else {
-                return;
-            }
+            JsonNode result = listRemoteTools(server);
             JsonNode tools = result.path("tools");
             if (!tools.isArray()) return;
+            Map<String, McpToolEntity> existingTools = toolMapper.selectList(new LambdaQueryWrapper<McpToolEntity>()
+                            .eq(McpToolEntity::getMcpServerId, server.getId()))
+                    .stream()
+                    .collect(Collectors.toMap(McpToolEntity::getName, Function.identity(), (first, second) -> first));
             for (JsonNode tool : tools) {
                 String name = tool.path("name").asText("");
                 if (name.isBlank()) continue;
-                McpToolEntity existing = toolMapper.selectOne(new LambdaQueryWrapper<McpToolEntity>()
-                        .eq(McpToolEntity::getMcpServerId, server.getId())
-                        .eq(McpToolEntity::getName, name));
-                if (existing != null) continue;
-                McpToolEntity entity = new McpToolEntity();
-                entity.setMcpServerId(server.getId());
-                entity.setName(name);
-                entity.setDescription(tool.path("description").asText(""));
-                entity.setParameterSchema(tool.path("inputSchema"));
-                entity.setStatus(TOOL_STATUS_AVAILABLE);
-                toolMapper.insert(entity);
+                McpToolEntity existing = existingTools.remove(name);
+                if (existing == null) {
+                    toolMapper.insert(newTool(server, tool, name));
+                } else {
+                    existing.setDescription(tool.path("description").asText(""));
+                    existing.setParameterSchema(tool.path("inputSchema"));
+                    existing.setStatus(TOOL_STATUS_AVAILABLE);
+                    toolMapper.updateById(existing);
+                }
             }
+            disableMissingTools(existingTools);
         } catch (Exception ex) {
             log.warn("MCP tool discovery failed for server {}: {}", server.getName(), ex.getMessage());
+        }
+    }
+
+    private JsonNode listRemoteTools(McpServerEntity server) {
+        if ("STDIO".equalsIgnoreCase(server.getServerType())) {
+            return stdioMcpClient.listTools(server);
+        }
+        if ("HTTP".equalsIgnoreCase(server.getServerType())) {
+            return httpMcpClient.listTools(server);
+        }
+        return objectMapper.createObjectNode();
+    }
+
+    private McpToolEntity newTool(McpServerEntity server, JsonNode tool, String name) {
+        McpToolEntity entity = new McpToolEntity();
+        entity.setMcpServerId(server.getId());
+        entity.setName(name);
+        entity.setDescription(tool.path("description").asText(""));
+        entity.setParameterSchema(tool.path("inputSchema"));
+        entity.setStatus(TOOL_STATUS_AVAILABLE);
+        return entity;
+    }
+
+    private void disableMissingTools(Map<String, McpToolEntity> missingTools) {
+        for (McpToolEntity missingTool : missingTools.values()) {
+            if (TOOL_STATUS_AVAILABLE.equals(missingTool.getStatus())) {
+                missingTool.setStatus(STATUS_DISABLED);
+                toolMapper.updateById(missingTool);
+            }
         }
     }
 

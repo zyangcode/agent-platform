@@ -11,7 +11,8 @@ public record UpdateMemoryRequest(
         String memoryCategory,
         List<String> tags,
         Double importance,
-        String slotHint
+        String slotHint,
+        Boolean pinned
 ) {
 
     public UpdateMemoryRequest {

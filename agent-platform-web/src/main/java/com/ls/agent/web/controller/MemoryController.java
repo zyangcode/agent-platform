@@ -65,7 +65,8 @@ public class MemoryController {
                 request.memoryCategory(),
                 request.tags(),
                 request.importance(),
-                request.slotHint()
+                request.slotHint(),
+                request.pinned()
         )));
     }
 

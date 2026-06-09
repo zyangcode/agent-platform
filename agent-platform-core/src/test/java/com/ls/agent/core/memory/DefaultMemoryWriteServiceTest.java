@@ -8,6 +8,7 @@ import com.ls.agent.core.rag.api.EmbeddingService;
 import com.ls.agent.core.rag.api.VectorStore;
 import com.ls.agent.core.rag.dto.EmbeddingVectorDTO;
 import com.ls.agent.core.rag.dto.VectorStoreDocumentDTO;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -16,6 +17,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -94,6 +96,87 @@ class DefaultMemoryWriteServiceTest {
     }
 
     @Test
+    void recordSupersedesExistingStructuredPreferenceWithSameTag() {
+        MemoryEntity existing = new MemoryEntity();
+        existing.setId(10L);
+        existing.setTenantId(1L);
+        existing.setUserId(10001L);
+        existing.setApplicationId(20001L);
+        existing.setProfileId(50001L);
+        existing.setMemoryType("PREFERENCE");
+        existing.setMemoryCategory("preference");
+        existing.setContent("Answer style should be long and detailed.");
+        existing.setTags(new String[]{"answer_style"});
+        existing.setImportance(0.4);
+        existing.setStatus("ACTIVE");
+        when(memoryMapper.selectList(any())).thenReturn(List.of(existing));
+
+        service.record(new RecordMemoryCommand(
+                1L,
+                10001L,
+                20001L,
+                50001L,
+                "PREFERENCE",
+                "User prefers concise answers.",
+                90001L,
+                "preference",
+                List.of("answer_style"),
+                0.9,
+                "preference"
+        ));
+
+        ArgumentCaptor<MemoryEntity> updateCaptor = ArgumentCaptor.forClass(MemoryEntity.class);
+        verify(memoryMapper).updateById(updateCaptor.capture());
+        assertThat(updateCaptor.getValue().getId()).isEqualTo(10L);
+        assertThat(updateCaptor.getValue().getStatus()).isEqualTo("SUPERSEDED");
+        assertThat(updateCaptor.getValue().getMetadata().path("superseded_at").asText()).isNotBlank();
+        assertThat(updateCaptor.getValue().getMetadata().path("superseded_by_content").isMissingNode()).isTrue();
+
+        ArgumentCaptor<MemoryEntity> insertCaptor = ArgumentCaptor.forClass(MemoryEntity.class);
+        verify(memoryMapper).insert(insertCaptor.capture());
+        assertThat(insertCaptor.getValue().getContent()).isEqualTo("User prefers concise answers.");
+        assertThat(insertCaptor.getValue().getMetadata().path("supersedes_memory_id").asLong()).isEqualTo(10L);
+    }
+
+    @Test
+    void recordDoesNotSupersedePinnedStructuredPreference() {
+        MemoryEntity pinned = new MemoryEntity();
+        pinned.setId(10L);
+        pinned.setTenantId(1L);
+        pinned.setUserId(10001L);
+        pinned.setApplicationId(20001L);
+        pinned.setProfileId(50001L);
+        pinned.setMemoryType("PREFERENCE");
+        pinned.setMemoryCategory("preference");
+        pinned.setContent("Answer style should be long and detailed.");
+        pinned.setTags(new String[]{"answer_style"});
+        pinned.setImportance(0.4);
+        pinned.setStatus("ACTIVE");
+        pinned.setMetadata(JsonNodeFactory.instance.objectNode().put("pinned", true));
+        when(memoryMapper.selectList(any())).thenReturn(List.of(pinned));
+
+        service.record(new RecordMemoryCommand(
+                1L,
+                10001L,
+                20001L,
+                50001L,
+                "PREFERENCE",
+                "User prefers concise answers.",
+                90001L,
+                "preference",
+                List.of("answer_style"),
+                0.9,
+                "preference"
+        ));
+
+        verify(memoryMapper, never()).updateById(pinned);
+        ArgumentCaptor<MemoryEntity> insertCaptor = ArgumentCaptor.forClass(MemoryEntity.class);
+        verify(memoryMapper).insert(insertCaptor.capture());
+        assertThat(insertCaptor.getValue().getMetadata().path("supersedes_memory_id").isMissingNode()).isTrue();
+        assertThat(pinned.getStatus()).isEqualTo("ACTIVE");
+    }
+
+    @Test
     void recordIndexesInsertedMemoryIntoVectorStoreWhenEmbeddingIsAvailable() {
         EmbeddingService embeddingService = mock(EmbeddingService.class);
         VectorStore vectorStore = mock(VectorStore.class);
@@ -131,5 +214,163 @@ class DefaultMemoryWriteServiceTest {
         assertThat(vectorCaptor.getValue().profileId()).isEqualTo(50001L);
         assertThat(vectorCaptor.getValue().documentId()).isEqualTo(88L);
         assertThat(vectorCaptor.getValue().chunkId()).isEqualTo(88L);
+        ArgumentCaptor<MemoryEntity> memoryCaptor = ArgumentCaptor.forClass(MemoryEntity.class);
+        verify(memoryMapper).updateById(memoryCaptor.capture());
+        assertThat(memoryCaptor.getValue().getMetadata().path("vector_index_status").asText()).isEqualTo("INDEXED");
+        assertThat(memoryCaptor.getValue().getMetadata().path("embedding_model").asText()).isEqualTo("mock");
+        assertThat(memoryCaptor.getValue().getMetadata().path("embedding_dimension").asInt()).isEqualTo(2);
+    }
+
+    @Test
+    void recordKeepsPostgresMemoryWhenVectorIndexingFailsAndMarksFailure() {
+        EmbeddingService embeddingService = mock(EmbeddingService.class);
+        VectorStore vectorStore = mock(VectorStore.class);
+        DefaultMemoryWriteService vectorService = new DefaultMemoryWriteService(memoryMapper, embeddingService, vectorStore);
+        when(memoryMapper.selectList(any())).thenReturn(List.of());
+        org.mockito.Mockito.doAnswer(invocation -> {
+            MemoryEntity entity = invocation.getArgument(0);
+            assertThat(entity.getMetadata().path("vector_index_status").asText()).isEqualTo("PENDING");
+            entity.setId(89L);
+            return 1;
+        }).when(memoryMapper).insert(any(MemoryEntity.class));
+        when(embeddingService.embed("User likes reliable fallback"))
+                .thenThrow(new IllegalStateException("embedding down"));
+
+        vectorService.record(new RecordMemoryCommand(
+                1L,
+                10001L,
+                20001L,
+                50001L,
+                "PREFERENCE",
+                "User likes reliable fallback",
+                90001L,
+                "preference",
+                List.of("reliability"),
+                0.9,
+                "preference"
+        ));
+
+        ArgumentCaptor<MemoryEntity> updateCaptor = ArgumentCaptor.forClass(MemoryEntity.class);
+        verify(memoryMapper).updateById(updateCaptor.capture());
+        assertThat(updateCaptor.getValue().getId()).isEqualTo(89L);
+        assertThat(updateCaptor.getValue().getMetadata().path("vector_index_status").asText()).isEqualTo("FAILED");
+        assertThat(updateCaptor.getValue().getMetadata().path("vector_index_error").asText()).contains("embedding down");
+    }
+
+    @Test
+    void recordSkipsLongTermWriteWhenStrategyDoesNotAllowWrites() {
+        service.record(new RecordMemoryCommand(
+                1L,
+                10001L,
+                20001L,
+                50001L,
+                "PREFERENCE",
+                "User prefers concise Chinese answers",
+                90001L,
+                "preference",
+                List.of("style"),
+                0.9,
+                "preference",
+                "READ_ONLY"
+        ));
+
+        verify(memoryMapper, never()).insert(any(MemoryEntity.class));
+        verify(memoryMapper, never()).updateById(any(MemoryEntity.class));
+    }
+
+    @Test
+    void recordBlocksExplicitDoNotRememberInstruction() {
+        service.record(new RecordMemoryCommand(
+                1L,
+                10001L,
+                20001L,
+                50001L,
+                "PREFERENCE",
+                "不要记住我喜欢夜间部署",
+                90001L,
+                "preference",
+                List.of("style"),
+                0.9,
+                "preference"
+        ));
+
+        verify(memoryMapper, never()).insert(any(MemoryEntity.class));
+        verify(memoryMapper, never()).updateById(any(MemoryEntity.class));
+    }
+
+    @Test
+    void recordSoftDisablesRelatedMemoriesWhenUserAsksToForget() {
+        MemoryEntity existing = new MemoryEntity();
+        existing.setId(77L);
+        existing.setTenantId(1L);
+        existing.setUserId(10001L);
+        existing.setApplicationId(20001L);
+        existing.setProfileId(50001L);
+        existing.setMemoryType("PREFERENCE");
+        existing.setMemoryCategory("preference");
+        existing.setContent("User prefers night deployment.");
+        existing.setStatus("ACTIVE");
+        when(memoryMapper.selectList(any())).thenReturn(List.of(existing));
+
+        service.record(new RecordMemoryCommand(
+                1L,
+                10001L,
+                20001L,
+                50001L,
+                "SUMMARY",
+                "请忘掉 night deployment 这个偏好",
+                90001L,
+                "summary",
+                List.of("chat"),
+                0.7,
+                "task_memory"
+        ));
+
+        verify(memoryMapper, never()).insert(any(MemoryEntity.class));
+        ArgumentCaptor<MemoryEntity> captor = ArgumentCaptor.forClass(MemoryEntity.class);
+        verify(memoryMapper).updateById(captor.capture());
+        assertThat(captor.getValue().getId()).isEqualTo(77L);
+        assertThat(captor.getValue().getStatus()).isEqualTo("DISABLED");
+    }
+
+    @Test
+    void recordDoesNotDisableMemoriesWhenForgetTargetIsUnclear() {
+        service.record(new RecordMemoryCommand(
+                1L,
+                10001L,
+                20001L,
+                50001L,
+                "SUMMARY",
+                "忘记",
+                90001L,
+                "summary",
+                List.of("chat"),
+                0.7,
+                "task_memory"
+        ));
+
+        verify(memoryMapper, never()).selectList(any());
+        verify(memoryMapper, never()).insert(any(MemoryEntity.class));
+        verify(memoryMapper, never()).updateById(any(MemoryEntity.class));
+    }
+
+    @Test
+    void recordBlocksSensitiveSecrets() {
+        service.record(new RecordMemoryCommand(
+                1L,
+                10001L,
+                20001L,
+                50001L,
+                "FACT",
+                "My api key is sk-1234567890abcdef and password is abc123456",
+                90001L,
+                "fact",
+                List.of("secret"),
+                0.9,
+                "fact"
+        ));
+
+        verify(memoryMapper, never()).insert(any(MemoryEntity.class));
+        verify(memoryMapper, never()).updateById(any(MemoryEntity.class));
     }
 }

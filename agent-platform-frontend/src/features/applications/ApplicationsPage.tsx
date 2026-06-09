@@ -258,17 +258,26 @@ export function ApplicationsPage() {
 }
 
 function EnableApplicationButton({ application, onEnabled }: { application: Application; onEnabled: () => void }) {
+  const [loading, setLoading] = useState(false)
   if (application.status !== 'DISABLED') return null
   return (
     <Button
+      disabled={loading}
       onClick={async () => {
-        await enableApplication(application.applicationId)
-        onEnabled()
+        setLoading(true)
+        try {
+          await enableApplication(application.applicationId)
+          onEnabled()
+        } catch (error) {
+          alert(getErrorMessage(error, 'Failed to enable application.'))
+        } finally {
+          setLoading(false)
+        }
       }}
       size="sm"
       variant="secondary"
     >
-      Enable
+      {loading ? '...' : 'Enable'}
     </Button>
   )
 }

@@ -99,6 +99,18 @@ class McpServerControllerTest {
                 .andExpect(jsonPath("$.data.status").value("DISABLED"));
     }
 
+    @Test
+    void refreshMcpToolsDelegatesWithCurrentTenant() throws Exception {
+        when(mcpServerService.refreshTools(1L, 10L)).thenReturn(server());
+
+        mockMvc.perform(post("/api/mcp-servers/10/refresh-tools")
+                        .header("Authorization", bearerToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.mcpServerId").value(10));
+
+        verify(mcpServerService).refreshTools(1L, 10L);
+    }
+
     private McpServerDTO server() {
         return new McpServerDTO(
                 10L,

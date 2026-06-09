@@ -178,6 +178,26 @@ class ApplicationControllerTest {
     }
 
     @Test
+    void activateApplicationDelegatesWithCurrentUserAndApplicationId() throws Exception {
+        when(applicationService.enableApplication(1L, 10001L, 20001L))
+                .thenReturn(new ApplicationDTO(
+                        20001L,
+                        "Demo App",
+                        "stage 1 test application",
+                        "ACTIVE",
+                        LocalDateTime.of(2026, 5, 21, 10, 0)
+                ));
+
+        mockMvc.perform(post("/api/applications/20001/activate")
+                        .header("Authorization", bearerToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.applicationId").value(20001))
+                .andExpect(jsonPath("$.data.status").value("ACTIVE"));
+
+        verify(applicationService).enableApplication(1L, 10001L, 20001L);
+    }
+
+    @Test
     void listApiKeysDelegatesWithCurrentUserAndApplicationId() throws Exception {
         when(applicationService.listApiKeys(1L, 10001L, 20001L))
                 .thenReturn(List.of(new ApiKeyDTO(

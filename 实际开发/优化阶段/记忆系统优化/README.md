@@ -10,8 +10,14 @@
 2. `记忆系统工作流程.drawio`
    - 可视化流程图，用于快速理解工作流。
 
-3. `单Agent记忆与RAG后端冒烟测试指南.md`
+3. `记忆系统优化落地验收报告.md`
+   - 当前分支已落地能力、验证命令、审查修复点和后续增强边界。
+
+4. `单Agent记忆与RAG后端冒烟测试指南.md`
    - 开发完成后按这个跑自动化测试和 HTTP 冒烟。
+
+5. `检索评测集.md`
+   - 固定 Hit@K / MRR 评测口径、业务 corpus、业务 case 和 CI 门禁，用于后续 HyDE、MQE、Neo4j 等检索增强上线前对比。
 
 ## 展开材料
 
@@ -29,5 +35,6 @@
 - Memory 和 RAG 分表、分 collection、分 source_type。
 - PostgreSQL 是事实源；Qdrant、PG tsvector、Neo4j 是派生索引。
 - Memory 不作为 citation 来源；RAG 才作为外部知识引用。
-- 高级能力 HyDE、MQE、Neo4j 默认关闭，必须通过评测后再开启。
+- 高级能力 HyDE、MQE、Reranker、Neo4j 默认关闭，必须通过评测后再开启。
+- 检索评测已提供脚本入口 `scripts/run-retrieval-eval.ps1`、业务评测集和 GitHub Actions 工作流 `Retrieval Evaluation`；后续检索策略改动应先过本地/CI 门禁。
 - 目录里的旧文档不删除，避免丢失细节；但实现时以 `00-单Agent记忆与RAG统一设计文档.md` 为准。

@@ -114,7 +114,7 @@ class Stage1PersistenceStructureTest {
 
     @Test
     void mcpWeatherDemoMigrationRegistersBuiltinStdioServerAndTool() throws IOException {
-        String weatherMcpSql = readMigration("db/migration/V017__init_demo_weather_mcp.sql");
+        String weatherMcpSql = readMigration("db/migration/V018__init_demo_weather_mcp.sql");
 
         assertThat(weatherMcpSql).contains(
                 "Bundled Weather MCP",

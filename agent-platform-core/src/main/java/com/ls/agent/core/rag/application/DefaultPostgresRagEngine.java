@@ -4,13 +4,19 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.ls.agent.core.rag.api.EmbeddingService;
+import com.ls.agent.core.rag.api.HypotheticalDocumentService;
+import com.ls.agent.core.rag.api.QueryExpansionService;
 import com.ls.agent.core.rag.api.RagEngine;
+import com.ls.agent.core.rag.api.RetrievalReranker;
+import com.ls.agent.core.rag.api.SemanticCacheService;
 import com.ls.agent.core.rag.api.VectorStore;
 import com.ls.agent.core.rag.command.IngestKnowledgeDocumentCommand;
 import com.ls.agent.core.rag.dto.EmbeddingVectorDTO;
 import com.ls.agent.core.rag.dto.RagIngestResultDTO;
 import com.ls.agent.core.rag.dto.RagSearchResultDTO;
 import com.ls.agent.core.rag.dto.RagTextChunkDTO;
+import com.ls.agent.core.rag.dto.SemanticCacheLookupCommand;
+import com.ls.agent.core.rag.dto.SemanticCachePutCommand;
 import com.ls.agent.core.rag.dto.VectorSearchQueryDTO;
 import com.ls.agent.core.rag.dto.VectorSearchResultDTO;
 import com.ls.agent.core.rag.dto.VectorStoreDocumentDTO;
@@ -27,6 +33,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -39,6 +46,9 @@ import java.util.stream.Collectors;
 public class DefaultPostgresRagEngine implements RagEngine {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final double RRF_K = 60.0;
+    private static final int MAX_EXPANDED_QUERIES = 3;
+    private static final int MAX_HYPOTHETICAL_DOCUMENTS = 1;
 
     private final KnowledgeDocumentMapper documentMapper;
     private final KnowledgeChunkMapper chunkMapper;
@@ -46,6 +56,10 @@ public class DefaultPostgresRagEngine implements RagEngine {
     private final EmbeddingService embeddingService;
     private final VectorStore vectorStore;
     private final TraceService traceService;
+    private final RetrievalReranker retrievalReranker;
+    private final QueryExpansionService queryExpansionService;
+    private final HypotheticalDocumentService hypotheticalDocumentService;
+    private final SemanticCacheService semanticCacheService;
 
     public DefaultPostgresRagEngine(
             KnowledgeDocumentMapper documentMapper,
@@ -73,12 +87,49 @@ public class DefaultPostgresRagEngine implements RagEngine {
             VectorStore vectorStore,
             TraceService traceService
     ) {
+        this(documentMapper, chunkMapper, textSplitter, embeddingService, vectorStore, traceService,
+                null, null, null, null);
+    }
+
+    public DefaultPostgresRagEngine(
+            KnowledgeDocumentMapper documentMapper,
+            KnowledgeChunkMapper chunkMapper,
+            TextSplitter textSplitter,
+            EmbeddingService embeddingService,
+            VectorStore vectorStore,
+            TraceService traceService,
+            RetrievalReranker retrievalReranker,
+            QueryExpansionService queryExpansionService,
+            HypotheticalDocumentService hypotheticalDocumentService
+    ) {
+        this(documentMapper, chunkMapper, textSplitter, embeddingService, vectorStore, traceService,
+                retrievalReranker, queryExpansionService, hypotheticalDocumentService, null);
+    }
+
+    public DefaultPostgresRagEngine(
+            KnowledgeDocumentMapper documentMapper,
+            KnowledgeChunkMapper chunkMapper,
+            TextSplitter textSplitter,
+            EmbeddingService embeddingService,
+            VectorStore vectorStore,
+            TraceService traceService,
+            RetrievalReranker retrievalReranker,
+            QueryExpansionService queryExpansionService,
+            HypotheticalDocumentService hypotheticalDocumentService,
+            SemanticCacheService semanticCacheService
+    ) {
         this.documentMapper = documentMapper;
         this.chunkMapper = chunkMapper;
         this.textSplitter = textSplitter == null ? new TextSplitter() : textSplitter;
         this.embeddingService = embeddingService;
         this.vectorStore = vectorStore;
         this.traceService = traceService;
+        this.retrievalReranker = retrievalReranker == null ? RetrievalReranker.noop() : retrievalReranker;
+        this.queryExpansionService = queryExpansionService == null ? QueryExpansionService.noop() : queryExpansionService;
+        this.hypotheticalDocumentService = hypotheticalDocumentService == null
+                ? HypotheticalDocumentService.noop()
+                : hypotheticalDocumentService;
+        this.semanticCacheService = semanticCacheService == null ? SemanticCacheService.noop() : semanticCacheService;
     }
 
     @Override
@@ -138,6 +189,7 @@ public class DefaultPostgresRagEngine implements RagEngine {
             applyDocumentFields(document, command, docHash);
             documentMapper.updateById(document);
             chunkMapper.disableByDocumentId(command.tenantId(), command.applicationId(), document.getId());
+            deleteVectorDocument(command.tenantId(), command.applicationId(), command.ownerUserId(), command.profileId(), document.getId());
         }
 
         int vectorIndexedCount = 0;
@@ -179,29 +231,314 @@ public class DefaultPostgresRagEngine implements RagEngine {
             String traceId,
             Long parentSpanId
     ) {
+        return search(tenantId, applicationId, userId, profileId, query, topK, null, traceId, parentSpanId);
+    }
+
+    @Override
+    public List<RagSearchResultDTO> search(
+            Long tenantId,
+            Long applicationId,
+            Long userId,
+            Long profileId,
+            String query,
+            int topK,
+            EmbeddingVectorDTO queryVector,
+            String traceId,
+            Long parentSpanId
+    ) {
         if (query == null || query.isBlank() || topK <= 0) {
             return List.of();
         }
-        List<RagSearchResultDTO> vectorResults = searchByVector(tenantId, applicationId, userId, profileId, query, topK,
-                traceId, parentSpanId);
-        if (!vectorResults.isEmpty()) {
-            return vectorResults;
+        List<RagSearchResultDTO> cachedResults = lookupSemanticCache(
+                tenantId,
+                applicationId,
+                userId,
+                profileId,
+                query,
+                topK,
+                queryVector
+        );
+        if (cachedResults != null) {
+            return cachedResults;
         }
+        List<RagSearchResultDTO> vectorResults = searchByVector(tenantId, applicationId, userId, profileId, query, topK,
+                queryVector,
+                traceId, parentSpanId);
+        List<RagSearchResultDTO> keywordResults = searchByKeyword(tenantId, applicationId, userId, profileId, query, topK);
+        List<List<RagSearchResultDTO>> resultGroups = new ArrayList<>();
+        resultGroups.add(vectorResults);
+        resultGroups.add(keywordResults);
+        resultGroups.addAll(searchEnhancedRecallPaths(
+                tenantId,
+                applicationId,
+                userId,
+                profileId,
+                query,
+                topK,
+                traceId,
+                parentSpanId
+        ));
+        List<RagSearchResultDTO> mergedResults = mergeSearchResults(
+                resultGroups,
+                topK
+        );
+        List<RagSearchResultDTO> finalResults = safeRerank(query, mergedResults, topK);
+        putSemanticCache(
+                tenantId,
+                applicationId,
+                userId,
+                profileId,
+                query,
+                topK,
+                queryVector,
+                finalResults
+        );
+        return finalResults;
+    }
+
+    private List<RagSearchResultDTO> lookupSemanticCache(
+            Long tenantId,
+            Long applicationId,
+            Long userId,
+            Long profileId,
+            String query,
+            int topK,
+            EmbeddingVectorDTO queryVector
+    ) {
+        if (!semanticCacheService.enabled() || queryVector == null || queryVector.dimension() == 0) {
+            return null;
+        }
+        try {
+            return semanticCacheService.lookup(new SemanticCacheLookupCommand(
+                    tenantId,
+                    applicationId,
+                    userId,
+                    profileId,
+                    query,
+                    queryVector,
+                    topK
+            )).map(results -> results.stream()
+                    .limit(Math.max(1, topK))
+                    .toList()
+            ).orElse(null);
+        } catch (RuntimeException ex) {
+            return null;
+        }
+    }
+
+    private void putSemanticCache(
+            Long tenantId,
+            Long applicationId,
+            Long userId,
+            Long profileId,
+            String query,
+            int topK,
+            EmbeddingVectorDTO queryVector,
+            List<RagSearchResultDTO> results
+    ) {
+        if (!semanticCacheService.enabled()
+                || queryVector == null
+                || queryVector.dimension() == 0
+                || results == null
+                || results.isEmpty()) {
+            return;
+        }
+        try {
+            semanticCacheService.put(new SemanticCachePutCommand(
+                    tenantId,
+                    applicationId,
+                    userId,
+                    profileId,
+                    query,
+                    queryVector,
+                    topK,
+                    results
+            ));
+        } catch (RuntimeException ex) {
+            // Semantic cache is an optimization; retrieval results are still authoritative.
+        }
+    }
+
+    private List<RagSearchResultDTO> searchByKeyword(
+            Long tenantId,
+            Long applicationId,
+            Long userId,
+            Long profileId,
+            String query,
+            int topK
+    ) {
         List<String> terms = keywords(query).stream().toList();
         if (terms.isEmpty()) {
             return List.of();
         }
-        return chunkMapper.searchActiveChunks(tenantId, applicationId, userId, profileId, terms, topK)
-                .stream()
-                .map(chunk -> new RagSearchResultDTO(
-                        chunk.getDocumentId(),
-                        chunk.getId(),
-                        chunk.getTitle(),
-                        chunk.getContent(),
-                        chunk.getSourceUri(),
-                        chunk.getKeywordScore() == null ? 0.0 : chunk.getKeywordScore()
-                ))
+        try {
+            return chunkMapper.searchActiveChunks(tenantId, applicationId, userId, profileId, terms, String.join(" ", terms), topK)
+                    .stream()
+                    .map(chunk -> new RagSearchResultDTO(
+                            chunk.getDocumentId(),
+                            chunk.getId(),
+                            chunk.getTitle(),
+                            chunk.getContent(),
+                            chunk.getSourceUri(),
+                            chunk.getKeywordScore() == null ? 0.0 : chunk.getKeywordScore()
+                    ))
+                    .toList();
+        } catch (RuntimeException ex) {
+            return List.of();
+        }
+    }
+
+    private List<List<RagSearchResultDTO>> searchEnhancedRecallPaths(
+            Long tenantId,
+            Long applicationId,
+            Long userId,
+            Long profileId,
+            String query,
+            int topK,
+            String traceId,
+            Long parentSpanId
+    ) {
+        List<String> additionalQueries = additionalQueries(query);
+        if (additionalQueries.isEmpty()) {
+            return List.of();
+        }
+        List<List<RagSearchResultDTO>> resultGroups = new ArrayList<>();
+        for (String additionalQuery : additionalQueries) {
+            resultGroups.add(searchByVector(tenantId, applicationId, userId, profileId, additionalQuery, topK,
+                    null, traceId, parentSpanId));
+            resultGroups.add(searchByKeyword(tenantId, applicationId, userId, profileId, additionalQuery, topK));
+        }
+        return resultGroups;
+    }
+
+    private List<String> additionalQueries(String query) {
+        LinkedHashSet<String> queries = new LinkedHashSet<>();
+        addQueries(queries, safeExpand(query), query, MAX_EXPANDED_QUERIES);
+        addQueries(queries, safeGenerateHypotheticalDocuments(query), query, MAX_HYPOTHETICAL_DOCUMENTS);
+        return queries.stream()
+                .limit(MAX_EXPANDED_QUERIES + MAX_HYPOTHETICAL_DOCUMENTS)
                 .toList();
+    }
+
+    private List<String> safeExpand(String query) {
+        try {
+            return queryExpansionService.expand(query, MAX_EXPANDED_QUERIES);
+        } catch (RuntimeException ex) {
+            return List.of();
+        }
+    }
+
+    private List<String> safeGenerateHypotheticalDocuments(String query) {
+        try {
+            return hypotheticalDocumentService.generate(query, MAX_HYPOTHETICAL_DOCUMENTS);
+        } catch (RuntimeException ex) {
+            return List.of();
+        }
+    }
+
+    private void addQueries(LinkedHashSet<String> target, List<String> source, String originalQuery, int limit) {
+        if (source == null || source.isEmpty() || limit <= 0) {
+            return;
+        }
+        for (String candidate : source) {
+            if (candidate == null) {
+                continue;
+            }
+            String normalized = candidate.strip();
+            if (!normalized.isBlank() && !normalized.equals(originalQuery)) {
+                target.add(normalized);
+            }
+            if (target.size() >= limit) {
+                break;
+            }
+        }
+    }
+
+    private List<RagSearchResultDTO> safeRerank(
+            String query,
+            List<RagSearchResultDTO> candidates,
+            int topK
+    ) {
+        try {
+            List<RagSearchResultDTO> reranked = retrievalReranker.rerank(query, candidates, topK);
+            return reranked == null ? List.of() : reranked.stream()
+                    .limit(Math.max(1, topK))
+                    .toList();
+        } catch (RuntimeException ex) {
+            return candidates == null ? List.of() : candidates.stream()
+                    .limit(Math.max(1, topK))
+                    .toList();
+        }
+    }
+
+    private List<RagSearchResultDTO> mergeSearchResults(
+            List<List<RagSearchResultDTO>> resultGroups,
+            int topK
+    ) {
+        if (resultGroups == null) {
+            return List.of();
+        }
+        List<List<RagSearchResultDTO>> nonEmptyGroups = resultGroups.stream()
+                .filter(group -> group != null && !group.isEmpty())
+                .toList();
+        if (nonEmptyGroups.isEmpty()) {
+            return List.of();
+        }
+        if (nonEmptyGroups.size() == 1) {
+            return nonEmptyGroups.get(0).stream()
+                    .limit(Math.max(1, topK))
+                    .toList();
+        }
+        Map<String, FusedRagResult> fused = new java.util.LinkedHashMap<>();
+        for (List<RagSearchResultDTO> group : nonEmptyGroups) {
+            addRankedRagResults(fused, group);
+        }
+        return fused.values().stream()
+                .sorted(java.util.Comparator
+                        .<FusedRagResult>comparingDouble(FusedRagResult::score)
+                        .reversed()
+                        .thenComparing(result -> result.value().score(), java.util.Comparator.reverseOrder()))
+                .limit(Math.max(1, topK))
+                .map(result -> withScore(result.value(), result.score()))
+                .toList();
+    }
+
+    private void addRankedRagResults(Map<String, FusedRagResult> fused, List<RagSearchResultDTO> results) {
+        for (int i = 0; i < results.size(); i++) {
+            RagSearchResultDTO result = results.get(i);
+            if (result == null) {
+                continue;
+            }
+            String key = ragKey(result);
+            double score = 1.0 / (RRF_K + i + 1);
+            fused.compute(key, (ignored, existing) -> {
+                if (existing == null) {
+                    return new FusedRagResult(result, score);
+                }
+                return new FusedRagResult(existing.value(), existing.score() + score);
+            });
+        }
+    }
+
+    private String ragKey(RagSearchResultDTO result) {
+        if (result.chunkId() != null) {
+            return "chunk:" + result.chunkId();
+        }
+        if (result.documentId() != null) {
+            return "doc:" + result.documentId() + ":" + result.content();
+        }
+        return "content:" + result.content();
+    }
+
+    private RagSearchResultDTO withScore(RagSearchResultDTO result, double score) {
+        return new RagSearchResultDTO(
+                result.documentId(),
+                result.chunkId(),
+                result.title(),
+                result.content(),
+                result.sourceUri(),
+                score
+        );
     }
 
     @Override
@@ -263,28 +600,17 @@ public class DefaultPostgresRagEngine implements RagEngine {
             Long profileId,
             String query,
             int topK,
+            EmbeddingVectorDTO precomputedQueryVector,
             String traceId,
             Long parentSpanId
     ) {
-        if (embeddingService == null || vectorStore == null) {
+        if (vectorStore == null) {
             return List.of();
         }
         try {
-            ObjectNode embeddingAttributes = OBJECT_MAPPER.createObjectNode()
-                    .put("queryChars", query == null ? 0 : query.length());
-            TraceSpanDTO embeddingSpan = safeStartSpan(traceId, parentSpanId, "rag.embedding", "RAG", embeddingAttributes);
-            EmbeddingVectorDTO queryVector;
-            try {
-                queryVector = embeddingService.embed(query);
-                if (embeddingSpan != null && embeddingSpan.attributes() instanceof ObjectNode attributes) {
-                    attributes.put("model", queryVector == null ? "" : queryVector.model());
-                    attributes.put("dimension", queryVector == null ? 0 : queryVector.dimension());
-                }
-                safeFinishSpan(embeddingSpan, "SUCCESS", null, null);
-            } catch (RuntimeException ex) {
-                safeFinishSpan(embeddingSpan, "FAILED", errorCode(ex), errorMessage(ex));
-                throw ex;
-            }
+            EmbeddingVectorDTO queryVector = precomputedQueryVector == null
+                    ? embedQuery(query, traceId, parentSpanId)
+                    : precomputedQueryVector;
             if (queryVector == null || queryVector.dimension() == 0) {
                 return List.of();
             }
@@ -339,6 +665,27 @@ public class DefaultPostgresRagEngine implements RagEngine {
                     .toList();
         } catch (RuntimeException ignored) {
             return List.of();
+        }
+    }
+
+    private EmbeddingVectorDTO embedQuery(String query, String traceId, Long parentSpanId) {
+        if (embeddingService == null) {
+            return null;
+        }
+        ObjectNode embeddingAttributes = OBJECT_MAPPER.createObjectNode()
+                .put("queryChars", query == null ? 0 : query.length());
+        TraceSpanDTO embeddingSpan = safeStartSpan(traceId, parentSpanId, "rag.embedding", "RAG", embeddingAttributes);
+        try {
+            EmbeddingVectorDTO queryVector = embeddingService.embed(query);
+            if (embeddingSpan != null && embeddingSpan.attributes() instanceof ObjectNode attributes) {
+                attributes.put("model", queryVector == null ? "" : queryVector.model());
+                attributes.put("dimension", queryVector == null ? 0 : queryVector.dimension());
+            }
+            safeFinishSpan(embeddingSpan, "SUCCESS", null, null);
+            return queryVector;
+        } catch (RuntimeException ex) {
+            safeFinishSpan(embeddingSpan, "FAILED", errorCode(ex), errorMessage(ex));
+            throw ex;
         }
     }
 
@@ -531,5 +878,11 @@ public class DefaultPostgresRagEngine implements RagEngine {
         } catch (NoSuchAlgorithmException ex) {
             throw new IllegalStateException("SHA-256 is not available", ex);
         }
+    }
+
+    private record FusedRagResult(
+            RagSearchResultDTO value,
+            double score
+    ) {
     }
 }

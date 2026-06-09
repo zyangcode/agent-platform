@@ -15,6 +15,7 @@ import com.ls.agent.core.trace.api.TraceService;
 import com.ls.agent.core.trace.command.FinishTraceSpanCommand;
 import com.ls.agent.core.trace.command.StartTraceSpanCommand;
 import com.ls.agent.core.trace.dto.TraceSpanDTO;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -26,6 +27,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doThrow;
 
 class DefaultMemoryRecallServiceTest {
 
@@ -55,6 +57,19 @@ class DefaultMemoryRecallServiceTest {
         assertThat(captor.getValue().getId()).isEqualTo(10L);
         assertThat(captor.getValue().getAccessCount()).isEqualTo(3);
         assertThat(captor.getValue().getLastAccessedAt()).isNotNull();
+    }
+
+    @Test
+    void recallStillReturnsMemoriesWhenAccessStatsUpdateFails() {
+        MemoryEntity entity = memory("PREFERENCE", "Ada likes basketball.");
+        entity.setId(10L);
+        entity.setAccessCount(2);
+        when(memoryMapper.selectList(any(Wrapper.class))).thenReturn(List.of(entity));
+        doThrow(new IllegalStateException("db update down")).when(memoryMapper).updateById(entity);
+
+        List<MemoryDTO> result = service.recall(1L, 20001L, 10001L, 50001L, "basketball", 5);
+
+        assertThat(result).extracting(MemoryDTO::content).containsExactly("Ada likes basketball.");
     }
 
     @Test
@@ -111,6 +126,24 @@ class DefaultMemoryRecallServiceTest {
     }
 
     @Test
+    void recallExcludesExpiredMemoriesFromContextInjection() {
+        MemoryEntity expired = memory("PREFERENCE", "Ada likes expired basketball tips.");
+        expired.setExpiresAt(LocalDateTime.now().minusDays(1));
+        expired.setImportance(1.0);
+
+        MemoryEntity active = memory("PREFERENCE", "Ada likes active basketball tips.");
+        active.setExpiresAt(LocalDateTime.now().plusDays(1));
+        active.setImportance(0.8);
+
+        when(memoryMapper.selectList(any(Wrapper.class))).thenReturn(List.of(expired, active));
+
+        List<MemoryDTO> result = service.recall(1L, 20001L, 10001L, 50001L, "basketball", 5);
+
+        assertThat(result).extracting(MemoryDTO::content)
+                .containsExactly("Ada likes active basketball tips.");
+    }
+
+    @Test
     void recallUsesVectorResultsBeforeKeywordFallbackWhenSemanticSearchFindsMemories() {
         EmbeddingService embeddingService = mock(EmbeddingService.class);
         VectorStore vectorStore = mock(VectorStore.class);
@@ -122,15 +155,12 @@ class DefaultMemoryRecallServiceTest {
         semanticMemory.setMemoryCategory("preference");
         semanticMemory.setApplicationId(20001L);
         semanticMemory.setProfileId(50001L);
-        MemoryEntity unrelatedKeywordMemory = memory("PREFERENCE", "User likes concise writing.");
-        unrelatedKeywordMemory.setId(99L);
-        unrelatedKeywordMemory.setMemoryCategory("preference");
         when(embeddingService.embed("sports after work"))
                 .thenReturn(new EmbeddingVectorDTO("mock", new float[]{1.0f, 0.0f}));
         when(vectorStore.search(any(VectorSearchQueryDTO.class)))
                 .thenReturn(List.of(new VectorSearchResultDTO("memory-88", 88L, 88L, 0.91)));
         when(memoryMapper.selectBatchIds(any(java.util.Collection.class))).thenReturn(List.of(semanticMemory));
-        when(memoryMapper.selectList(any(Wrapper.class))).thenReturn(List.of(unrelatedKeywordMemory));
+        when(memoryMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
 
         List<MemoryDTO> result = vectorService.recall(
                 1L,
@@ -155,6 +185,48 @@ class DefaultMemoryRecallServiceTest {
     }
 
     @Test
+    void recallMergesVectorAndKeywordCandidatesWhenBothPathsFindMemories() {
+        EmbeddingService embeddingService = mock(EmbeddingService.class);
+        VectorStore vectorStore = mock(VectorStore.class);
+        DefaultMemoryRecallService vectorService = new DefaultMemoryRecallService(memoryMapper, embeddingService, vectorStore);
+        MemoryEntity semanticMemory = memory("PREFERENCE", "User likes evening basketball.");
+        semanticMemory.setId(88L);
+        semanticMemory.setTenantId(1L);
+        semanticMemory.setUserId(10001L);
+        semanticMemory.setApplicationId(20001L);
+        semanticMemory.setProfileId(50001L);
+        semanticMemory.setMemoryCategory("preference");
+        semanticMemory.setImportance(0.7);
+        MemoryEntity keywordMemory = memory("PREFERENCE", "User prefers basketball advice with injury prevention tips.");
+        keywordMemory.setId(99L);
+        keywordMemory.setMemoryCategory("preference");
+        keywordMemory.setImportance(0.8);
+        when(embeddingService.embed("basketball injury prevention"))
+                .thenReturn(new EmbeddingVectorDTO("mock", new float[]{1.0f, 0.0f}));
+        when(vectorStore.search(any(VectorSearchQueryDTO.class)))
+                .thenReturn(List.of(new VectorSearchResultDTO("memory-88", 88L, 88L, 0.91)));
+        when(memoryMapper.selectBatchIds(any(java.util.Collection.class))).thenReturn(List.of(semanticMemory));
+        when(memoryMapper.selectList(any(Wrapper.class))).thenReturn(List.of(keywordMemory));
+
+        List<MemoryDTO> result = vectorService.recall(
+                1L,
+                20001L,
+                10001L,
+                50001L,
+                "basketball injury prevention",
+                MemoryRecallFilter.builder()
+                        .categories(List.of("preference"))
+                        .topK(5)
+                        .build()
+        );
+
+        assertThat(result).extracting(MemoryDTO::content).containsExactlyInAnyOrder(
+                "User likes evening basketball.",
+                "User prefers basketball advice with injury prevention tips."
+        );
+    }
+
+    @Test
     void recallRecordsMemoryEmbeddingAndVectorSearchSpansWhenTraceContextExists() {
         EmbeddingService embeddingService = mock(EmbeddingService.class);
         VectorStore vectorStore = mock(VectorStore.class);
@@ -163,7 +235,13 @@ class DefaultMemoryRecallServiceTest {
         when(traceService.startSpan(any(StartTraceSpanCommand.class)))
                 .thenAnswer(invocation -> {
                     StartTraceSpanCommand command = invocation.getArgument(0);
-                    long id = "memory.embedding".equals(command.spanName()) ? 70001L : 70002L;
+                    long id = switch (command.spanName()) {
+                        case "memory.recall" -> 70000L;
+                        case "memory.embedding" -> 70001L;
+                        case "memory.vector.search" -> 70002L;
+                        case "memory.keyword.search" -> 70003L;
+                        default -> 70999L;
+                    };
                     return new TraceSpanDTO(id, command.traceId(), command.parentSpanId(), command.spanName(),
                             command.spanType(), command.component(), "RUNNING", LocalDateTime.now(), null,
                             null, null, null, command.attributes(), LocalDateTime.now());
@@ -194,20 +272,102 @@ class DefaultMemoryRecallServiceTest {
 
         assertThat(result).hasSize(1);
         ArgumentCaptor<StartTraceSpanCommand> startCaptor = ArgumentCaptor.forClass(StartTraceSpanCommand.class);
-        verify(traceService, org.mockito.Mockito.times(2)).startSpan(startCaptor.capture());
+        verify(traceService, org.mockito.Mockito.times(4)).startSpan(startCaptor.capture());
         assertThat(startCaptor.getAllValues()).extracting(StartTraceSpanCommand::spanName)
-                .containsExactly("memory.embedding", "memory.vector.search");
-        assertThat(startCaptor.getAllValues()).allSatisfy(command -> {
-            assertThat(command.traceId()).isEqualTo("trace-1");
-            assertThat(command.parentSpanId()).isEqualTo(42L);
-            assertThat(command.component()).isEqualTo("core.memory");
-        });
+                .containsExactly("memory.recall", "memory.embedding", "memory.vector.search", "memory.keyword.search");
+        assertThat(startCaptor.getAllValues()).allSatisfy(command -> assertThat(command.traceId()).isEqualTo("trace-1"));
+        assertThat(startCaptor.getAllValues().get(0).parentSpanId()).isEqualTo(42L);
+        assertThat(startCaptor.getAllValues().subList(1, 4))
+                .allSatisfy(command -> assertThat(command.parentSpanId()).isEqualTo(70000L));
+        assertThat(startCaptor.getAllValues()).allSatisfy(command -> assertThat(command.component()).isEqualTo("core.memory"));
+        assertThat(startCaptor.getAllValues().get(0).attributes().path("topK").asInt()).isEqualTo(5);
+        assertThat(startCaptor.getAllValues().get(0).attributes().path("queryChars").isMissingNode()).isTrue();
+        assertThat(startCaptor.getAllValues().get(3).attributes().path("keywordCount").asInt()).isEqualTo(3);
         ArgumentCaptor<FinishTraceSpanCommand> finishCaptor = ArgumentCaptor.forClass(FinishTraceSpanCommand.class);
-        verify(traceService, org.mockito.Mockito.times(2)).finishSpan(finishCaptor.capture());
+        verify(traceService, org.mockito.Mockito.times(4)).finishSpan(finishCaptor.capture());
         assertThat(finishCaptor.getAllValues()).extracting(FinishTraceSpanCommand::status)
-                .containsExactly("SUCCESS", "SUCCESS");
+                .containsExactly("SUCCESS", "SUCCESS", "SUCCESS", "SUCCESS");
         assertThat(finishCaptor.getAllValues().get(0).attributes().path("dimension").asInt()).isEqualTo(2);
         assertThat(finishCaptor.getAllValues().get(1).attributes().path("resultCount").asInt()).isEqualTo(1);
+        assertThat(finishCaptor.getAllValues().get(2).attributes().path("candidateCount").asInt()).isZero();
+        assertThat(finishCaptor.getAllValues().get(3).attributes().path("returnedCount").asInt()).isEqualTo(1);
+    }
+
+    @Test
+    void recallCollapsesConflictingPreferencesByCategoryAndTag() {
+        MemoryEntity oldPreference = memory("PREFERENCE", "User prefers long detailed answers.");
+        oldPreference.setId(10L);
+        oldPreference.setMemoryCategory("preference");
+        oldPreference.setTags(new String[]{"answer_style"});
+        oldPreference.setImportance(0.5);
+        oldPreference.setUpdatedAt(LocalDateTime.of(2026, 6, 1, 10, 0));
+
+        MemoryEntity newPreference = memory("PREFERENCE", "User prefers concise answers.");
+        newPreference.setId(11L);
+        newPreference.setMemoryCategory("preference");
+        newPreference.setTags(new String[]{"answer_style"});
+        newPreference.setImportance(0.9);
+        newPreference.setUpdatedAt(LocalDateTime.of(2026, 6, 8, 10, 0));
+
+        MemoryEntity otherPreference = memory("PREFERENCE", "User prefers Java examples.");
+        otherPreference.setId(12L);
+        otherPreference.setMemoryCategory("preference");
+        otherPreference.setTags(new String[]{"language"});
+        otherPreference.setImportance(0.7);
+        otherPreference.setUpdatedAt(LocalDateTime.of(2026, 6, 7, 10, 0));
+
+        when(memoryMapper.selectList(any(Wrapper.class))).thenReturn(List.of(oldPreference, newPreference, otherPreference));
+
+        List<MemoryDTO> result = service.recall(
+                1L,
+                20001L,
+                10001L,
+                50001L,
+                "answer style Java",
+                MemoryRecallFilter.builder()
+                        .categories(List.of("preference"))
+                        .topK(5)
+                        .build()
+        );
+
+        assertThat(result).extracting(MemoryDTO::content).containsExactly(
+                "User prefers concise answers.",
+                "User prefers Java examples."
+        );
+    }
+
+    @Test
+    void recallKeepsPinnedMemoryWhenConflictingPreferenceWouldOtherwiseRankHigher() {
+        MemoryEntity pinnedPreference = memory("PREFERENCE", "User prefers long detailed answers.");
+        pinnedPreference.setId(10L);
+        pinnedPreference.setMemoryCategory("preference");
+        pinnedPreference.setTags(new String[]{"answer_style"});
+        pinnedPreference.setImportance(0.2);
+        pinnedPreference.setUpdatedAt(LocalDateTime.of(2026, 6, 1, 10, 0));
+        pinnedPreference.setMetadata(JsonNodeFactory.instance.objectNode().put("pinned", true));
+
+        MemoryEntity highRankPreference = memory("PREFERENCE", "User prefers concise answers.");
+        highRankPreference.setId(11L);
+        highRankPreference.setMemoryCategory("preference");
+        highRankPreference.setTags(new String[]{"answer_style"});
+        highRankPreference.setImportance(1.0);
+        highRankPreference.setUpdatedAt(LocalDateTime.of(2026, 6, 8, 10, 0));
+
+        when(memoryMapper.selectList(any(Wrapper.class))).thenReturn(List.of(highRankPreference, pinnedPreference));
+
+        List<MemoryDTO> result = service.recall(
+                1L,
+                20001L,
+                10001L,
+                50001L,
+                "answer style",
+                MemoryRecallFilter.builder()
+                        .categories(List.of("preference"))
+                        .topK(5)
+                        .build()
+        );
+
+        assertThat(result).extracting(MemoryDTO::content).containsExactly("User prefers long detailed answers.");
     }
 
     private MemoryEntity memory(String type, String content) {

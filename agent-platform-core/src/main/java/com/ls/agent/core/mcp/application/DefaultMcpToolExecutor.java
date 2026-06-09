@@ -69,16 +69,29 @@ public class DefaultMcpToolExecutor implements McpToolExecutor {
         if (tools == null || tools.isEmpty()) {
             throw new BizException(ErrorCode.MCP_TOOL_FAILED, "MCP tool is unavailable: " + command.toolName());
         }
-        return tools.get(0);
+        for (McpToolEntity tool : tools) {
+            if (findServer(command, tool) != null) {
+                return tool;
+            }
+        }
+        throw new BizException(ErrorCode.MCP_TOOL_FAILED, "MCP tool is unavailable: " + command.toolName());
     }
 
     private McpServerEntity resolveServer(McpToolExecuteCommand command, McpToolEntity tool) {
+        McpServerEntity server = findServer(command, tool);
+        if (server == null) {
+            throw new BizException(ErrorCode.MCP_TOOL_FAILED, "MCP server is unavailable for tool: " + command.toolName());
+        }
+        return server;
+    }
+
+    private McpServerEntity findServer(McpToolExecuteCommand command, McpToolEntity tool) {
         var servers = mcpServerMapper.selectList(new LambdaQueryWrapper<McpServerEntity>()
                 .eq(McpServerEntity::getId, tool.getMcpServerId())
                 .eq(McpServerEntity::getTenantId, command.tenantId())
                 .eq(McpServerEntity::getStatus, SERVER_STATUS_ACTIVE));
         if (servers == null || servers.isEmpty()) {
-            throw new BizException(ErrorCode.MCP_TOOL_FAILED, "MCP server is unavailable for tool: " + command.toolName());
+            return null;
         }
         return servers.get(0);
     }

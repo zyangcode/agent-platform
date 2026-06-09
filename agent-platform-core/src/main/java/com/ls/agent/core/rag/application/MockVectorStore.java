@@ -70,8 +70,8 @@ public class MockVectorStore implements VectorStore {
     private boolean matchesScope(VectorStoreDocumentDTO document, VectorSearchQueryDTO query) {
         return Objects.equals(document.tenantId(), query.tenantId())
                 && Objects.equals(document.sourceType(), query.sourceType())
-                && Objects.equals(document.applicationId(), query.applicationId())
                 && Objects.equals(document.ownerUserId(), query.ownerUserId())
+                && (document.applicationId() == null || Objects.equals(document.applicationId(), query.applicationId()))
                 && (document.profileId() == null || Objects.equals(document.profileId(), query.profileId()));
     }
 
