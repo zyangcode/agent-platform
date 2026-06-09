@@ -154,18 +154,18 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
     public AgentRunResult run(AgentRunCommand command, TeamEventSink teamEventSink, ModelStreamCallback streamCallback) {
         // 1. 基础参数校验
         validate(command);
-        
+
         // 2. 开启链路追踪：记录 Agent 运行的总 Span
         TraceSpanDTO runSpan = safeStartSpan(command.traceId(), null, "agent_runtime.run", "AGENT",
                 objectMapper.createObjectNode().put("profileId", command.profileId()));
-        
+
         try {
             // 3. 确保会话存在（复用已有会话或创建新会话），并校验会话归属
             Long conversationId = ensureConversation(command);
-            
+
             // 4. 构建 Agent 执行上下文（包含记忆、提示词、可用工具等）
             AgentContextDTO context = buildContext(command, conversationId, spanId(runSpan));
-            
+
             // 5. 判断是否为“团队模式” (Team Mode)
             if (isTeamMode(command, context)) {
                 // A. 保存用户的原始输入消息
@@ -189,14 +189,14 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
 
             // 6. 单智能体模式：保存用户消息
             saveMessage(conversationId, command.traceId(), "user", command.userInput(), null);
-            
+
             // 7. 进入单智能体 ReAct 循环（思考 -> 调工具 -> 观察 -> 再思考）
             List<AgentToolEventDTO> toolEvents = new ArrayList<>();
             ModelInvokeResult modelResult = runModelLoop(command, context, spanId(runSpan), toolEvents, streamCallback);
-            
+
             // 8. 构建最终回答（可能包含后处理逻辑）
             String finalAssistantMessage = buildFinalAnswer(command, spanId(runSpan), modelResult.assistantMessage());
-            
+
             // 9. 保存 AI 的最终回复消息
             saveMessage(
                     conversationId,
@@ -205,14 +205,14 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
                     finalAssistantMessage,
                     modelResult.usage() == null ? null : modelResult.usage().completionTokens()
             );
-            
+
             // 10. 记录/更新长期记忆
             saveMemory(command, context, spanId(runSpan), conversationId, finalAssistantMessage, toolEvents);
-            
+
             // 11. 标记 Span 成功并返回结果
             safeFinishSpan(runSpan, "SUCCESS", null, null);
             return new AgentRunResult(conversationId, finalAssistantMessage, modelResult.usage(), toolEvents, context.ragSearchResults());
-            
+
         } catch (Exception ex) {
             // 12. 异常处理：标记 Span 失败并向上抛出
             safeFinishSpan(runSpan, "FAILED", errorCode(ex), errorMessage(ex));
@@ -270,7 +270,7 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
         List<ModelMessage> messages = new ArrayList<>(context.apiMessages());
         // 2. 解析并获取当前上下文下所有可用的工具列表
         List<AgentToolDTO> availableTools = safeTools(agentToolResolver.resolve(context));
-        
+
         // 3. 检查是否存在待处理的工具调用（例如需要人工确认的高风险工具）
         ModelInvokeResult resumedResult = resumePendingToolCallIfPresent(
                 command,
@@ -294,12 +294,12 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
         for (int step = 0; step < MAX_AGENT_STEPS; step++) {
             // A. 消息压缩：确保消息历史不超出模型的 Token 预算
             messages = compactMessages(command, parentSpanId, messages);
-            
+
             // B. 准备流式缓冲区：在 Agent 模式下，中间思考过程通常不直接流向前端，除非是最终回复
             BufferedStreamCallback bufferedStream = streamCallback == null
                     ? null
                     : new BufferedStreamCallback();
-            
+
             // C. 推送进度状态
             if (progress != null) {
                 progress.accept(step == 0 ? "正在分析..." : "正在进一步推理...");
@@ -352,7 +352,7 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
                         continue; // 继续下一轮循环，让模型观察工具执行结果
                     }
                 }
-                
+
                 // 确定没有工具调用且无需修复，则认为这是最终回答
                 if (streamCallback == null) {
                     return result;
@@ -364,7 +364,7 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
 
             // G. 模型请求了工具调用：记录 Assistant 的回复
             messages.add(new ModelMessage("assistant", result.assistantMessage()));
-            
+
             // H. 校验工具调用的合法性（权限、参数等）
             List<AgentToolValidationResult> validations = validateToolRequestBatch(
                     command,
@@ -372,7 +372,7 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
                     toolRequestBatch,
                     availableTools
             );
-            
+
             // I. 如果存在非法调用，将错误信息反馈给模型，尝试让其修正
             if (hasInvalidToolCall(validations)) {
                 for (AgentToolValidationResult validation : validations) {
@@ -388,7 +388,7 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
             if (progress != null) {
                 progress.accept("正在执行工具调用...");
             }
-            
+
             // K. 批量执行工具调用
             for (ToolExecutionResult toolResult : executeToolBatch(command, toolRequestBatch, availableTools, parentSpanId, step + 1)) {
                 // 记录执行事件（用于前端展示执行过程）
