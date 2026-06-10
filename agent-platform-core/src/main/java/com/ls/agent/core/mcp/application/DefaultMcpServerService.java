@@ -35,14 +35,17 @@ public class DefaultMcpServerService implements McpServerService {
     private final ObjectMapper objectMapper;
     private final StdioMcpClient stdioMcpClient;
     private final HttpMcpClient httpMcpClient;
+    private final SpringAiMcpClientAdapter springAiMcpClientAdapter;
 
     public DefaultMcpServerService(McpServerMapper mapper, McpToolMapper toolMapper, ObjectMapper objectMapper,
-                                   StdioMcpClient stdioMcpClient, HttpMcpClient httpMcpClient) {
+                                   StdioMcpClient stdioMcpClient, HttpMcpClient httpMcpClient,
+                                   SpringAiMcpClientAdapter springAiMcpClientAdapter) {
         this.mapper = mapper;
         this.toolMapper = toolMapper;
         this.objectMapper = objectMapper;
         this.stdioMcpClient = stdioMcpClient;
         this.httpMcpClient = httpMcpClient;
+        this.springAiMcpClientAdapter = springAiMcpClientAdapter;
     }
 
     @Override
@@ -102,6 +105,9 @@ public class DefaultMcpServerService implements McpServerService {
         }
         if ("HTTP".equalsIgnoreCase(server.getServerType())) {
             return httpMcpClient.listTools(server);
+        }
+        if (SpringAiMcpClientAdapter.supportsServerType(server.getServerType())) {
+            return springAiMcpClientAdapter.listTools(server);
         }
         return objectMapper.createObjectNode();
     }
@@ -164,8 +170,8 @@ public class DefaultMcpServerService implements McpServerService {
 
     private String normalizeServerType(String serverType) {
         String value = requiredText(serverType, "serverType").toUpperCase();
-        if (!"STDIO".equals(value) && !"HTTP".equals(value)) {
-            throw new BizException(ErrorCode.PARAM_INVALID, "serverType must be STDIO or HTTP");
+        if (!"STDIO".equals(value) && !"HTTP".equals(value) && !"STREAMABLE_HTTP".equals(value) && !"SSE".equals(value)) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "serverType must be STDIO, HTTP, STREAMABLE_HTTP or SSE");
         }
         return value;
     }

@@ -6,6 +6,7 @@ public final class ModelConstants {
     public static final String STATUS_DISABLED = "DISABLED";
     public static final String MODEL_MOCK_CHAT = "mock-chat";
     public static final String PROVIDER_OPENAI_COMPATIBLE = "OPENAI_COMPATIBLE";
+    public static final String PROVIDER_SPRING_AI = "SPRING_AI";
 
     private ModelConstants() {
     }

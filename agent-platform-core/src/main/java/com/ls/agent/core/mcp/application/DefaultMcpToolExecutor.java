@@ -24,19 +24,22 @@ public class DefaultMcpToolExecutor implements McpToolExecutor {
     private final McpServerMapper mcpServerMapper;
     private final StdioMcpClient stdioMcpClient;
     private final HttpMcpClient httpMcpClient;
+    private final SpringAiMcpClientAdapter springAiMcpClientAdapter;
 
     public DefaultMcpToolExecutor(
             ObjectMapper objectMapper,
             McpToolMapper mcpToolMapper,
             McpServerMapper mcpServerMapper,
             StdioMcpClient stdioMcpClient,
-            HttpMcpClient httpMcpClient
+            HttpMcpClient httpMcpClient,
+            SpringAiMcpClientAdapter springAiMcpClientAdapter
     ) {
         this.objectMapper = objectMapper;
         this.mcpToolMapper = mcpToolMapper;
         this.mcpServerMapper = mcpServerMapper;
         this.stdioMcpClient = stdioMcpClient;
         this.httpMcpClient = httpMcpClient;
+        this.springAiMcpClientAdapter = springAiMcpClientAdapter;
     }
 
     @Override
@@ -102,6 +105,9 @@ public class DefaultMcpToolExecutor implements McpToolExecutor {
         }
         if ("HTTP".equalsIgnoreCase(server.getServerType())) {
             return httpMcpClient;
+        }
+        if (SpringAiMcpClientAdapter.supportsServerType(server.getServerType())) {
+            return springAiMcpClientAdapter;
         }
         throw new BizException(ErrorCode.MCP_TOOL_FAILED, "Unsupported MCP server type: " + server.getServerType());
     }

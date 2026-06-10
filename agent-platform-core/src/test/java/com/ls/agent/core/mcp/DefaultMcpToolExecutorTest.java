@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ls.agent.core.mcp.application.DefaultMcpToolExecutor;
 import com.ls.agent.core.mcp.application.HttpMcpClient;
+import com.ls.agent.core.mcp.application.SpringAiMcpClientAdapter;
 import com.ls.agent.core.mcp.application.StdioMcpClient;
 import com.ls.agent.core.mcp.command.McpToolExecuteCommand;
 import com.ls.agent.core.mcp.dto.McpToolExecuteResult;
@@ -29,6 +30,7 @@ class DefaultMcpToolExecutorTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final McpToolMapper toolMapper = mock(McpToolMapper.class);
     private final McpServerMapper serverMapper = mock(McpServerMapper.class);
+    private final SpringAiMcpClientAdapter springAiMcpClient = mock(SpringAiMcpClientAdapter.class);
 
     @Test
     void readFileDispatchesThroughResolvedMcpClient() {
@@ -47,7 +49,8 @@ class DefaultMcpToolExecutorTest {
                     .put("path", invocation.<JsonNode>getArgument(2).get("path").asText())
                     .put("content", "real mcp content");
         });
-        DefaultMcpToolExecutor executor = new DefaultMcpToolExecutor(objectMapper, toolMapper, serverMapper, stdioClient, httpClient);
+        DefaultMcpToolExecutor executor = new DefaultMcpToolExecutor(
+                objectMapper, toolMapper, serverMapper, stdioClient, httpClient, springAiMcpClient);
         when(serverMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(server));
         when(toolMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(tool));
 
@@ -82,7 +85,8 @@ class DefaultMcpToolExecutorTest {
         StdioMcpClient stdioClient = mock(StdioMcpClient.class);
         HttpMcpClient httpClient = mock(HttpMcpClient.class);
         when(stdioClient.callTool(any(), any(), any())).thenReturn(objectMapper.createObjectNode().put("ok", true));
-        DefaultMcpToolExecutor executor = new DefaultMcpToolExecutor(objectMapper, toolMapper, serverMapper, stdioClient, httpClient);
+        DefaultMcpToolExecutor executor = new DefaultMcpToolExecutor(
+                objectMapper, toolMapper, serverMapper, stdioClient, httpClient, springAiMcpClient);
         when(toolMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(otherTenantTool, currentTenantTool));
         when(serverMapper.selectList(any(LambdaQueryWrapper.class)))
                 .thenReturn(List.of())
@@ -99,6 +103,32 @@ class DefaultMcpToolExecutorTest {
         ArgumentCaptor<McpServerEntity> serverCaptor = ArgumentCaptor.forClass(McpServerEntity.class);
         verify(stdioClient).callTool(serverCaptor.capture(), any(), any());
         assertThat(serverCaptor.getValue().getId()).isEqualTo(10L);
+    }
+
+    @Test
+    void streamableHttpToolDispatchesThroughSpringAiMcpClientAdapter() {
+        McpServerEntity server = server();
+        server.setServerType("STREAMABLE_HTTP");
+        McpToolEntity tool = tool();
+        StdioMcpClient stdioClient = mock(StdioMcpClient.class);
+        HttpMcpClient httpClient = mock(HttpMcpClient.class);
+        when(springAiMcpClient.callTool(any(), any(), any()))
+                .thenReturn(objectMapper.createObjectNode().put("answer", "from spring ai mcp"));
+        DefaultMcpToolExecutor executor = new DefaultMcpToolExecutor(
+                objectMapper, toolMapper, serverMapper, stdioClient, httpClient, springAiMcpClient);
+        when(serverMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(server));
+        when(toolMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(tool));
+
+        McpToolExecuteResult result = executor.execute(new McpToolExecuteCommand(
+                1L,
+                10001L,
+                "read_file",
+                objectMapper.createObjectNode().put("path", "demo.txt")
+        ));
+
+        assertThat(result.success()).isTrue();
+        assertThat(result.output().get("answer").asText()).isEqualTo("from spring ai mcp");
+        verify(springAiMcpClient).callTool(server, "read_file", objectMapper.createObjectNode().put("path", "demo.txt"));
     }
 
     private McpServerEntity server() {

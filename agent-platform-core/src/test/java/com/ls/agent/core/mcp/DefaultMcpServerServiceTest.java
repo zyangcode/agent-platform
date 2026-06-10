@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ls.agent.common.error.BizException;
 import com.ls.agent.core.mcp.application.DefaultMcpServerService;
 import com.ls.agent.core.mcp.application.HttpMcpClient;
+import com.ls.agent.core.mcp.application.SpringAiMcpClientAdapter;
 import com.ls.agent.core.mcp.application.StdioMcpClient;
 import com.ls.agent.core.mcp.command.CreateMcpServerCommand;
 import com.ls.agent.core.mcp.dto.McpServerDTO;
@@ -33,8 +34,9 @@ class DefaultMcpServerServiceTest {
     private final McpToolMapper toolMapper = mock(McpToolMapper.class);
     private final StdioMcpClient stdioClient = mock(StdioMcpClient.class);
     private final HttpMcpClient httpClient = mock(HttpMcpClient.class);
+    private final SpringAiMcpClientAdapter springAiMcpClient = mock(SpringAiMcpClientAdapter.class);
     private final DefaultMcpServerService service = new DefaultMcpServerService(
-            mapper, toolMapper, objectMapper, stdioClient, httpClient);
+            mapper, toolMapper, objectMapper, stdioClient, httpClient, springAiMcpClient);
 
     @Test
     void createPersistsActiveServerInTenantScope() {
@@ -118,6 +120,30 @@ class DefaultMcpServerServiceTest {
         verify(toolMapper).insert(insertCaptor.capture());
         assertThat(insertCaptor.getValue().getName()).isEqualTo("calculator");
         assertThat(insertCaptor.getValue().getStatus()).isEqualTo("AVAILABLE");
+    }
+
+    @Test
+    void createStreamableHttpDiscoversToolsThroughSpringAiMcpClientAdapter() {
+        when(toolMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
+        when(springAiMcpClient.listTools(any())).thenReturn(objectMapper.createObjectNode().set("tools", tools(
+                toolNode("web.search", "Search web")
+        )));
+
+        service.create(new CreateMcpServerCommand(
+                1L,
+                "Remote MCP",
+                "streamable_http",
+                objectMapper.createObjectNode().put("baseUrl", "https://mcp.example.test").put("endpoint", "/mcp")
+        ));
+
+        ArgumentCaptor<McpServerEntity> serverCaptor = ArgumentCaptor.forClass(McpServerEntity.class);
+        verify(mapper).insert(serverCaptor.capture());
+        assertThat(serverCaptor.getValue().getServerType()).isEqualTo("STREAMABLE_HTTP");
+        verify(springAiMcpClient).listTools(serverCaptor.getValue());
+        ArgumentCaptor<McpToolEntity> toolCaptor = ArgumentCaptor.forClass(McpToolEntity.class);
+        verify(toolMapper).insert(toolCaptor.capture());
+        assertThat(toolCaptor.getValue().getName()).isEqualTo("web.search");
+        assertThat(toolCaptor.getValue().getDescription()).isEqualTo("Search web");
     }
 
     private McpServerEntity activeServer() {
