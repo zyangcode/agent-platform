@@ -12,6 +12,7 @@ target/
 # 临时资料与本地预览产物
 .firecrawl/
 docs/superpowers/plans/
+docs/
 *.preview.png
 
 # 本地设计、学习与过程资料目录（最终源码交付不纳入新增文件）

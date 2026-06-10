@@ -8,19 +8,19 @@
 
 ### 系统架构
 
-![系统架构图](docs/agent-platform-architecture.svg)
+![系统架构图](readme-assets/agent-platform-architecture.svg)
 
 ### 单 Agent 核心流程
 
-![单 Agent 核心流程图](docs/readme-assets/single-agent-run-model-loop.svg)
+![单 Agent 核心流程图](readme-assets/single-agent-run-model-loop.svg)
 
 ### 记忆系统与 RAG 流程
 
-![查询检索与上下文注入统一流程](docs/readme-assets/memory-query-context.svg)
+![查询检索与上下文注入统一流程](readme-assets/memory-query-context.svg)
 
-![写入存储流程](docs/readme-assets/memory-write-storage.svg)
+![写入存储流程](readme-assets/memory-write-storage.svg)
 
-![RAG 知识库入库流程](docs/readme-assets/rag-ingest-flow.svg)
+![RAG 知识库入库流程](readme-assets/rag-ingest-flow.svg)
 
 ## 当前定位
 
@@ -59,10 +59,7 @@ agent-platform/
 ├─ agent-platform-gateway/     AI 调用治理入口：API Key 鉴权、Trace、Quota、敏感数据、告警
 ├─ agent-platform-frontend/    React 控制台
 ├─ data/                       本地运行数据目录
-├─ docs/                       运行或交付补充文档
 ├─ scripts/                    辅助脚本
-├─ 考核设计/                    需求、架构、接口、数据库等设计文档
-├─ 实际开发/                    阶段开发记录、优化设计、验收材料
 ├─ docker-compose.yml          完整容器化启动
 ├─ docker-compose.dev.yml      仅启动 PostgreSQL 和 Qdrant
 └─ pom.xml                     Maven 父 POM
@@ -455,13 +452,6 @@ npm run lint
 | 路径 | 说明 |
 |---|---|
 | `CLAUDE.md` | 项目协作、架构、阶段约束和关键设计备忘 |
-| `考核设计/功能设计/` | 功能清单与 MVP 分阶段路线 |
-| `考核设计/架构与模块设计/` | 模块边界、目录结构、架构原则 |
-| `考核设计/数据库模型设计/` | 数据库模型与关系图 |
-| `考核设计/接口设计/` | 阶段接口设计 |
-| `实际开发/阶段1/` | 阶段 1 执行与验收记录 |
-| `实际开发/阶段4/` | Agent Team 设计与执行记录 |
-| `实际开发/优化阶段/` | 单 Agent、记忆、RAG 优化材料 |
 
 ## License
 
