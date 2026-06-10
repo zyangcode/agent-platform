@@ -73,6 +73,8 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
     private static final String CHANNEL_WEB = "WEB";
     private static final String STATUS_ACTIVE = "ACTIVE";
     private static final String MEMORY_TYPE_SUMMARY = "SUMMARY";
+    private static final String MEMORY_SCOPE_PROFILE_LONG_TERM = "PROFILE_LONG_TERM";
+    private static final String MEMORY_SCOPE_CONVERSATION_TEMP = "CONVERSATION_TEMP";
     private static final int TITLE_MAX_LENGTH = 60;
     private static final int MAX_AGENT_STEPS = 6;
     private static final int MAX_TOOL_CALLS = 8;
@@ -1113,7 +1115,8 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
                     List.of(),
                     null,
                     null,
-                    memoryStrategyMode
+                    memoryStrategyMode,
+                    MEMORY_SCOPE_CONVERSATION_TEMP
             ));
             for (RecordMemoryCommand preference : preferences) {
                 memoryWriteService.record(withMemoryStrategy(preference, memoryStrategyMode));
@@ -1159,7 +1162,8 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
                         List.of("tool_failure", "tool:" + event.toolName()),
                         0.7,
                         "EXPERIENCE_SKILL",
-                        memoryStrategyMode
+                        memoryStrategyMode,
+                        MEMORY_SCOPE_PROFILE_LONG_TERM
                 ));
             }
         }
@@ -1175,7 +1179,8 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
                 reflectionTags(observations),
                 0.55,
                 "EXPERIENCE_SKILL",
-                memoryStrategyMode
+                memoryStrategyMode,
+                MEMORY_SCOPE_PROFILE_LONG_TERM
         ));
         return memories;
     }
@@ -1240,7 +1245,10 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
                 command.tags(),
                 command.importance(),
                 command.slotHint(),
-                memoryStrategyMode
+                memoryStrategyMode,
+                command.memoryScope() == null || command.memoryScope().isBlank()
+                        ? MEMORY_SCOPE_PROFILE_LONG_TERM
+                        : command.memoryScope()
         );
     }
 

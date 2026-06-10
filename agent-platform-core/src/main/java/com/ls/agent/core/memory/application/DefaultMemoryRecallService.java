@@ -27,6 +27,8 @@ import java.util.stream.Collectors;
 public class DefaultMemoryRecallService implements MemoryRecallService {
 
     private static final String STATUS_ACTIVE = "ACTIVE";
+    private static final String SCOPE_PROFILE_LONG_TERM = "PROFILE_LONG_TERM";
+    private static final String SCOPE_CONVERSATION_TEMP = "CONVERSATION_TEMP";
     private static final int FETCH_MULTIPLIER = 10;
     private static final double RRF_K = 60.0;
     private static final Pattern KEYWORD_SPLITTER = Pattern.compile(
@@ -186,6 +188,7 @@ public class DefaultMemoryRecallService implements MemoryRecallService {
                     applicationId,
                     userId,
                     profileId,
+                    resolvedFilter,
                     keywords,
                     Math.max(1, limit * FETCH_MULTIPLIER)
             );
@@ -245,6 +248,7 @@ public class DefaultMemoryRecallService implements MemoryRecallService {
             Long applicationId,
             Long userId,
             Long profileId,
+            MemoryRecallFilter filter,
             List<String> keywords,
             int limit
     ) {
@@ -256,6 +260,8 @@ public class DefaultMemoryRecallService implements MemoryRecallService {
                     profileId,
                     keywords,
                     String.join(" ", keywords),
+                    filter.memoryScopes(),
+                    filter.sourceConversationId(),
                     limit
             );
             return memories == null ? List.of() : memories;
@@ -384,7 +390,9 @@ public class DefaultMemoryRecallService implements MemoryRecallService {
                         userId,
                         profileId,
                         queryVector,
-                        Math.max(1, limit * FETCH_MULTIPLIER)
+                        Math.max(1, limit * FETCH_MULTIPLIER),
+                        filter.memoryScopes(),
+                        filter.sourceConversationId()
                 ));
                 if (vectorSpan != null && vectorSpan.attributes() instanceof com.fasterxml.jackson.databind.node.ObjectNode attributes) {
                     attributes.put("resultCount", vectorResults == null ? 0 : vectorResults.size());
@@ -567,6 +575,9 @@ public class DefaultMemoryRecallService implements MemoryRecallService {
         if (minUpdatedAt != null && memory.getUpdatedAt() != null && memory.getUpdatedAt().isBefore(minUpdatedAt)) {
             return false;
         }
+        if (!matchesMemoryScope(memory, filter)) {
+            return false;
+        }
         if (!filter.categories().isEmpty()) {
             String category = normalizeCategory(memory);
             if (!filter.categories().contains(category)) {
@@ -580,6 +591,29 @@ public class DefaultMemoryRecallService implements MemoryRecallService {
             }
         }
         return true;
+    }
+
+    private boolean matchesMemoryScope(MemoryEntity memory, MemoryRecallFilter filter) {
+        String memoryScope = normalizeMemoryScope(memory);
+        if (filter.memoryScopes().isEmpty()) {
+            return !SCOPE_CONVERSATION_TEMP.equals(memoryScope);
+        }
+        if (!filter.memoryScopes().contains(memoryScope)) {
+            return false;
+        }
+        if (SCOPE_CONVERSATION_TEMP.equals(memoryScope)) {
+            return filter.sourceConversationId() != null
+                    && Objects.equals(memory.getSourceConversationId(), filter.sourceConversationId());
+        }
+        return true;
+    }
+
+    private String normalizeMemoryScope(MemoryEntity memory) {
+        String scope = memory.getMemoryScope();
+        if (scope == null || scope.isBlank()) {
+            return SCOPE_PROFILE_LONG_TERM;
+        }
+        return scope.strip().toUpperCase(Locale.ROOT);
     }
 
     private double score(MemoryEntity memory, List<String> keywords) {

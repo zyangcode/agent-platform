@@ -30,6 +30,9 @@ public class MemoryEntity extends BaseEntity {
     @TableField("memory_category")
     private String memoryCategory;
 
+    @TableField("memory_scope")
+    private String memoryScope;
+
     private String content;
     @TableField(typeHandler = StringArrayTypeHandler.class)
     private String[] keywords;
@@ -108,6 +111,14 @@ public class MemoryEntity extends BaseEntity {
 
     public void setMemoryCategory(String memoryCategory) {
         this.memoryCategory = memoryCategory;
+    }
+
+    public String getMemoryScope() {
+        return memoryScope;
+    }
+
+    public void setMemoryScope(String memoryScope) {
+        this.memoryScope = memoryScope;
     }
 
     public String getContent() {

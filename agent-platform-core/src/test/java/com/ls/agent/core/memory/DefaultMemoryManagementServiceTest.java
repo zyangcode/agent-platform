@@ -71,6 +71,8 @@ class DefaultMemoryManagementServiceTest {
                 eq(50001L),
                 eq(List.of("basketball", "preference")),
                 eq("basketball preference"),
+                eq(List.of("PROFILE_LONG_TERM")),
+                eq(null),
                 eq(20)
         )).thenReturn(List.of(memory));
 
@@ -102,6 +104,30 @@ class DefaultMemoryManagementServiceTest {
                 10001L,
                 50001L,
                 "preference",
+                null,
+                20
+        );
+
+        assertThat(result).extracting(MemoryRecordDTO::id).containsExactly(88L);
+    }
+
+    @Test
+    void listExcludesConversationTemporaryMemoriesFromDefaultManagementView() {
+        MemoryEntity temporary = memory(87L, "Current conversation temporary summary");
+        temporary.setMemoryType("SUMMARY");
+        temporary.setMemoryCategory("summary");
+        temporary.setMemoryScope("CONVERSATION_TEMP");
+        temporary.setSourceConversationId(90001L);
+        MemoryEntity longTerm = memory(88L, "Profile long-term preference");
+        longTerm.setMemoryScope("PROFILE_LONG_TERM");
+        when(memoryMapper.selectList(any(Wrapper.class))).thenReturn(List.of(temporary, longTerm));
+
+        List<MemoryRecordDTO> result = service.list(
+                1L,
+                20001L,
+                10001L,
+                50001L,
+                null,
                 null,
                 20
         );
@@ -242,6 +268,46 @@ class DefaultMemoryManagementServiceTest {
         assertThat(result).isNull();
         verify(memoryMapper, never()).updateById(any(MemoryEntity.class));
         verify(vectorStore, never()).upsert(any(VectorStoreDocumentDTO.class));
+    }
+
+    @Test
+    void updateIgnoresConversationTemporaryMemory() {
+        MemoryEntity temporary = memory(88L, "Current conversation temporary summary");
+        temporary.setMemoryScope("CONVERSATION_TEMP");
+        temporary.setSourceConversationId(90001L);
+        when(memoryMapper.selectById(88L)).thenReturn(temporary);
+
+        MemoryRecordDTO result = service.update(new UpdateMemoryCommand(
+                1L,
+                20001L,
+                10001L,
+                50001L,
+                88L,
+                "Should not update",
+                "summary",
+                List.of(),
+                0.5,
+                null,
+                null
+        ));
+
+        assertThat(result).isNull();
+        verify(memoryMapper, never()).updateById(any(MemoryEntity.class));
+        verify(vectorStore, never()).upsert(any(VectorStoreDocumentDTO.class));
+    }
+
+    @Test
+    void disableIgnoresConversationTemporaryMemory() {
+        MemoryEntity temporary = memory(88L, "Current conversation temporary summary");
+        temporary.setMemoryScope("CONVERSATION_TEMP");
+        temporary.setSourceConversationId(90001L);
+        when(memoryMapper.selectById(88L)).thenReturn(temporary);
+
+        int changed = service.disable(1L, 20001L, 10001L, 50001L, 88L);
+
+        assertThat(changed).isZero();
+        verify(memoryMapper, never()).updateById(any(MemoryEntity.class));
+        verify(vectorStore, never()).deleteByDocument(any(), any(), any(), any(), any(), any());
     }
 
     private MemoryEntity memory(Long id, String content) {

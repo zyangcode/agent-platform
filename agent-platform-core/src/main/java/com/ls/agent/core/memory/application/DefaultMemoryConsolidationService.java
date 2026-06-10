@@ -26,6 +26,7 @@ public class DefaultMemoryConsolidationService {
 
     private static final String STATUS_ACTIVE = "ACTIVE";
     private static final String STATUS_ARCHIVED = "ARCHIVED";
+    private static final String SCOPE_PROFILE_LONG_TERM = "PROFILE_LONG_TERM";
     private static final String VECTOR_SOURCE_MEMORY = "memory";
     private static final int STALE_DAYS = 30;
     private static final double DECAY_RATE = 0.85;
@@ -90,6 +91,12 @@ public class DefaultMemoryConsolidationService {
         if (memories == null || memories.isEmpty()) {
             return new MemoryConsolidationResult(0, 0, 0, 0);
         }
+        memories = memories.stream()
+                .filter(this::isProfileLongTerm)
+                .toList();
+        if (memories.isEmpty()) {
+            return new MemoryConsolidationResult(0, 0, 0, 0);
+        }
 
         LocalDateTime now = LocalDateTime.now();
         List<MemoryEntity> active = new ArrayList<>();
@@ -143,7 +150,10 @@ public class DefaultMemoryConsolidationService {
         LambdaQueryWrapper<MemoryEntity> wrapper = new LambdaQueryWrapper<MemoryEntity>()
                 .eq(MemoryEntity::getTenantId, tenantId)
                 .eq(MemoryEntity::getUserId, userId)
-                .eq(MemoryEntity::getStatus, STATUS_ACTIVE);
+                .eq(MemoryEntity::getStatus, STATUS_ACTIVE)
+                .and(w -> w.isNull(MemoryEntity::getMemoryScope)
+                        .or()
+                        .eq(MemoryEntity::getMemoryScope, SCOPE_PROFILE_LONG_TERM));
         if (applicationId == null) {
             wrapper.isNull(MemoryEntity::getApplicationId);
         } else {
@@ -215,7 +225,8 @@ public class DefaultMemoryConsolidationService {
 
     private boolean sameKind(MemoryEntity first, MemoryEntity second) {
         return normalize(first.getMemoryType()).equals(normalize(second.getMemoryType()))
-                && normalize(category(first)).equals(normalize(category(second)));
+                && normalize(category(first)).equals(normalize(category(second)))
+                && normalizeMemoryScope(first).equals(normalizeMemoryScope(second));
     }
 
     private String category(MemoryEntity memory) {
@@ -277,6 +288,18 @@ public class DefaultMemoryConsolidationService {
         return memory != null
                 && memory.getMetadata() != null
                 && memory.getMetadata().path("pinned").asBoolean(false);
+    }
+
+    private boolean isProfileLongTerm(MemoryEntity memory) {
+        return SCOPE_PROFILE_LONG_TERM.equals(normalizeMemoryScope(memory));
+    }
+
+    private String normalizeMemoryScope(MemoryEntity memory) {
+        String memoryScope = memory == null ? null : memory.getMemoryScope();
+        if (memoryScope == null || memoryScope.isBlank()) {
+            return SCOPE_PROFILE_LONG_TERM;
+        }
+        return memoryScope.strip().toUpperCase(Locale.ROOT);
     }
 
     private String normalize(String value) {

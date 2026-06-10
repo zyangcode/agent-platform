@@ -31,6 +31,8 @@ public class DefaultMemoryManagementService implements MemoryManagementService {
     private static final String SOURCE_TYPE_MEMORY = "memory";
     private static final String STATUS_ACTIVE = "ACTIVE";
     private static final String STATUS_DISABLED = "DISABLED";
+    private static final String SCOPE_PROFILE_LONG_TERM = "PROFILE_LONG_TERM";
+    private static final String SCOPE_CONVERSATION_TEMP = "CONVERSATION_TEMP";
     private static final int DEFAULT_LIMIT = 50;
     private static final int MAX_LIMIT = 200;
 
@@ -89,6 +91,7 @@ public class DefaultMemoryManagementService implements MemoryManagementService {
                         .gt(MemoryEntity::getExpiresAt, LocalDateTime.now()));
         appendApplicationScope(wrapper, applicationId);
         appendProfileScope(wrapper, profileId);
+        appendLongTermScope(wrapper);
         if (category != null && !category.isBlank()) {
             wrapper.eq(MemoryEntity::getMemoryCategory, normalize(category));
         }
@@ -100,6 +103,7 @@ public class DefaultMemoryManagementService implements MemoryManagementService {
                 .last("limit " + resolvedLimit);
         return memoryMapper.selectList(wrapper).stream()
                 .filter(memory -> !isExpired(memory))
+                .filter(this::isProfileLongTerm)
                 .map(this::toDTO)
                 .toList();
     }
@@ -125,6 +129,8 @@ public class DefaultMemoryManagementService implements MemoryManagementService {
                     profileId,
                     terms,
                     String.join(" ", terms),
+                    List.of("PROFILE_LONG_TERM"),
+                    null,
                     limit
             );
             if (memories == null || memories.isEmpty()) {
@@ -133,6 +139,7 @@ public class DefaultMemoryManagementService implements MemoryManagementService {
             String normalizedCategory = category == null || category.isBlank() ? null : normalize(category);
             return memories.stream()
                     .filter(memory -> !isExpired(memory))
+                    .filter(this::isProfileLongTerm)
                     .filter(memory -> normalizedCategory == null || normalizedCategory.equals(resolveCategory(memory)))
                     .toList();
         } catch (RuntimeException ex) {
@@ -209,6 +216,9 @@ public class DefaultMemoryManagementService implements MemoryManagementService {
         if (memory == null || !STATUS_ACTIVE.equals(memory.getStatus())) {
             return null;
         }
+        if (!isProfileLongTerm(memory)) {
+            return null;
+        }
         if (!tenantId.equals(memory.getTenantId()) || !userId.equals(memory.getUserId())) {
             return null;
         }
@@ -238,6 +248,12 @@ public class DefaultMemoryManagementService implements MemoryManagementService {
                 .eq(MemoryEntity::getProfileId, profileId));
     }
 
+    private void appendLongTermScope(LambdaQueryWrapper<MemoryEntity> wrapper) {
+        wrapper.and(w -> w.isNull(MemoryEntity::getMemoryScope)
+                .or()
+                .eq(MemoryEntity::getMemoryScope, SCOPE_PROFILE_LONG_TERM));
+    }
+
     private boolean visibleInScope(Long requested, Long actual) {
         if (actual == null) {
             return true;
@@ -247,6 +263,15 @@ public class DefaultMemoryManagementService implements MemoryManagementService {
 
     private boolean isExpired(MemoryEntity memory) {
         return memory.getExpiresAt() != null && !memory.getExpiresAt().isAfter(LocalDateTime.now());
+    }
+
+    private boolean isProfileLongTerm(MemoryEntity memory) {
+        String memoryScope = memory.getMemoryScope();
+        if (memoryScope == null || memoryScope.isBlank()) {
+            return true;
+        }
+        return SCOPE_PROFILE_LONG_TERM.equals(memoryScope.strip().toUpperCase(Locale.ROOT))
+                && !SCOPE_CONVERSATION_TEMP.equals(memoryScope.strip().toUpperCase(Locale.ROOT));
     }
 
     private void upsertVector(MemoryEntity memory) {
@@ -267,7 +292,9 @@ public class DefaultMemoryManagementService implements MemoryManagementService {
                     memory.getProfileId(),
                     memory.getId(),
                     memory.getId(),
-                    vector
+                    vector,
+                    memory.getMemoryScope(),
+                    memory.getSourceConversationId()
             ));
         } catch (RuntimeException ignored) {
             // Vector index is derived data; PostgreSQL remains the memory source of truth.

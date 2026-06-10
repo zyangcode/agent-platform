@@ -20,6 +20,8 @@ class MemoryMapperTest {
                 Long.class,
                 java.util.List.class,
                 String.class,
+                java.util.List.class,
+                Long.class,
                 int.class
         );
 
@@ -33,6 +35,9 @@ class MemoryMapperTest {
                 "regexp_replace(lower(m.content)",
                 "[[:space:]]+",
                 "(m.expires_at is null or m.expires_at > now())",
+                "coalesce(m.memory_scope, 'PROFILE_LONG_TERM') in",
+                "coalesce(m.memory_scope, 'PROFILE_LONG_TERM') != 'CONVERSATION_TEMP'",
+                "m.source_conversation_id = #{sourceConversationId}",
                 "order by keyword_score desc"
         );
     }

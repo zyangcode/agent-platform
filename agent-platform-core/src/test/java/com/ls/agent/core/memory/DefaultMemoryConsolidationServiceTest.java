@@ -74,6 +74,31 @@ class DefaultMemoryConsolidationServiceTest {
     }
 
     @Test
+    void consolidateIgnoresConversationTemporaryMemories() {
+        MemoryEntity temporary = memory(1L, "Current conversation summary", 0.9);
+        temporary.setMemoryScope("CONVERSATION_TEMP");
+        temporary.setSourceConversationId(90001L);
+        temporary.setLastAccessedAt(LocalDateTime.now().minusDays(60));
+        temporary.setExpiresAt(LocalDateTime.now().minusDays(1));
+
+        MemoryEntity longTerm = memory(2L, "User likes basketball after work", 0.6);
+        longTerm.setMemoryScope("PROFILE_LONG_TERM");
+        longTerm.setLastAccessedAt(LocalDateTime.now().minusDays(40));
+
+        when(memoryMapper.selectList(any(Wrapper.class))).thenReturn(List.of(temporary, longTerm));
+
+        MemoryConsolidationResult result = service.consolidate(1L, 10001L, 20001L, 50001L);
+
+        ArgumentCaptor<MemoryEntity> captor = ArgumentCaptor.forClass(MemoryEntity.class);
+        verify(memoryMapper).updateById(captor.capture());
+        assertThat(captor.getValue().getId()).isEqualTo(2L);
+        assertThat(result.scannedCount()).isEqualTo(1);
+        assertThat(result.expiredCount()).isZero();
+        assertThat(result.decayedCount()).isEqualTo(1);
+        verify(vectorStore, never()).deleteByDocument("memory", 1L, 20001L, 10001L, 50001L, 1L);
+    }
+
+    @Test
     void consolidateDoesNotDecayPinnedStaleMemory() {
         MemoryEntity pinned = memory(1L, "Pinned answer style", 0.6);
         pinned.setLastAccessedAt(LocalDateTime.now().minusDays(60));

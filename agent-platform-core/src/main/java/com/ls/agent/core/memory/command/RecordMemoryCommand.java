@@ -14,7 +14,8 @@ public record RecordMemoryCommand(
         List<String> tags,
         Double importance,
         String slotHint,
-        String memoryStrategyMode
+        String memoryStrategyMode,
+        String memoryScope
 ) {
 
     public RecordMemoryCommand(
@@ -26,7 +27,7 @@ public record RecordMemoryCommand(
             String content,
             Long sourceConversationId
     ) {
-        this(tenantId, userId, applicationId, profileId, memoryType, content, sourceConversationId, null, List.of(), null, null, null);
+        this(tenantId, userId, applicationId, profileId, memoryType, content, sourceConversationId, null, List.of(), null, null, null, null);
     }
 
     public RecordMemoryCommand(
@@ -42,7 +43,24 @@ public record RecordMemoryCommand(
             Double importance,
             String slotHint
     ) {
-        this(tenantId, userId, applicationId, profileId, memoryType, content, sourceConversationId, memoryCategory, tags, importance, slotHint, null);
+        this(tenantId, userId, applicationId, profileId, memoryType, content, sourceConversationId, memoryCategory, tags, importance, slotHint, null, null);
+    }
+
+    public RecordMemoryCommand(
+            Long tenantId,
+            Long userId,
+            Long applicationId,
+            Long profileId,
+            String memoryType,
+            String content,
+            Long sourceConversationId,
+            String memoryCategory,
+            List<String> tags,
+            Double importance,
+            String slotHint,
+            String memoryStrategyMode
+    ) {
+        this(tenantId, userId, applicationId, profileId, memoryType, content, sourceConversationId, memoryCategory, tags, importance, slotHint, memoryStrategyMode, null);
     }
 
     public RecordMemoryCommand {

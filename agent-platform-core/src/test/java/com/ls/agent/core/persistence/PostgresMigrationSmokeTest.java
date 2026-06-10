@@ -52,7 +52,8 @@ class PostgresMigrationSmokeTest {
 
             MemoryMapper memoryMapper = context.getBean(MemoryMapper.class);
             List<MemoryEntity> memories = memoryMapper.searchActiveMemories(
-                    1L, 9001L, 1L, 9001L, List.of("kotlin"), "kotlin preference", 10);
+                    1L, 9001L, 1L, 9001L, List.of("kotlin"), "kotlin preference",
+                    List.of("PROFILE_LONG_TERM"), null, 10);
 
             assertThat(memories)
                     .extracting(MemoryEntity::getId)

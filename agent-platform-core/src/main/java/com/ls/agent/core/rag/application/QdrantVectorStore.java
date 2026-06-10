@@ -65,6 +65,8 @@ public class QdrantVectorStore implements VectorStore {
             putLong(payload, "profile_id", document.profileId());
             putLong(payload, "document_id", document.documentId());
             putLong(payload, "chunk_id", document.chunkId());
+            putString(payload, "memory_scope", document.memoryScope());
+            putLong(payload, "source_conversation_id", document.sourceConversationId());
             payload.put("embedding_model", document.vector().model());
 
             httpClient.send("PUT", "/collections/" + properties.collectionName() + "/points?wait=true", root);
@@ -87,7 +89,7 @@ public class QdrantVectorStore implements VectorStore {
             root.put("limit", query.topK());
             root.put("with_payload", true);
             root.set("filter", searchScopedFilter(query.tenantId(), query.applicationId(), query.ownerUserId(),
-                    query.profileId(), null, query.sourceType()));
+                    query.profileId(), null, query.sourceType(), query.memoryScopes(), query.sourceConversationId()));
 
             JsonNode response = httpClient.send(
                     "POST",
@@ -212,7 +214,9 @@ public class QdrantVectorStore implements VectorStore {
             Long ownerUserId,
             Long profileId,
             Long documentId,
-            String sourceType
+            String sourceType,
+            List<String> memoryScopes,
+            Long sourceConversationId
     ) {
         ObjectNode filter = objectMapper.createObjectNode();
         ArrayNode must = filter.putArray("must");
@@ -222,6 +226,9 @@ public class QdrantVectorStore implements VectorStore {
         addMatch(must, "owner_user_id", ownerUserId);
         addVisibleScope(must, "profile_id", profileId);
         addMatch(must, "document_id", documentId);
+        if ("memory".equals(sourceType)) {
+            addMemoryScope(must, memoryScopes, sourceConversationId);
+        }
         return filter;
     }
 
@@ -258,6 +265,42 @@ public class QdrantVectorStore implements VectorStore {
         global.putObject("is_empty").put("key", key);
     }
 
+    private void addMemoryScope(ArrayNode must, List<String> memoryScopes, Long sourceConversationId) {
+        if (memoryScopes == null || memoryScopes.isEmpty()) {
+            ObjectNode excludeConversationTemp = must.addObject();
+            ArrayNode mustNot = excludeConversationTemp.putArray("must_not");
+            ObjectNode conversationTemp = mustNot.addObject();
+            conversationTemp.put("key", "memory_scope");
+            conversationTemp.putObject("match").put("value", "CONVERSATION_TEMP");
+            return;
+        }
+        ObjectNode anyScope = must.addObject();
+        ArrayNode should = anyScope.putArray("should");
+        for (String memoryScope : memoryScopes) {
+            if (memoryScope == null || memoryScope.isBlank()) {
+                continue;
+            }
+            String normalizedScope = memoryScope.strip().toUpperCase(java.util.Locale.ROOT);
+            if ("PROFILE_LONG_TERM".equals(normalizedScope)) {
+                addMatch(should, "memory_scope", "PROFILE_LONG_TERM");
+                should.addObject().putObject("is_empty").put("key", "memory_scope");
+            } else if ("CONVERSATION_TEMP".equals(normalizedScope)) {
+                if (sourceConversationId == null) {
+                    continue;
+                }
+                ObjectNode conversationScope = should.addObject();
+                ArrayNode scopeMust = conversationScope.putArray("must");
+                addMatch(scopeMust, "memory_scope", "CONVERSATION_TEMP");
+                addMatch(scopeMust, "source_conversation_id", sourceConversationId);
+            } else {
+                addMatch(should, "memory_scope", normalizedScope);
+            }
+        }
+        if (should.isEmpty()) {
+            addMatch(should, "memory_scope", "__NO_MATCH__");
+        }
+    }
+
     private ArrayNode vectorNode(EmbeddingVectorDTO vector) {
         ArrayNode values = objectMapper.createArrayNode();
         for (float value : vector.values()) {
@@ -276,6 +319,14 @@ public class QdrantVectorStore implements VectorStore {
 
     private void putLong(ObjectNode node, String fieldName, Long value) {
         if (value == null) {
+            node.putNull(fieldName);
+            return;
+        }
+        node.put(fieldName, value);
+    }
+
+    private void putString(ObjectNode node, String fieldName, String value) {
+        if (value == null || value.isBlank()) {
             node.putNull(fieldName);
             return;
         }

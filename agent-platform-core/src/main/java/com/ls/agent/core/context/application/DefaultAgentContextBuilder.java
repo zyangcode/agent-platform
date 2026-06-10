@@ -334,9 +334,16 @@ public class DefaultAgentContextBuilder implements AgentContextBuilder {
     }
 
     private List<MemoryDTO> recallMemories(BuildAgentContextCommand command, EmbeddingVectorDTO queryVector) {
-        MemoryRecallFilter filter = MemoryRecallFilter.builder()
+        MemoryRecallFilter profileFilter = MemoryRecallFilter.builder()
                 .categories(List.of("summary", "preference", "fact"))
+                .memoryScopes(List.of("PROFILE_LONG_TERM"))
                 .topK(MEMORY_LIMIT)
+                .build();
+        MemoryRecallFilter conversationFilter = MemoryRecallFilter.builder()
+                .categories(List.of("summary"))
+                .memoryScopes(List.of("CONVERSATION_TEMP"))
+                .sourceConversationId(command.conversationId())
+                .topK(3)
                 .build();
         ObjectNode attributes = attributes()
                 .put("limit", MEMORY_LIMIT);
@@ -346,53 +353,11 @@ public class DefaultAgentContextBuilder implements AgentContextBuilder {
                 .add("fact"));
         TraceSpanDTO span = safeStartSpan(command.traceId(), command.parentSpanId(), "memory.recall", "CONTEXT", attributes);
         try {
-            List<MemoryDTO> memories;
-            if (command.traceId() == null || command.traceId().isBlank()) {
-                memories = queryVector == null
-                        ? memoryRecallService.recall(
-                                command.tenantId(),
-                                command.applicationId(),
-                                command.userId(),
-                                command.profileId(),
-                                command.userInput(),
-                                filter
-                        )
-                        : memoryRecallService.recall(
-                                command.tenantId(),
-                                command.applicationId(),
-                                command.userId(),
-                                command.profileId(),
-                                command.userInput(),
-                                filter,
-                                queryVector,
-                                null,
-                                null
-                        );
-            } else {
-                memories = queryVector == null
-                        ? memoryRecallService.recall(
-                                command.tenantId(),
-                                command.applicationId(),
-                                command.userId(),
-                                command.profileId(),
-                                command.userInput(),
-                                filter,
-                                command.traceId(),
-                                span == null ? command.parentSpanId() : span.id()
-                        )
-                        : memoryRecallService.recall(
-                                command.tenantId(),
-                                command.applicationId(),
-                                command.userId(),
-                                command.profileId(),
-                                command.userInput(),
-                                filter,
-                                queryVector,
-                                command.traceId(),
-                                span == null ? command.parentSpanId() : span.id()
-                        );
+            List<MemoryDTO> result = new ArrayList<>();
+            result.addAll(recallMemoryWithFilter(command, profileFilter, queryVector, span));
+            if (command.conversationId() != null) {
+                result.addAll(recallMemoryWithFilter(command, conversationFilter, queryVector, span));
             }
-            List<MemoryDTO> result = memories == null ? List.of() : memories;
             attributes.put("recalledCount", result.size());
             safeFinishSpan(span, "SUCCESS", null, null);
             return result;
@@ -400,6 +365,62 @@ public class DefaultAgentContextBuilder implements AgentContextBuilder {
             safeFinishSpan(span, "FAILED", errorCode(ex), errorMessage(ex));
             throw ex;
         }
+    }
+
+    private List<MemoryDTO> recallMemoryWithFilter(
+            BuildAgentContextCommand command,
+            MemoryRecallFilter filter,
+            EmbeddingVectorDTO queryVector,
+            TraceSpanDTO span
+    ) {
+        Long parentSpanId = span == null ? command.parentSpanId() : span.id();
+        List<MemoryDTO> memories;
+        if (command.traceId() == null || command.traceId().isBlank()) {
+            memories = queryVector == null
+                    ? memoryRecallService.recall(
+                            command.tenantId(),
+                            command.applicationId(),
+                            command.userId(),
+                            command.profileId(),
+                            command.userInput(),
+                            filter
+                    )
+                    : memoryRecallService.recall(
+                            command.tenantId(),
+                            command.applicationId(),
+                            command.userId(),
+                            command.profileId(),
+                            command.userInput(),
+                            filter,
+                            queryVector,
+                            null,
+                            null
+                    );
+        } else {
+            memories = queryVector == null
+                    ? memoryRecallService.recall(
+                            command.tenantId(),
+                            command.applicationId(),
+                            command.userId(),
+                            command.profileId(),
+                            command.userInput(),
+                            filter,
+                            command.traceId(),
+                            parentSpanId
+                    )
+                    : memoryRecallService.recall(
+                            command.tenantId(),
+                            command.applicationId(),
+                            command.userId(),
+                            command.profileId(),
+                            command.userInput(),
+                            filter,
+                            queryVector,
+                            command.traceId(),
+                            parentSpanId
+                    );
+        }
+        return memories == null ? List.of() : memories;
     }
 
     private List<RagSearchResultDTO> searchRag(

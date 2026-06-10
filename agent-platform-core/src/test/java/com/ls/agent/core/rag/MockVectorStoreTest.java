@@ -146,6 +146,40 @@ class MockVectorStoreTest {
                 .contains("global-memory", "profile-memory");
     }
 
+    @Test
+    void memorySearchExcludesConversationTemporaryVectorsUnlessCurrentConversationRequested() {
+        vectorStore.upsert(point("profile-memory", "memory", 1L, 20001L, 10001L, 50001L, 88L, 88L,
+                "User likes basketball", "PROFILE_LONG_TERM", null));
+        vectorStore.upsert(point("current-temp", "memory", 1L, 20001L, 10001L, 50001L, 89L, 89L,
+                "Current conversation basketball note", "CONVERSATION_TEMP", 90001L));
+        vectorStore.upsert(point("other-temp", "memory", 1L, 20001L, 10001L, 50001L, 90L, 90L,
+                "Other conversation basketball note", "CONVERSATION_TEMP", 90002L));
+
+        assertThat(vectorStore.search(new VectorSearchQueryDTO(
+                "memory",
+                1L,
+                20001L,
+                10001L,
+                50001L,
+                embeddingService.embed("basketball"),
+                5
+        ))).extracting(VectorSearchResultDTO::vectorId)
+                .containsExactly("profile-memory");
+
+        assertThat(vectorStore.search(new VectorSearchQueryDTO(
+                "memory",
+                1L,
+                20001L,
+                10001L,
+                50001L,
+                embeddingService.embed("basketball"),
+                5,
+                List.of("CONVERSATION_TEMP"),
+                90001L
+        ))).extracting(VectorSearchResultDTO::vectorId)
+                .containsExactly("current-temp");
+    }
+
     private VectorStoreDocumentDTO point(
             String vectorId,
             Long tenantId,
@@ -189,6 +223,34 @@ class MockVectorStoreTest {
                 documentId,
                 chunkId,
                 embeddingService.embed(content)
+        );
+    }
+
+    private VectorStoreDocumentDTO point(
+            String vectorId,
+            String sourceType,
+            Long tenantId,
+            Long applicationId,
+            Long ownerUserId,
+            Long profileId,
+            Long documentId,
+            Long chunkId,
+            String content,
+            String memoryScope,
+            Long sourceConversationId
+    ) {
+        return new VectorStoreDocumentDTO(
+                sourceType,
+                vectorId,
+                tenantId,
+                applicationId,
+                ownerUserId,
+                profileId,
+                documentId,
+                chunkId,
+                embeddingService.embed(content),
+                memoryScope,
+                sourceConversationId
         );
     }
 }

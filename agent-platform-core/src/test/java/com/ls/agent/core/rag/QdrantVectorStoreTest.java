@@ -73,6 +73,8 @@ class QdrantVectorStoreTest {
         assertThat(payload.path("profile_id").asLong()).isEqualTo(50001L);
         assertThat(payload.path("document_id").asLong()).isEqualTo(90001L);
         assertThat(payload.path("chunk_id").asLong()).isEqualTo(91001L);
+        assertThat(payload.path("memory_scope").isNull()).isTrue();
+        assertThat(payload.path("source_conversation_id").isNull()).isTrue();
         assertThat(payload.path("embedding_model").asText()).isEqualTo("mock-embedding");
     }
 
@@ -164,6 +166,92 @@ class QdrantVectorStoreTest {
 
         CapturedRequest request = client.requests.get(2);
         assertThat(filterValue(request.body, "source_type")).isEqualTo("memory");
+        assertThat(filterMustNotValue(request.body, "memory_scope")).isEqualTo("CONVERSATION_TEMP");
+    }
+
+    @Test
+    void memoryUpsertAndSearchCanTargetConversationTemporaryScope() throws Exception {
+        FakeQdrantHttpClient client = new FakeQdrantHttpClient(objectMapper);
+        QdrantVectorStore store = new QdrantVectorStore(properties, client, objectMapper);
+
+        store.upsert(new VectorStoreDocumentDTO(
+                "memory",
+                "memory-88",
+                1L,
+                20001L,
+                10001L,
+                50001L,
+                88L,
+                88L,
+                new EmbeddingVectorDTO("mock-embedding", new float[]{0.1f, 0.2f, 0.3f}),
+                "CONVERSATION_TEMP",
+                90001L
+        ));
+        store.search(new VectorSearchQueryDTO(
+                "memory",
+                1L,
+                20001L,
+                10001L,
+                50001L,
+                new EmbeddingVectorDTO("mock-embedding", new float[]{0.4f, 0.5f, 0.6f}),
+                3,
+                List.of("CONVERSATION_TEMP"),
+                90001L
+        ));
+
+        JsonNode payload = client.requests.get(2).body.path("points").get(0).path("payload");
+        assertThat(payload.path("memory_scope").asText()).isEqualTo("CONVERSATION_TEMP");
+        assertThat(payload.path("source_conversation_id").asLong()).isEqualTo(90001L);
+
+        CapturedRequest searchRequest = client.requests.get(3);
+        assertThat(temporaryScopeBranchConversationId(searchRequest.body)).isEqualTo("90001");
+    }
+
+    @Test
+    void memorySearchTreatsEmptyMemoryScopeAsProfileLongTermInQdrantFilter() {
+        FakeQdrantHttpClient client = new FakeQdrantHttpClient(objectMapper);
+        QdrantVectorStore store = new QdrantVectorStore(properties, client, objectMapper);
+
+        store.search(new VectorSearchQueryDTO(
+                "memory",
+                1L,
+                20001L,
+                10001L,
+                50001L,
+                new EmbeddingVectorDTO("mock-embedding", new float[]{0.4f, 0.5f, 0.6f}),
+                3,
+                List.of("PROFILE_LONG_TERM"),
+                null
+        ));
+
+        CapturedRequest request = client.requests.get(2);
+        assertThat(shouldKeys(request.body, "memory_scope")).contains("memory_scope");
+        assertThat(isEmptyKeys(request.body)).contains("memory_scope");
+        assertThat(filterValue(request.body, "source_conversation_id")).isEmpty();
+    }
+
+    @Test
+    void mixedMemoryScopeSearchOnlyAppliesConversationIdInsideTemporaryBranch() {
+        FakeQdrantHttpClient client = new FakeQdrantHttpClient(objectMapper);
+        QdrantVectorStore store = new QdrantVectorStore(properties, client, objectMapper);
+
+        store.search(new VectorSearchQueryDTO(
+                "memory",
+                1L,
+                20001L,
+                10001L,
+                50001L,
+                new EmbeddingVectorDTO("mock-embedding", new float[]{0.4f, 0.5f, 0.6f}),
+                3,
+                List.of("PROFILE_LONG_TERM", "CONVERSATION_TEMP"),
+                90001L
+        ));
+
+        CapturedRequest request = client.requests.get(2);
+        assertThat(shouldKeys(request.body, "memory_scope")).contains("memory_scope");
+        assertThat(isEmptyKeys(request.body)).contains("memory_scope");
+        assertThat(filterValue(request.body, "source_conversation_id")).isEmpty();
+        assertThat(temporaryScopeBranchConversationId(request.body)).isEqualTo("90001");
     }
 
     @Test
@@ -315,6 +403,44 @@ class QdrantVectorStoreTest {
             }
         }
         return keys;
+    }
+
+    private String filterMustNotValue(JsonNode body, String key) {
+        for (JsonNode condition : body.path("filter").path("must")) {
+            for (JsonNode option : condition.path("must_not")) {
+                if (key.equals(option.path("key").asText())) {
+                    return option.path("match").path("value").asText();
+                }
+            }
+        }
+        return "";
+    }
+
+    private String temporaryScopeBranchConversationId(JsonNode body) {
+        for (JsonNode condition : body.path("filter").path("must")) {
+            for (JsonNode option : condition.path("should")) {
+                String conversationId = conversationIdInTemporaryScopeBranch(option);
+                if (!conversationId.isBlank()) {
+                    return conversationId;
+                }
+            }
+        }
+        return "";
+    }
+
+    private String conversationIdInTemporaryScopeBranch(JsonNode node) {
+        boolean conversationTempScope = false;
+        String conversationId = "";
+        for (JsonNode condition : node.path("must")) {
+            if ("memory_scope".equals(condition.path("key").asText())
+                    && "CONVERSATION_TEMP".equals(condition.path("match").path("value").asText())) {
+                conversationTempScope = true;
+            }
+            if ("source_conversation_id".equals(condition.path("key").asText())) {
+                conversationId = condition.path("match").path("value").asText();
+            }
+        }
+        return conversationTempScope ? conversationId : "";
     }
 
     private VectorStoreDocumentDTO point(String vectorId) {

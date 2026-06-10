@@ -38,6 +38,20 @@ public interface MemoryMapper extends BaseMapper<MemoryEntity> {
               and (m.application_id is null or m.application_id = #{applicationId})
               and (m.profile_id is null or m.profile_id = #{profileId})
               and (m.expires_at is null or m.expires_at > now())
+              <choose>
+                  <when test="memoryScopes != null and memoryScopes.size() > 0">
+                      and coalesce(m.memory_scope, 'PROFILE_LONG_TERM') in
+                      <foreach collection="memoryScopes" item="memoryScope" open="(" separator="," close=")">
+                          #{memoryScope}
+                      </foreach>
+                  </when>
+                  <otherwise>
+                      and coalesce(m.memory_scope, 'PROFILE_LONG_TERM') != 'CONVERSATION_TEMP'
+                  </otherwise>
+              </choose>
+              <if test="sourceConversationId != null">
+                  and m.source_conversation_id = #{sourceConversationId}
+              </if>
               and (
                   m.search_vector @@ query.ts_query
                   <if test="terms != null and terms.size() > 0">
@@ -60,6 +74,8 @@ public interface MemoryMapper extends BaseMapper<MemoryEntity> {
             @Param("profileId") Long profileId,
             @Param("terms") List<String> terms,
             @Param("queryText") String queryText,
+            @Param("memoryScopes") List<String> memoryScopes,
+            @Param("sourceConversationId") Long sourceConversationId,
             @Param("limit") int limit
     );
 }

@@ -32,6 +32,8 @@ public class DefaultMemoryWriteService implements MemoryWriteService {
     private static final double SIMILARITY_THRESHOLD = 0.6;
     private static final int DEDUP_LOOKBACK = 5;
     private static final String MEMORY_STRATEGY_READ_WRITE = "READ_WRITE";
+    private static final String SCOPE_PROFILE_LONG_TERM = "PROFILE_LONG_TERM";
+    private static final String SCOPE_CONVERSATION_TEMP = "CONVERSATION_TEMP";
     private static final Pattern EXPLICIT_DO_NOT_REMEMBER = Pattern.compile(
             "(不要|别|不必|不用|无需).{0,8}(记住|保存|记录|写入)|" +
                     "(don't|do not|dont).{0,16}(remember|save|store)|" +
@@ -74,6 +76,8 @@ public class DefaultMemoryWriteService implements MemoryWriteService {
     @Override
     public void record(RecordMemoryCommand command) {
         validate(command);
+        String memoryScope = resolveMemoryScope(command);
+        validateMemoryScope(command, memoryScope);
         if (hasExplicitForgetIntent(command.content())) {
             disableRelatedMemories(command);
             return;
@@ -83,7 +87,7 @@ public class DefaultMemoryWriteService implements MemoryWriteService {
         }
         String content = truncateContent(command.content());
         LocalDateTime now = LocalDateTime.now();
-        List<MemoryEntity> candidates = findCandidateMemories(command);
+        List<MemoryEntity> candidates = findCandidateMemories(command, memoryScope);
         MemoryEntity superseded = findSupersededMemory(command, candidates);
         if (superseded != null) {
             markSuperseded(superseded);
@@ -98,6 +102,7 @@ public class DefaultMemoryWriteService implements MemoryWriteService {
             }
             existing.setMemoryType(command.memoryType());
             existing.setMemoryCategory(resolveCategory(command));
+            existing.setMemoryScope(memoryScope);
             existing.setTags(tags(command.tags()));
             existing.setImportance(Math.max(resolveImportance(existing.getImportance()), resolveImportance(command.importance())));
             existing.setConfidence(resolveConfidence(existing.getConfidence()));
@@ -117,6 +122,7 @@ public class DefaultMemoryWriteService implements MemoryWriteService {
         entity.setProfileId(command.profileId());
         entity.setMemoryType(command.memoryType());
         entity.setMemoryCategory(resolveCategory(command));
+        entity.setMemoryScope(memoryScope);
         entity.setContent(content);
         entity.setTags(tags(command.tags()));
         entity.setImportance(resolveImportance(command.importance()));
@@ -159,7 +165,9 @@ public class DefaultMemoryWriteService implements MemoryWriteService {
                     memory.getProfileId(),
                     memory.getId(),
                     memory.getId(),
-                    vector
+                    vector,
+                    memory.getMemoryScope(),
+                    memory.getSourceConversationId()
             ));
             markVectorIndex(memory, "INDEXED", vector, null);
         } catch (RuntimeException ignored) {
@@ -200,7 +208,10 @@ public class DefaultMemoryWriteService implements MemoryWriteService {
         return ex.getMessage().length() > 300 ? ex.getMessage().substring(0, 300) : ex.getMessage();
     }
 
-    private List<MemoryEntity> findCandidateMemories(RecordMemoryCommand command) {
+    private List<MemoryEntity> findCandidateMemories(RecordMemoryCommand command, String memoryScope) {
+        if (SCOPE_CONVERSATION_TEMP.equals(memoryScope) && command.sourceConversationId() == null) {
+            return List.of();
+        }
         List<MemoryEntity> memories = memoryMapper.selectList(new LambdaQueryWrapper<MemoryEntity>()
                 .eq(MemoryEntity::getTenantId, command.tenantId())
                 .eq(MemoryEntity::getUserId, command.userId())
@@ -220,9 +231,39 @@ public class DefaultMemoryWriteService implements MemoryWriteService {
                         w.eq(MemoryEntity::getProfileId, command.profileId());
                     }
                 })
+                .and(w -> appendMemoryBoundary(w, memoryScope, command.sourceConversationId()))
                 .orderByDesc(MemoryEntity::getUpdatedAt)
                 .last("limit " + DEDUP_LOOKBACK));
-        return memories == null ? List.of() : memories;
+        if (memories == null || memories.isEmpty()) {
+            return List.of();
+        }
+        return memories.stream()
+                .filter(memory -> matchesMemoryBoundary(memory, memoryScope, command.sourceConversationId()))
+                .toList();
+    }
+
+    private void appendMemoryBoundary(
+            LambdaQueryWrapper<MemoryEntity> wrapper,
+            String memoryScope,
+            Long sourceConversationId
+    ) {
+        if (SCOPE_CONVERSATION_TEMP.equals(memoryScope)) {
+            wrapper.eq(MemoryEntity::getMemoryScope, SCOPE_CONVERSATION_TEMP)
+                    .eq(MemoryEntity::getSourceConversationId, sourceConversationId);
+            return;
+        }
+        wrapper.isNull(MemoryEntity::getMemoryScope)
+                .or()
+                .eq(MemoryEntity::getMemoryScope, SCOPE_PROFILE_LONG_TERM);
+    }
+
+    private boolean matchesMemoryBoundary(MemoryEntity memory, String memoryScope, Long sourceConversationId) {
+        String existingScope = normalizeMemoryScope(memory.getMemoryScope());
+        if (!memoryScope.equals(existingScope)) {
+            return false;
+        }
+        return !SCOPE_CONVERSATION_TEMP.equals(memoryScope)
+                || (sourceConversationId != null && sourceConversationId.equals(memory.getSourceConversationId()));
     }
 
     /** Find an existing memory with similar content to avoid duplicates. */
@@ -409,6 +450,29 @@ public class DefaultMemoryWriteService implements MemoryWriteService {
             return command.memoryCategory().strip().toLowerCase(Locale.ROOT);
         }
         return command.memoryType().strip().toLowerCase(Locale.ROOT);
+    }
+
+    private String resolveMemoryScope(RecordMemoryCommand command) {
+        if (command.memoryScope() == null || command.memoryScope().isBlank()) {
+            return SCOPE_PROFILE_LONG_TERM;
+        }
+        return command.memoryScope().strip().toUpperCase(Locale.ROOT);
+    }
+
+    private void validateMemoryScope(RecordMemoryCommand command, String memoryScope) {
+        if (!SCOPE_PROFILE_LONG_TERM.equals(memoryScope) && !SCOPE_CONVERSATION_TEMP.equals(memoryScope)) {
+            throw new BizException(ErrorCode.REQUEST_INVALID, "memoryScope is invalid");
+        }
+        if (SCOPE_CONVERSATION_TEMP.equals(memoryScope) && command.sourceConversationId() == null) {
+            throw new BizException(ErrorCode.REQUEST_INVALID, "sourceConversationId is required for conversation memory");
+        }
+    }
+
+    private String normalizeMemoryScope(String memoryScope) {
+        if (memoryScope == null || memoryScope.isBlank()) {
+            return SCOPE_PROFILE_LONG_TERM;
+        }
+        return memoryScope.strip().toUpperCase(Locale.ROOT);
     }
 
     private String resolveCategory(MemoryEntity memory) {

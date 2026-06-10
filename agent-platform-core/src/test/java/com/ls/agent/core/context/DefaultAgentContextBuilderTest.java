@@ -83,7 +83,8 @@ class DefaultAgentContextBuilderTest {
                 message("assistant", "Nice to meet you.", 5)
         ));
         when(memoryRecallService.recall(eq(1L), eq(20001L), eq(10001L), eq(50001L), eq("Please calculate 128 * 36 + 59."), any(MemoryRecallFilter.class)))
-                .thenReturn(List.of(memory("Ada likes concise answers.")));
+                .thenReturn(List.of(memory("Ada likes concise answers.")))
+                .thenReturn(List.of(memory("Current conversation is about arithmetic.")));
         when(ragSearchService.search(eq(1L), eq(20001L), eq(10001L), eq(50001L), eq("Please calculate 128 * 36 + 59."), anyInt()))
                 .thenReturn(List.of());
 
@@ -109,6 +110,7 @@ class DefaultAgentContextBuilderTest {
                 .contains("@skill:name")
                 .contains("Be concise.")
                 .contains("Ada likes concise answers.")
+                .contains("Current conversation is about arithmetic.")
                 .contains("calculator")
                 .contains("read_file");
         assertThat(result.conversationMessages()).extracting("role")
@@ -139,9 +141,14 @@ class DefaultAgentContextBuilderTest {
         assertThat(budget.truncated()).isFalse();
 
         ArgumentCaptor<MemoryRecallFilter> memoryFilterCaptor = ArgumentCaptor.forClass(MemoryRecallFilter.class);
-        verify(memoryRecallService).recall(eq(1L), eq(20001L), eq(10001L), eq(50001L), eq("Please calculate 128 * 36 + 59."), memoryFilterCaptor.capture());
-        assertThat(memoryFilterCaptor.getValue().categories()).containsExactly("summary", "preference", "fact");
-        assertThat(memoryFilterCaptor.getValue().topK()).isEqualTo(5);
+        verify(memoryRecallService, times(2)).recall(eq(1L), eq(20001L), eq(10001L), eq(50001L), eq("Please calculate 128 * 36 + 59."), memoryFilterCaptor.capture());
+        assertThat(memoryFilterCaptor.getAllValues().get(0).categories()).containsExactly("summary", "preference", "fact");
+        assertThat(memoryFilterCaptor.getAllValues().get(0).memoryScopes()).containsExactly("PROFILE_LONG_TERM");
+        assertThat(memoryFilterCaptor.getAllValues().get(0).topK()).isEqualTo(5);
+        assertThat(memoryFilterCaptor.getAllValues().get(1).categories()).containsExactly("summary");
+        assertThat(memoryFilterCaptor.getAllValues().get(1).memoryScopes()).containsExactly("CONVERSATION_TEMP");
+        assertThat(memoryFilterCaptor.getAllValues().get(1).sourceConversationId()).isEqualTo(90001L);
+        assertThat(memoryFilterCaptor.getAllValues().get(1).topK()).isEqualTo(3);
     }
 
     @Test
@@ -518,7 +525,10 @@ class DefaultAgentContextBuilderTest {
                 null
         ));
 
-        verify(memoryRecallService).recall(eq(1L), eq(20001L), eq(10001L), eq(50001L), eq("read memory"), any(MemoryRecallFilter.class));
+        ArgumentCaptor<MemoryRecallFilter> memoryFilterCaptor = ArgumentCaptor.forClass(MemoryRecallFilter.class);
+        verify(memoryRecallService, times(2)).recall(eq(1L), eq(20001L), eq(10001L), eq(50001L), eq("read memory"), memoryFilterCaptor.capture());
+        assertThat(memoryFilterCaptor.getAllValues()).extracting(MemoryRecallFilter::memoryScopes)
+                .containsExactly(List.of("PROFILE_LONG_TERM"), List.of("CONVERSATION_TEMP"));
         assertThat(result.apiMessages().get(0).content()).contains("Read-only memory can still be injected.");
         assertThat(result.contextBudgetSnapshot().memoryTokens()).isPositive();
     }
@@ -548,7 +558,10 @@ class DefaultAgentContextBuilderTest {
                 null
         ));
 
-        verify(memoryRecallService).recall(eq(1L), eq(20001L), eq(10001L), eq(50001L), eq("read and write memory"), any(MemoryRecallFilter.class));
+        ArgumentCaptor<MemoryRecallFilter> memoryFilterCaptor = ArgumentCaptor.forClass(MemoryRecallFilter.class);
+        verify(memoryRecallService, times(2)).recall(eq(1L), eq(20001L), eq(10001L), eq(50001L), eq("read and write memory"), memoryFilterCaptor.capture());
+        assertThat(memoryFilterCaptor.getAllValues()).extracting(MemoryRecallFilter::memoryScopes)
+                .containsExactly(List.of("PROFILE_LONG_TERM"), List.of("CONVERSATION_TEMP"));
         assertThat(result.apiMessages().get(0).content()).contains("Read-write memory can be injected.");
         assertThat(result.contextBudgetSnapshot().memoryTokens()).isPositive();
     }

@@ -72,7 +72,28 @@ public class MockVectorStore implements VectorStore {
                 && Objects.equals(document.sourceType(), query.sourceType())
                 && Objects.equals(document.ownerUserId(), query.ownerUserId())
                 && (document.applicationId() == null || Objects.equals(document.applicationId(), query.applicationId()))
-                && (document.profileId() == null || Objects.equals(document.profileId(), query.profileId()));
+                && (document.profileId() == null || Objects.equals(document.profileId(), query.profileId()))
+                && matchesMemoryScope(document, query);
+    }
+
+    private boolean matchesMemoryScope(VectorStoreDocumentDTO document, VectorSearchQueryDTO query) {
+        if (!"memory".equals(query.sourceType())) {
+            return true;
+        }
+        String documentScope = document.memoryScope() == null || document.memoryScope().isBlank()
+                ? "PROFILE_LONG_TERM"
+                : document.memoryScope();
+        if (query.memoryScopes().isEmpty()) {
+            return !"CONVERSATION_TEMP".equals(documentScope);
+        }
+        if (!query.memoryScopes().contains(documentScope)) {
+            return false;
+        }
+        if ("CONVERSATION_TEMP".equals(documentScope)) {
+            return query.sourceConversationId() != null
+                    && Objects.equals(document.sourceConversationId(), query.sourceConversationId());
+        }
+        return true;
     }
 
     private String normalizeSourceType(String sourceType) {

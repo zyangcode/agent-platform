@@ -126,6 +126,69 @@ class DefaultMemoryRecallServiceTest {
     }
 
     @Test
+    void defaultRecallExcludesConversationTemporaryMemories() {
+        MemoryEntity profileMemory = memory("PREFERENCE", "Ada prefers Java examples.");
+        profileMemory.setMemoryCategory("preference");
+        profileMemory.setMemoryScope("PROFILE_LONG_TERM");
+        profileMemory.setImportance(0.8);
+
+        MemoryEntity temporaryMemory = memory("SUMMARY", "Current conversation is debugging a one-off stream failure.");
+        temporaryMemory.setMemoryCategory("summary");
+        temporaryMemory.setMemoryScope("CONVERSATION_TEMP");
+        temporaryMemory.setSourceConversationId(90001L);
+        temporaryMemory.setImportance(1.0);
+
+        when(memoryMapper.selectList(any(Wrapper.class))).thenReturn(List.of(temporaryMemory, profileMemory));
+
+        List<MemoryDTO> result = service.recall(
+                1L,
+                20001L,
+                10001L,
+                50001L,
+                "Java examples",
+                MemoryRecallFilter.builder()
+                        .categories(List.of("summary", "preference", "fact"))
+                        .topK(5)
+                        .build()
+        );
+
+        assertThat(result).extracting(MemoryDTO::content).containsExactly("Ada prefers Java examples.");
+    }
+
+    @Test
+    void conversationTemporaryRecallOnlyReturnsCurrentConversationMemories() {
+        MemoryEntity currentConversation = memory("SUMMARY", "Current conversation is debugging stream failure.");
+        currentConversation.setMemoryCategory("summary");
+        currentConversation.setMemoryScope("CONVERSATION_TEMP");
+        currentConversation.setSourceConversationId(90001L);
+        currentConversation.setImportance(0.8);
+
+        MemoryEntity otherConversation = memory("SUMMARY", "Other conversation selected another profile.");
+        otherConversation.setMemoryCategory("summary");
+        otherConversation.setMemoryScope("CONVERSATION_TEMP");
+        otherConversation.setSourceConversationId(90002L);
+        otherConversation.setImportance(1.0);
+
+        when(memoryMapper.selectList(any(Wrapper.class))).thenReturn(List.of(otherConversation, currentConversation));
+
+        List<MemoryDTO> result = service.recall(
+                1L,
+                20001L,
+                10001L,
+                50001L,
+                "stream failure",
+                MemoryRecallFilter.builder()
+                        .memoryScopes(List.of("CONVERSATION_TEMP"))
+                        .sourceConversationId(90001L)
+                        .topK(5)
+                        .build()
+        );
+
+        assertThat(result).extracting(MemoryDTO::content)
+                .containsExactly("Current conversation is debugging stream failure.");
+    }
+
+    @Test
     void recallExcludesExpiredMemoriesFromContextInjection() {
         MemoryEntity expired = memory("PREFERENCE", "Ada likes expired basketball tips.");
         expired.setExpiresAt(LocalDateTime.now().minusDays(1));

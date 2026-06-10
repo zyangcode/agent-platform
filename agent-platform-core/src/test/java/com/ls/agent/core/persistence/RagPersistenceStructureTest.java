@@ -62,6 +62,18 @@ class RagPersistenceStructureTest {
     }
 
     @Test
+    void memoryScopeMigrationAddsConversationBoundaryColumnAndIndex() throws IOException {
+        String sql = readMigration("db/migration/V022__add_memory_scope.sql");
+
+        assertThat(sql).contains(
+                "alter table memories",
+                "memory_scope varchar(32) not null default 'PROFILE_LONG_TERM'",
+                "idx_memories_scope_conversation",
+                "tenant_id, user_id, memory_scope, source_conversation_id"
+        );
+    }
+
+    @Test
     void ragEntitiesExistAndUseExpectedBaseClasses() throws ClassNotFoundException {
         for (Map.Entry<String, Class<?>> entry : RAG_ENTITY_SUPER_TYPES.entrySet()) {
             Class<?> entityClass = Class.forName(entry.getKey());

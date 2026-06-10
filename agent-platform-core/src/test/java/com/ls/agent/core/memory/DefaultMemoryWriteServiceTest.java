@@ -14,6 +14,7 @@ import org.mockito.ArgumentCaptor;
 
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.mock;
@@ -47,6 +48,7 @@ class DefaultMemoryWriteServiceTest {
         assertThat(captor.getValue().getTenantId()).isEqualTo(1L);
         assertThat(captor.getValue().getMemoryType()).isEqualTo("SUMMARY");
         assertThat(captor.getValue().getMemoryCategory()).isEqualTo("summary");
+        assertThat(captor.getValue().getMemoryScope()).isEqualTo("PROFILE_LONG_TERM");
         assertThat(captor.getValue().getTags()).containsExactly("chat", "result");
         assertThat(captor.getValue().getImportance()).isEqualTo(0.7);
         assertThat(captor.getValue().getConfidence()).isEqualTo(0.8);
@@ -55,6 +57,53 @@ class DefaultMemoryWriteServiceTest {
         assertThat(captor.getValue().getSlotHint()).isEqualTo("task_memory");
         assertThat(captor.getValue().getStatus()).isEqualTo("ACTIVE");
         assertThat(captor.getValue().getSourceConversationId()).isEqualTo(90001L);
+    }
+
+    @Test
+    void recordStoresExplicitConversationTemporaryScope() {
+        service.record(new RecordMemoryCommand(
+                1L,
+                10001L,
+                20001L,
+                50001L,
+                "SUMMARY",
+                "Current conversation summary",
+                90001L,
+                "summary",
+                List.of("chat"),
+                0.7,
+                "task_memory",
+                "READ_WRITE",
+                "CONVERSATION_TEMP"
+        ));
+
+        ArgumentCaptor<MemoryEntity> captor = ArgumentCaptor.forClass(MemoryEntity.class);
+        verify(memoryMapper).insert(captor.capture());
+        assertThat(captor.getValue().getMemoryScope()).isEqualTo("CONVERSATION_TEMP");
+        assertThat(captor.getValue().getSourceConversationId()).isEqualTo(90001L);
+    }
+
+    @Test
+    void recordRejectsInvalidMemoryScopeBeforeForgetHandling() {
+        assertThatThrownBy(() -> service.record(new RecordMemoryCommand(
+                1L,
+                10001L,
+                20001L,
+                50001L,
+                "SUMMARY",
+                "forget preference",
+                90001L,
+                "summary",
+                List.of("chat"),
+                0.7,
+                "task_memory",
+                "READ_WRITE",
+                "INVALID_SCOPE"
+        ))).hasMessageContaining("memoryScope is invalid");
+
+        verify(memoryMapper, never()).selectList(any());
+        verify(memoryMapper, never()).insert(any(MemoryEntity.class));
+        verify(memoryMapper, never()).updateById(any(MemoryEntity.class));
     }
 
     @Test
@@ -93,6 +142,87 @@ class DefaultMemoryWriteServiceTest {
         assertThat(captor.getValue().getLastAccessedAt()).isNotNull();
         assertThat(captor.getValue().getImportance()).isEqualTo(0.9);
         assertThat(captor.getValue().getTags()).containsExactly("sports");
+    }
+
+    @Test
+    void recordDoesNotMergeConversationTemporaryMemoryIntoProfileLongTermMemory() {
+        MemoryEntity longTerm = new MemoryEntity();
+        longTerm.setId(10L);
+        longTerm.setTenantId(1L);
+        longTerm.setUserId(10001L);
+        longTerm.setApplicationId(20001L);
+        longTerm.setProfileId(50001L);
+        longTerm.setMemoryType("SUMMARY");
+        longTerm.setMemoryCategory("summary");
+        longTerm.setMemoryScope("PROFILE_LONG_TERM");
+        longTerm.setContent("User is debugging stream failure");
+        longTerm.setImportance(0.4);
+        longTerm.setAccessCount(2);
+
+        when(memoryMapper.selectList(any())).thenReturn(List.of(longTerm));
+
+        service.record(new RecordMemoryCommand(
+                1L,
+                10001L,
+                20001L,
+                50001L,
+                "SUMMARY",
+                "User is debugging stream failure today",
+                90001L,
+                "summary",
+                List.of("conversation"),
+                0.9,
+                "task_memory",
+                "READ_WRITE",
+                "CONVERSATION_TEMP"
+        ));
+
+        verify(memoryMapper, never()).updateById(longTerm);
+        ArgumentCaptor<MemoryEntity> insertCaptor = ArgumentCaptor.forClass(MemoryEntity.class);
+        verify(memoryMapper).insert(insertCaptor.capture());
+        assertThat(insertCaptor.getValue().getMemoryScope()).isEqualTo("CONVERSATION_TEMP");
+        assertThat(insertCaptor.getValue().getSourceConversationId()).isEqualTo(90001L);
+    }
+
+    @Test
+    void recordDoesNotMergeTemporaryMemoriesAcrossConversations() {
+        MemoryEntity otherConversation = new MemoryEntity();
+        otherConversation.setId(10L);
+        otherConversation.setTenantId(1L);
+        otherConversation.setUserId(10001L);
+        otherConversation.setApplicationId(20001L);
+        otherConversation.setProfileId(50001L);
+        otherConversation.setMemoryType("SUMMARY");
+        otherConversation.setMemoryCategory("summary");
+        otherConversation.setMemoryScope("CONVERSATION_TEMP");
+        otherConversation.setSourceConversationId(90002L);
+        otherConversation.setContent("User is debugging stream failure");
+        otherConversation.setImportance(0.4);
+        otherConversation.setAccessCount(2);
+
+        when(memoryMapper.selectList(any())).thenReturn(List.of(otherConversation));
+
+        service.record(new RecordMemoryCommand(
+                1L,
+                10001L,
+                20001L,
+                50001L,
+                "SUMMARY",
+                "User is debugging stream failure today",
+                90001L,
+                "summary",
+                List.of("conversation"),
+                0.9,
+                "task_memory",
+                "READ_WRITE",
+                "CONVERSATION_TEMP"
+        ));
+
+        verify(memoryMapper, never()).updateById(otherConversation);
+        ArgumentCaptor<MemoryEntity> insertCaptor = ArgumentCaptor.forClass(MemoryEntity.class);
+        verify(memoryMapper).insert(insertCaptor.capture());
+        assertThat(insertCaptor.getValue().getMemoryScope()).isEqualTo("CONVERSATION_TEMP");
+        assertThat(insertCaptor.getValue().getSourceConversationId()).isEqualTo(90001L);
     }
 
     @Test

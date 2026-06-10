@@ -6,6 +6,8 @@ import java.util.List;
 public record MemoryRecallFilter(
         List<String> categories,
         List<String> requireTags,
+        List<String> memoryScopes,
+        Long sourceConversationId,
         Double minScore,
         Integer topK,
         Duration maxAge
@@ -14,6 +16,7 @@ public record MemoryRecallFilter(
     public MemoryRecallFilter {
         categories = normalize(categories);
         requireTags = normalize(requireTags);
+        memoryScopes = normalizeUpper(memoryScopes);
     }
 
     public static Builder builder() {
@@ -38,10 +41,23 @@ public record MemoryRecallFilter(
                 .toList();
     }
 
+    private static List<String> normalizeUpper(List<String> values) {
+        if (values == null || values.isEmpty()) {
+            return List.of();
+        }
+        return values.stream()
+                .filter(value -> value != null && !value.isBlank())
+                .map(value -> value.strip().toUpperCase(java.util.Locale.ROOT))
+                .distinct()
+                .toList();
+    }
+
     public static final class Builder {
 
         private List<String> categories;
         private List<String> requireTags;
+        private List<String> memoryScopes;
+        private Long sourceConversationId;
         private Double minScore;
         private Integer topK;
         private Duration maxAge;
@@ -56,6 +72,16 @@ public record MemoryRecallFilter(
 
         public Builder requireTags(List<String> requireTags) {
             this.requireTags = requireTags;
+            return this;
+        }
+
+        public Builder memoryScopes(List<String> memoryScopes) {
+            this.memoryScopes = memoryScopes;
+            return this;
+        }
+
+        public Builder sourceConversationId(Long sourceConversationId) {
+            this.sourceConversationId = sourceConversationId;
             return this;
         }
 
@@ -75,7 +101,7 @@ public record MemoryRecallFilter(
         }
 
         public MemoryRecallFilter build() {
-            return new MemoryRecallFilter(categories, requireTags, minScore, topK, maxAge);
+            return new MemoryRecallFilter(categories, requireTags, memoryScopes, sourceConversationId, minScore, topK, maxAge);
         }
     }
 }
