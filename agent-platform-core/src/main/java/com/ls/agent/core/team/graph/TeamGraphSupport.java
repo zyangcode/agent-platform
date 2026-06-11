@@ -16,13 +16,18 @@ import com.ls.agent.core.quota.api.TokenUsageService;
 import com.ls.agent.core.quota.command.RecordTokenUsageCommand;
 import com.ls.agent.core.team.api.TeamPlanner;
 import com.ls.agent.core.team.api.TeamExecutor;
+import com.ls.agent.core.team.api.TeamReviewer;
 import com.ls.agent.core.team.application.TaskDependencySorter;
+import com.ls.agent.core.team.application.TeamAnswerDraftBuilder;
 import com.ls.agent.core.team.application.TaskPlanValidator;
 import com.ls.agent.core.team.command.ExecuteTeamTaskCommand;
 import com.ls.agent.core.team.command.PlanTeamCommand;
+import com.ls.agent.core.team.command.ReviewTeamCommand;
 import com.ls.agent.core.team.dto.ExecutionResultDTO;
+import com.ls.agent.core.team.dto.ReviewResultDTO;
 import com.ls.agent.core.team.dto.TaskPlanDTO;
 import com.ls.agent.core.team.dto.TeamPlanResultDTO;
+import com.ls.agent.core.team.dto.TeamReviewResultDTO;
 import com.ls.agent.core.team.dto.TeamRuntimeEventDTO;
 import com.ls.agent.core.team.dto.TeamTaskDTO;
 import com.ls.agent.core.team.dto.TeamTaskExecutionResultDTO;
@@ -41,6 +46,8 @@ public class TeamGraphSupport {
     private final AgentToolResolver agentToolResolver;
     private final TeamPlanner planner;
     private final TeamExecutor executor;
+    private final TeamReviewer reviewer;
+    private final TeamAnswerDraftBuilder answerDraftBuilder;
     private final TaskPlanValidator taskPlanValidator;
     private final TaskDependencySorter taskDependencySorter;
     private final TraceService traceService;
@@ -52,6 +59,8 @@ public class TeamGraphSupport {
             AgentToolResolver agentToolResolver,
             TeamPlanner planner,
             TeamExecutor executor,
+            TeamReviewer reviewer,
+            TeamAnswerDraftBuilder answerDraftBuilder,
             TaskPlanValidator taskPlanValidator,
             TaskDependencySorter taskDependencySorter,
             TraceService traceService,
@@ -62,6 +71,8 @@ public class TeamGraphSupport {
         this.agentToolResolver = agentToolResolver;
         this.planner = planner;
         this.executor = executor;
+        this.reviewer = reviewer;
+        this.answerDraftBuilder = answerDraftBuilder;
         this.taskPlanValidator = taskPlanValidator;
         this.taskDependencySorter = taskDependencySorter;
         this.traceService = traceService;
@@ -189,6 +200,47 @@ public class TeamGraphSupport {
                 objectMapper.valueToTree(result.executionResult())
         ));
         return result;
+    }
+
+    public TeamReviewResultDTO review(AgentRunCommand command, TeamGraphState state, Long parentSpanId) {
+        TraceSpanDTO span = safeStartSpan(command.traceId(), parentSpanId, "team.review", "TEAM",
+                objectMapper.createObjectNode());
+        try {
+            TeamReviewResultDTO result = reviewer.review(new ReviewTeamCommand(
+                    command.userInput(),
+                    state.plan(),
+                    state.executionResults(),
+                    state.answerDraft(),
+                    state.context()
+            ));
+            recordModelInvocations(command, result.modelInvocations(), spanId(span));
+            safeFinishSpan(span, result.reviewResult().passed() ? "SUCCESS" : "FAILED", null, result.reviewResult().summary());
+            return result;
+        } catch (Exception ex) {
+            safeFinishSpan(span, "FAILED", errorCode(ex), errorMessage(ex));
+            throw ex;
+        }
+    }
+
+    public String buildAnswerDraft(AgentRunCommand command, TeamGraphState state) {
+        return answerDraftBuilder.build(command.userInput(), state.plan(), state.executionResults());
+    }
+
+    public void emitReview(AgentRunCommand command, TeamGraphRuntimeContext runtimeContext, Integer step, String answerDraft, ReviewResultDTO review) {
+        com.fasterxml.jackson.databind.node.ObjectNode payload = objectMapper.createObjectNode();
+        payload.set("review", objectMapper.valueToTree(review));
+        payload.put("answerDraft", answerDraft);
+        runtimeContext.eventSink().emit(TeamRuntimeEventDTO.review(
+                command.traceId(),
+                step,
+                review.passed() ? "SUCCESS" : "FAILED",
+                review.summary(),
+                payload
+        ));
+    }
+
+    public void emitRetry(AgentRunCommand command, TeamGraphRuntimeContext runtimeContext, Integer step, String taskId, String message) {
+        runtimeContext.eventSink().emit(TeamRuntimeEventDTO.retry(command.traceId(), step, taskId, message, null));
     }
 
     public void emit(TeamGraphRuntimeContext runtimeContext, TeamRuntimeEventDTO event) {

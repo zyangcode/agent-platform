@@ -10,6 +10,8 @@ public final class TeamGraphNodeNames {
     public static final String VALIDATE_PLAN = "validate_plan";
     public static final String SCHEDULE = "schedule";
     public static final String EXECUTE_BATCH = "execute_batch";
+    public static final String REVIEW = "review";
+    public static final String ROUTE_AFTER_REVIEW = "route_after_review";
     public static final String FINAL_ANSWER = "final_answer";
     public static final String END = GraphDefinition.END;
 

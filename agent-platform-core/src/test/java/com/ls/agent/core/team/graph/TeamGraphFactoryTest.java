@@ -19,14 +19,19 @@ import com.ls.agent.core.quota.command.RecordTokenUsageCommand;
 import com.ls.agent.core.team.api.TeamEventSink;
 import com.ls.agent.core.team.api.TeamExecutor;
 import com.ls.agent.core.team.api.TeamPlanner;
+import com.ls.agent.core.team.api.TeamReviewer;
 import com.ls.agent.core.team.application.TaskDependencySorter;
+import com.ls.agent.core.team.application.TeamAnswerDraftBuilder;
 import com.ls.agent.core.team.application.TaskPlanValidator;
 import com.ls.agent.core.team.application.TeamRunLimiter;
 import com.ls.agent.core.team.command.ExecuteTeamTaskCommand;
 import com.ls.agent.core.team.command.PlanTeamCommand;
+import com.ls.agent.core.team.command.ReviewTeamCommand;
 import com.ls.agent.core.team.dto.ExecutionResultDTO;
+import com.ls.agent.core.team.dto.ReviewResultDTO;
 import com.ls.agent.core.team.dto.TaskPlanDTO;
 import com.ls.agent.core.team.dto.TeamPlanResultDTO;
+import com.ls.agent.core.team.dto.TeamReviewResultDTO;
 import com.ls.agent.core.team.dto.TeamRuntimeEventDTO;
 import com.ls.agent.core.team.dto.TeamTaskDTO;
 import com.ls.agent.core.team.dto.TeamTaskExecutionResultDTO;
@@ -78,6 +83,7 @@ class TeamGraphFactoryTest {
         AgentToolResolver agentToolResolver = mock(AgentToolResolver.class);
         TeamPlanner planner = mock(TeamPlanner.class);
         TeamExecutor executor = mock(TeamExecutor.class);
+        TeamReviewer reviewer = mock(TeamReviewer.class);
         TraceService traceService = mock(TraceService.class);
         TokenUsageService tokenUsageService = mock(TokenUsageService.class);
         TeamEventSink eventSink = mock(TeamEventSink.class);
@@ -102,12 +108,18 @@ class TeamGraphFactoryTest {
                         List.of(),
                         List.of()
                 ));
+        when(reviewer.review(any(ReviewTeamCommand.class))).thenReturn(new TeamReviewResultDTO(
+                new ReviewResultDTO(true, List.of(), List.of(), "review passed"),
+                List.of()
+        ));
 
         TeamGraphSupport support = new TeamGraphSupport(
                 contextBuilder,
                 agentToolResolver,
                 planner,
                 executor,
+                reviewer,
+                new TeamAnswerDraftBuilder(),
                 new TaskPlanValidator(),
                 new TaskDependencySorter(),
                 traceService,
@@ -128,8 +140,9 @@ class TeamGraphFactoryTest {
         assertThat(finalState.planResults()).hasSize(1);
         assertThat(finalState.scheduledTasks()).extracting(TeamTaskDTO::id)
                 .containsExactly("task-1", "task-2");
-        assertThat(finalState.step()).isEqualTo(7);
+        assertThat(finalState.review().passed()).isTrue();
         assertThat(finalState.route()).isEqualTo(TeamGraphRoute.FINAL);
+        assertThat(finalState.step()).isEqualTo(8);
 
         verify(contextBuilder).build(any(BuildAgentContextCommand.class));
         verify(agentToolResolver).resolve(context);
@@ -137,7 +150,7 @@ class TeamGraphFactoryTest {
         verify(tokenUsageService).record(any(RecordTokenUsageCommand.class));
 
         ArgumentCaptor<TeamRuntimeEventDTO> eventCaptor = ArgumentCaptor.forClass(TeamRuntimeEventDTO.class);
-        verify(eventSink, times(6)).emit(eventCaptor.capture());
+        verify(eventSink, times(7)).emit(eventCaptor.capture());
         assertThat(eventCaptor.getAllValues().get(0).type()).isEqualTo(TeamRuntimeEventDTO.TYPE_TEAM_PLAN);
         assertThat(eventCaptor.getAllValues().get(0).step()).isEqualTo(1);
     }
@@ -148,6 +161,7 @@ class TeamGraphFactoryTest {
         AgentToolResolver agentToolResolver = mock(AgentToolResolver.class);
         TeamPlanner planner = mock(TeamPlanner.class);
         TeamExecutor executor = mock(TeamExecutor.class);
+        TeamReviewer reviewer = mock(TeamReviewer.class);
         TraceService traceService = mock(TraceService.class);
         TokenUsageService tokenUsageService = mock(TokenUsageService.class);
         TeamEventSink eventSink = mock(TeamEventSink.class);
@@ -175,12 +189,18 @@ class TeamGraphFactoryTest {
                         List.of(modelInvocation("model task", 5)),
                         List.of()
                 ));
+        when(reviewer.review(any(ReviewTeamCommand.class))).thenReturn(new TeamReviewResultDTO(
+                new ReviewResultDTO(true, List.of(), List.of(), "review passed"),
+                List.of(modelInvocation("review", 6))
+        ));
 
         TeamGraphSupport support = new TeamGraphSupport(
                 contextBuilder,
                 agentToolResolver,
                 planner,
                 executor,
+                reviewer,
+                new TeamAnswerDraftBuilder(),
                 new TaskPlanValidator(),
                 new TaskDependencySorter(),
                 traceService,
@@ -197,12 +217,16 @@ class TeamGraphFactoryTest {
         assertThat(finalState.taskExecutionResults()).hasSize(2);
         assertThat(finalState.executionResults()).extracting(ExecutionResultDTO::taskId)
                 .containsExactly("task-1", "task-2");
-        assertThat(finalState.step()).isEqualTo(8);
+        assertThat(finalState.review().passed()).isTrue();
+        assertThat(finalState.reviewResults()).hasSize(1);
+        assertThat(finalState.route()).isEqualTo(TeamGraphRoute.FINAL);
+        assertThat(finalState.step()).isEqualTo(9);
         verify(executor, times(2)).execute(any(ExecuteTeamTaskCommand.class));
-        verify(tokenUsageService, times(2)).record(any(RecordTokenUsageCommand.class));
+        verify(reviewer).review(any(ReviewTeamCommand.class));
+        verify(tokenUsageService, times(3)).record(any(RecordTokenUsageCommand.class));
 
         ArgumentCaptor<TeamRuntimeEventDTO> eventCaptor = ArgumentCaptor.forClass(TeamRuntimeEventDTO.class);
-        verify(eventSink, times(7)).emit(eventCaptor.capture());
+        verify(eventSink, times(8)).emit(eventCaptor.capture());
         assertThat(eventCaptor.getAllValues()).extracting(TeamRuntimeEventDTO::type)
                 .containsExactly(
                         TeamRuntimeEventDTO.TYPE_TEAM_PLAN,
@@ -211,10 +235,74 @@ class TeamGraphFactoryTest {
                         TeamRuntimeEventDTO.TYPE_TEAM_TOOL_RESULT,
                         TeamRuntimeEventDTO.TYPE_TEAM_TASK_RESULT,
                         TeamRuntimeEventDTO.TYPE_TEAM_TASK_START,
-                        TeamRuntimeEventDTO.TYPE_TEAM_TASK_RESULT
+                        TeamRuntimeEventDTO.TYPE_TEAM_TASK_RESULT,
+                        TeamRuntimeEventDTO.TYPE_TEAM_REVIEW
                 );
         assertThat(eventCaptor.getAllValues()).extracting(TeamRuntimeEventDTO::step)
-                .containsExactly(1, 2, 3, 4, 5, 6, 7);
+                .containsExactly(1, 2, 3, 4, 5, 6, 7, 8);
+    }
+
+    @Test
+    void routesToRetryWhenReviewerRequestsExistingTaskRetry() {
+        TeamEventSink eventSink = mock(TeamEventSink.class);
+        TaskPlanDTO plan = planWithDependency();
+        TeamGraphFactory factory = new TeamGraphFactory(supportForReview(new ReviewResultDTO(
+                false,
+                List.of(),
+                List.of("task-1"),
+                "retry task-1"
+        ), plan));
+
+        TeamGraphState finalState = factory.invoke(
+                TeamGraphState.initial(command(), 70001L),
+                new TeamGraphRuntimeContext(eventSink, new TeamRunLimiter(), 70001L)
+        );
+
+        assertThat(finalState.route()).isEqualTo(TeamGraphRoute.RETRY);
+        assertThat(finalState.step()).isEqualTo(9);
+
+        ArgumentCaptor<TeamRuntimeEventDTO> eventCaptor = ArgumentCaptor.forClass(TeamRuntimeEventDTO.class);
+        verify(eventSink, times(8)).emit(eventCaptor.capture());
+        assertThat(eventCaptor.getAllValues()).extracting(TeamRuntimeEventDTO::type)
+                .containsExactly(
+                        TeamRuntimeEventDTO.TYPE_TEAM_PLAN,
+                        TeamRuntimeEventDTO.TYPE_TEAM_TASK_START,
+                        TeamRuntimeEventDTO.TYPE_TEAM_TOOL_CALL,
+                        TeamRuntimeEventDTO.TYPE_TEAM_TASK_RESULT,
+                        TeamRuntimeEventDTO.TYPE_TEAM_TASK_START,
+                        TeamRuntimeEventDTO.TYPE_TEAM_TASK_RESULT,
+                        TeamRuntimeEventDTO.TYPE_TEAM_REVIEW,
+                        TeamRuntimeEventDTO.TYPE_TEAM_RETRY
+                );
+        assertThat(eventCaptor.getAllValues().get(7).taskId()).isEqualTo("task-1");
+    }
+
+    @Test
+    void routesToReplanWhenReviewerRequestsNewPlan() {
+        TeamEventSink eventSink = mock(TeamEventSink.class);
+        TaskPlanDTO plan = planWithDependency();
+        TeamGraphFactory factory = new TeamGraphFactory(supportForReview(new ReviewResultDTO(
+                false,
+                List.of(new ReviewResultDTO.ReviewIssueDTO(null, "WARN", "Need more information")),
+                List.of(),
+                "replan required",
+                true,
+                "Add one more task"
+        ), plan));
+
+        TeamGraphState finalState = factory.invoke(
+                TeamGraphState.initial(command(), 70001L),
+                new TeamGraphRuntimeContext(eventSink, new TeamRunLimiter(), 70001L)
+        );
+
+        assertThat(finalState.route()).isEqualTo(TeamGraphRoute.REPLAN);
+        assertThat(finalState.previousPlan()).isEqualTo(plan);
+        assertThat(finalState.step()).isEqualTo(9);
+
+        ArgumentCaptor<TeamRuntimeEventDTO> eventCaptor = ArgumentCaptor.forClass(TeamRuntimeEventDTO.class);
+        verify(eventSink, times(8)).emit(eventCaptor.capture());
+        assertThat(eventCaptor.getAllValues().get(7).type()).isEqualTo(TeamRuntimeEventDTO.TYPE_TEAM_RETRY);
+        assertThat(eventCaptor.getAllValues().get(7).taskId()).isNull();
     }
 
     private AgentRunCommand command() {
@@ -304,6 +392,47 @@ class TeamGraphFactoryTest {
                 "mock-chat",
                 content,
                 new ModelUsageDTO(1, totalTokens - 1, totalTokens, true)
+        );
+    }
+
+    private TeamGraphSupport supportForReview(ReviewResultDTO review, TaskPlanDTO plan) {
+        AgentContextBuilder contextBuilder = mock(AgentContextBuilder.class);
+        AgentToolResolver agentToolResolver = mock(AgentToolResolver.class);
+        TeamPlanner planner = mock(TeamPlanner.class);
+        TeamExecutor executor = mock(TeamExecutor.class);
+        TeamReviewer reviewer = mock(TeamReviewer.class);
+        TraceService traceService = mock(TraceService.class);
+        TokenUsageService tokenUsageService = mock(TokenUsageService.class);
+
+        AgentContextDTO context = context();
+        when(contextBuilder.build(any(BuildAgentContextCommand.class))).thenReturn(context);
+        when(agentToolResolver.resolve(context)).thenReturn(List.of(tool("weather")));
+        when(planner.plan(any(PlanTeamCommand.class))).thenReturn(new TeamPlanResultDTO(plan, List.of()));
+        when(executor.execute(any(ExecuteTeamTaskCommand.class)))
+                .thenReturn(new TeamTaskExecutionResultDTO(
+                        new ExecutionResultDTO("task-1", "TOOL_TASK", "SUCCESS", "Weather is mild", List.of("weather"), null),
+                        List.of(),
+                        List.of()
+                ))
+                .thenReturn(new TeamTaskExecutionResultDTO(
+                        new ExecutionResultDTO("task-2", "MODEL_TASK", "SUCCESS", "Use mild weather plan", List.of(), null),
+                        List.of(),
+                        List.of()
+                ));
+        when(reviewer.review(any(ReviewTeamCommand.class))).thenReturn(new TeamReviewResultDTO(review, List.of()));
+
+        return new TeamGraphSupport(
+                contextBuilder,
+                agentToolResolver,
+                planner,
+                executor,
+                reviewer,
+                new TeamAnswerDraftBuilder(),
+                new TaskPlanValidator(),
+                new TaskDependencySorter(),
+                traceService,
+                tokenUsageService,
+                objectMapper
         );
     }
 }

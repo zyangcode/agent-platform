@@ -8,6 +8,7 @@ import com.ls.agent.core.team.dto.ExecutionResultDTO;
 import com.ls.agent.core.team.dto.ReviewResultDTO;
 import com.ls.agent.core.team.dto.TaskPlanDTO;
 import com.ls.agent.core.team.dto.TeamPlanResultDTO;
+import com.ls.agent.core.team.dto.TeamReviewResultDTO;
 import com.ls.agent.core.team.dto.TeamTaskDTO;
 import com.ls.agent.core.team.dto.TeamTaskExecutionResultDTO;
 import org.bsc.langgraph4j.state.AgentState;
@@ -29,7 +30,9 @@ public final class TeamGraphState extends AgentState {
     public static final String PLAN_RESULTS = "planResults";
     public static final String TASK_EXECUTION_RESULTS = "taskExecutionResults";
     public static final String EXECUTION_RESULTS = "executionResults";
+    public static final String ANSWER_DRAFT = "answerDraft";
     public static final String REVIEW = "review";
+    public static final String REVIEW_RESULTS = "reviewResults";
     public static final String SCHEDULED_TASKS = "scheduledTasks";
     public static final String FALLBACK_MODEL_INVOCATIONS = "fallbackModelInvocations";
     public static final String ROUTE = "route";
@@ -48,6 +51,7 @@ public final class TeamGraphState extends AgentState {
         data.put(PLAN_RESULTS, List.of());
         data.put(TASK_EXECUTION_RESULTS, List.of());
         data.put(EXECUTION_RESULTS, List.of());
+        data.put(REVIEW_RESULTS, List.of());
         data.put(SCHEDULED_TASKS, List.of());
         data.put(FALLBACK_MODEL_INVOCATIONS, List.of());
         data.put(ROUTE, TeamGraphRoute.FINAL);
@@ -100,6 +104,14 @@ public final class TeamGraphState extends AgentState {
 
     public ReviewResultDTO review() {
         return value(REVIEW).map(ReviewResultDTO.class::cast).orElse(null);
+    }
+
+    public String answerDraft() {
+        return value(ANSWER_DRAFT).map(String.class::cast).orElse("");
+    }
+
+    public List<TeamReviewResultDTO> reviewResults() {
+        return value(REVIEW_RESULTS).map(TeamGraphState::<TeamReviewResultDTO>castList).orElse(List.of());
     }
 
     public List<TeamTaskDTO> scheduledTasks() {

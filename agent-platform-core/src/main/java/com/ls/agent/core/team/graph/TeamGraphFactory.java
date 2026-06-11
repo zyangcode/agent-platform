@@ -3,6 +3,8 @@ package com.ls.agent.core.team.graph;
 import com.ls.agent.core.team.graph.node.BuildContextNode;
 import com.ls.agent.core.team.graph.node.ExecuteBatchNode;
 import com.ls.agent.core.team.graph.node.PlanNode;
+import com.ls.agent.core.team.graph.node.ReviewNode;
+import com.ls.agent.core.team.graph.node.RouteAfterReviewNode;
 import com.ls.agent.core.team.graph.node.ScheduleNode;
 import com.ls.agent.core.team.graph.node.ValidatePlanNode;
 import org.bsc.langgraph4j.CompiledGraph;
@@ -46,7 +48,7 @@ public class TeamGraphFactory {
 
     private CompiledGraph<TeamGraphState> compileGraph(TeamGraphSupport support) {
         try {
-            NodeAction<TeamGraphState> finalAnswer = state -> Map.of(TeamGraphState.ROUTE, TeamGraphRoute.FINAL);
+            NodeAction<TeamGraphState> finalAnswer = state -> Map.of();
             StateGraph<TeamGraphState> stateGraph = new StateGraph<>(new TeamGraphStateSerializer());
             if (support == null) {
                 return stateGraph
@@ -61,13 +63,17 @@ public class TeamGraphFactory {
                     .addNode(TeamGraphNodeNames.VALIDATE_PLAN, nodeWithConfig(new ValidatePlanNode(support)))
                     .addNode(TeamGraphNodeNames.SCHEDULE, AsyncNodeAction.node_async(new ScheduleNode(support)))
                     .addNode(TeamGraphNodeNames.EXECUTE_BATCH, nodeWithConfig(new ExecuteBatchNode(support)))
+                    .addNode(TeamGraphNodeNames.REVIEW, nodeWithConfig(new ReviewNode(support)))
+                    .addNode(TeamGraphNodeNames.ROUTE_AFTER_REVIEW, nodeWithConfig(new RouteAfterReviewNode(support)))
                     .addNode(TeamGraphNodeNames.FINAL_ANSWER, AsyncNodeAction.node_async(finalAnswer))
                     .addEdge(TeamGraphNodeNames.START, TeamGraphNodeNames.BUILD_CONTEXT)
                     .addEdge(TeamGraphNodeNames.BUILD_CONTEXT, TeamGraphNodeNames.PLAN)
                     .addEdge(TeamGraphNodeNames.PLAN, TeamGraphNodeNames.VALIDATE_PLAN)
                     .addEdge(TeamGraphNodeNames.VALIDATE_PLAN, TeamGraphNodeNames.SCHEDULE)
                     .addEdge(TeamGraphNodeNames.SCHEDULE, TeamGraphNodeNames.EXECUTE_BATCH)
-                    .addEdge(TeamGraphNodeNames.EXECUTE_BATCH, TeamGraphNodeNames.FINAL_ANSWER)
+                    .addEdge(TeamGraphNodeNames.EXECUTE_BATCH, TeamGraphNodeNames.REVIEW)
+                    .addEdge(TeamGraphNodeNames.REVIEW, TeamGraphNodeNames.ROUTE_AFTER_REVIEW)
+                    .addEdge(TeamGraphNodeNames.ROUTE_AFTER_REVIEW, TeamGraphNodeNames.FINAL_ANSWER)
                     .addEdge(TeamGraphNodeNames.FINAL_ANSWER, TeamGraphNodeNames.END)
                     .compile();
         } catch (GraphStateException ex) {
