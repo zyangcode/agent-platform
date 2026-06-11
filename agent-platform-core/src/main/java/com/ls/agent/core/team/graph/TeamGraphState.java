@@ -34,6 +34,7 @@ public final class TeamGraphState extends AgentState {
     public static final String REVIEW = "review";
     public static final String REVIEW_RESULTS = "reviewResults";
     public static final String SCHEDULED_TASKS = "scheduledTasks";
+    public static final String RETRY_TASK_ID = "retryTaskId";
     public static final String FALLBACK_MODEL_INVOCATIONS = "fallbackModelInvocations";
     public static final String ROUTE = "route";
 
@@ -116,6 +117,10 @@ public final class TeamGraphState extends AgentState {
 
     public List<TeamTaskDTO> scheduledTasks() {
         return value(SCHEDULED_TASKS).map(TeamGraphState::<TeamTaskDTO>castList).orElse(List.of());
+    }
+
+    public String retryTaskId() {
+        return value(RETRY_TASK_ID).map(String.class::cast).orElse(null);
     }
 
     public List<ModelInvokeResult> fallbackModelInvocations() {

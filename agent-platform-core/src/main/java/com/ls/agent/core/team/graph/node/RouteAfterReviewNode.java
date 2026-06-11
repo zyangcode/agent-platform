@@ -31,6 +31,8 @@ public class RouteAfterReviewNode implements NodeActionWithConfig<TeamGraphState
             String retryTaskId = review.retryTasks().get(0);
             support.emitRetry(state.command(), runtimeContext, state.step(), retryTaskId, "Reviewer requested task retry");
             updates.put(TeamGraphState.ROUTE, TeamGraphRoute.RETRY);
+            updates.put(TeamGraphState.RETRY_TASK_ID, retryTaskId);
+            updates.put(TeamGraphState.SCHEDULED_TASKS, java.util.List.of(support.findTask(state.plan(), retryTaskId)));
             updates.put(TeamGraphState.STEP, state.step() + 1);
             return updates;
         }
@@ -40,6 +42,7 @@ public class RouteAfterReviewNode implements NodeActionWithConfig<TeamGraphState
             }
             support.emitRetry(state.command(), runtimeContext, state.step(), null, "Reviewer requested replan");
             updates.put(TeamGraphState.PREVIOUS_PLAN, state.plan());
+            updates.put(TeamGraphState.SCHEDULED_TASKS, java.util.List.of());
             updates.put(TeamGraphState.ROUTE, TeamGraphRoute.REPLAN);
             updates.put(TeamGraphState.STEP, state.step() + 1);
             return updates;

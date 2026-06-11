@@ -141,6 +141,24 @@ public class TeamGraphSupport {
         return taskDependencySorter.sort(plan.tasks());
     }
 
+    public List<TeamTaskDTO> scheduleNewTasks(TaskPlanDTO previousPlan, TaskPlanDTO updatedPlan, List<ExecutionResultDTO> executionResults) {
+        Set<String> previousTaskIds = taskIds(previousPlan);
+        Set<String> completedTaskIds = resultTaskIds(executionResults);
+        return taskDependencySorter.sort(updatedPlan.tasks()).stream()
+                .filter(task -> {
+                    String taskId = task.id() == null ? "" : task.id().trim();
+                    return !taskId.isBlank() && !previousTaskIds.contains(taskId) && !completedTaskIds.contains(taskId);
+                })
+                .toList();
+    }
+
+    public TeamTaskDTO findTask(TaskPlanDTO plan, String taskId) {
+        return plan.tasks().stream()
+                .filter(task -> task.id().equals(taskId))
+                .findFirst()
+                .orElseThrow(() -> new BizException(ErrorCode.REQUEST_INVALID, "retry task is not in plan"));
+    }
+
     public TeamTaskExecutionResultDTO executeTask(
             AgentRunCommand command,
             TeamGraphState state,
@@ -267,6 +285,32 @@ public class TeamGraphSupport {
             }
         }
         return names;
+    }
+
+    private Set<String> taskIds(TaskPlanDTO plan) {
+        if (plan == null || plan.tasks() == null) {
+            return Set.of();
+        }
+        Set<String> ids = new LinkedHashSet<>();
+        for (TeamTaskDTO task : plan.tasks()) {
+            if (task.id() != null && !task.id().isBlank()) {
+                ids.add(task.id().trim());
+            }
+        }
+        return ids;
+    }
+
+    private Set<String> resultTaskIds(List<ExecutionResultDTO> results) {
+        if (results == null || results.isEmpty()) {
+            return Set.of();
+        }
+        Set<String> ids = new LinkedHashSet<>();
+        for (ExecutionResultDTO result : results) {
+            if (result.taskId() != null && !result.taskId().isBlank()) {
+                ids.add(result.taskId().trim());
+            }
+        }
+        return ids;
     }
 
     private void consumeToolCalls(TeamGraphRuntimeContext runtimeContext, List<AgentToolDispatchResult> toolResults) {

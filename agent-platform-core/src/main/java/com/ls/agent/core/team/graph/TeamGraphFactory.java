@@ -13,6 +13,8 @@ import org.bsc.langgraph4j.RunnableConfig;
 import org.bsc.langgraph4j.StateGraph;
 import org.bsc.langgraph4j.action.AsyncNodeAction;
 import org.bsc.langgraph4j.action.AsyncNodeActionWithConfig;
+import org.bsc.langgraph4j.action.AsyncEdgeAction;
+import org.bsc.langgraph4j.action.EdgeAction;
 import org.bsc.langgraph4j.action.NodeAction;
 import org.bsc.langgraph4j.action.NodeActionWithConfig;
 
@@ -73,7 +75,15 @@ public class TeamGraphFactory {
                     .addEdge(TeamGraphNodeNames.SCHEDULE, TeamGraphNodeNames.EXECUTE_BATCH)
                     .addEdge(TeamGraphNodeNames.EXECUTE_BATCH, TeamGraphNodeNames.REVIEW)
                     .addEdge(TeamGraphNodeNames.REVIEW, TeamGraphNodeNames.ROUTE_AFTER_REVIEW)
-                    .addEdge(TeamGraphNodeNames.ROUTE_AFTER_REVIEW, TeamGraphNodeNames.FINAL_ANSWER)
+                    .addConditionalEdges(
+                            TeamGraphNodeNames.ROUTE_AFTER_REVIEW,
+                            routeAfterReview(),
+                            Map.of(
+                                    TeamGraphRoute.RETRY.name(), TeamGraphNodeNames.EXECUTE_BATCH,
+                                    TeamGraphRoute.REPLAN.name(), TeamGraphNodeNames.PLAN,
+                                    TeamGraphRoute.FINAL.name(), TeamGraphNodeNames.FINAL_ANSWER
+                            )
+                    )
                     .addEdge(TeamGraphNodeNames.FINAL_ANSWER, TeamGraphNodeNames.END)
                     .compile();
         } catch (GraphStateException ex) {
@@ -83,5 +93,10 @@ public class TeamGraphFactory {
 
     private AsyncNodeActionWithConfig<TeamGraphState> nodeWithConfig(NodeActionWithConfig<TeamGraphState> node) {
         return AsyncNodeActionWithConfig.node_async(node);
+    }
+
+    private AsyncEdgeAction<TeamGraphState> routeAfterReview() {
+        EdgeAction<TeamGraphState> route = state -> state.route().name();
+        return AsyncEdgeAction.edge_async(route);
     }
 }

@@ -16,6 +16,12 @@ public class ScheduleNode implements NodeAction<TeamGraphState> {
 
     @Override
     public Map<String, Object> apply(TeamGraphState state) {
+        if (state.previousPlan() != null) {
+            return Map.of(
+                    TeamGraphState.SCHEDULED_TASKS,
+                    support.scheduleNewTasks(state.previousPlan(), state.plan(), state.executionResults())
+            );
+        }
         return Map.of(TeamGraphState.SCHEDULED_TASKS, support.schedule(state.plan()));
     }
 }
