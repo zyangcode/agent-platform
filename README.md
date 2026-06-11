@@ -14,6 +14,10 @@
 
 ![单 Agent 核心流程图](readme-assets/single-agent-run-model-loop.svg)
 
+### LangGraph4j 多 Agent 核心运作（待完成）
+
+![LangGraph4j 多 Agent 核心运作图（待完成）](readme-assets/langgraph4j-multi-agent-core-flow.svg)
+
 ### 记忆系统与 RAG 流程
 
 ![查询检索与上下文注入统一流程](readme-assets/memory-query-context.svg)
