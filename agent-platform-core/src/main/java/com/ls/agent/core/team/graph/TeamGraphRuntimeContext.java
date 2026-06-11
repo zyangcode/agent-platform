@@ -6,6 +6,8 @@ import com.ls.agent.core.team.application.TeamRunLimiter;
 
 public final class TeamGraphRuntimeContext {
 
+    public static final String METADATA_KEY = TeamGraphRuntimeContext.class.getName();
+
     private final TeamEventSink eventSink;
     private final TeamRunLimiter limiter;
     private final Long runSpanId;
