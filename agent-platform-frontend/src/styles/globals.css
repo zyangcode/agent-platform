@@ -57,6 +57,193 @@ body {
   background-attachment: fixed;
 }
 
+.console-background {
+  min-height: 100dvh;
+  background:
+    radial-gradient(circle at 4% 8%, rgba(59, 130, 246, 0.2), transparent 25%),
+    radial-gradient(circle at 92% 18%, rgba(34, 197, 94, 0.1), transparent 22%),
+    radial-gradient(circle at 76% 92%, rgba(56, 189, 248, 0.14), transparent 26%),
+    linear-gradient(135deg, #0a0a1a, #0f0f2e 58%, #09091d);
+  background-attachment: fixed;
+  transition: background 220ms ease;
+}
+
+body[data-background='aurora'] .console-background {
+  background:
+    radial-gradient(circle at 4% 8%, rgba(59, 130, 246, 0.2), transparent 25%),
+    radial-gradient(circle at 92% 18%, rgba(34, 197, 94, 0.1), transparent 22%),
+    radial-gradient(circle at 76% 92%, rgba(56, 189, 248, 0.14), transparent 26%),
+    linear-gradient(135deg, #0a0a1a, #0f0f2e 58%, #09091d);
+}
+
+body[data-background='soft'] .console-background {
+  --color-bg: #f8fbff;
+  --color-bg-alt: #ffffff;
+  --color-surface: rgba(255, 255, 255, 0.74);
+  --color-surface-strong: rgba(255, 255, 255, 0.86);
+  --color-surface-soft: rgba(15, 23, 42, 0.055);
+  --color-border: rgba(30, 41, 59, 0.14);
+  --color-border-strong: rgba(14, 116, 144, 0.32);
+  --color-text: #172033;
+  --color-text-muted: #475569;
+  --color-text-faint: #64748b;
+  --color-accent: #2563eb;
+  --color-accent-cyan: #0e7490;
+  --color-success: #047857;
+  --color-warning: #b45309;
+  --color-danger: #be123c;
+  color: #172033;
+  background:
+    radial-gradient(circle at 6% 4%, rgba(255, 143, 116, 0.68), transparent 24rem),
+    radial-gradient(circle at 45% 12%, rgba(255, 231, 161, 0.72), transparent 26rem),
+    radial-gradient(circle at 78% 4%, rgba(137, 183, 255, 0.72), transparent 30rem),
+    radial-gradient(circle at 18% 52%, rgba(196, 184, 255, 0.42), transparent 28rem),
+    radial-gradient(circle at 58% 56%, rgba(255, 177, 190, 0.4), transparent 26rem),
+    linear-gradient(180deg, #eef6ff 0%, #f8f9ff 72%, #ffffff 100%);
+}
+
+body[data-background='soft'] .glass-panel,
+body[data-background='soft'] .glass-panel-strong,
+body[data-background='soft'] .console-background [class*='backdrop-blur'],
+body[data-background='soft'] .console-background [class*='bg-zinc-950'],
+body[data-background='soft'] .console-background [class*='bg-white/'],
+body[data-background='soft'] .console-background [class*='bg-black/'] {
+  border-color: rgba(30, 41, 59, 0.14);
+  background: rgba(255, 255, 255, 0.76);
+  color: #172033;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 18px 48px rgba(71, 85, 105, 0.16);
+}
+
+body[data-background='soft'] .glass-input,
+body[data-background='soft'] .console-background input,
+body[data-background='soft'] .console-background textarea,
+body[data-background='soft'] .console-background button[role='combobox'] {
+  border-color: rgba(30, 41, 59, 0.16);
+  background: rgba(255, 255, 255, 0.82);
+  color: #172033;
+}
+
+body[data-background='soft'] .glass-input::placeholder,
+body[data-background='soft'] .console-background input::placeholder,
+body[data-background='soft'] .console-background textarea::placeholder {
+  color: #64748b;
+}
+
+body[data-background='soft'] .console-background :is(
+  .text-white,
+  .text-zinc-50,
+  .text-zinc-100,
+  .text-zinc-200,
+  .text-zinc-300,
+  .text-slate-50,
+  .text-slate-100,
+  .text-slate-200,
+  .text-gray-50,
+  .text-gray-100,
+  .text-neutral-50,
+  .text-neutral-100,
+  .text-cyan-50,
+  .text-rose-50,
+  .text-amber-50,
+  [class*='text-[#eaf4ff]'],
+  [class*='text-[#eef5ff]'],
+  [class*='text-[#eff6ff]'],
+  [class*='text-[#cbd5e1]'],
+  [class*='text-[#bfdbfe]'],
+  [class*='text-[#bbf7d0]'],
+  [class*='text-[#fde68a]'],
+  [class*='text-[#fecdd3]']
+) {
+  color: #172033;
+}
+
+body[data-background='soft'] .console-background [class*='hover:text-white']:hover {
+  color: #172033;
+}
+
+body[data-background='soft'] .console-background :is(
+  .text-zinc-400,
+  .text-zinc-500,
+  .text-zinc-600,
+  [class*='text-[#92a4c7]']
+) {
+  color: #475569;
+}
+
+body[data-background='soft'] .console-background :is(
+  .text-cyan-100,
+  .text-cyan-200,
+  .text-sky-100,
+  .text-sky-200,
+  [class*='text-[#7dd3fc]']
+) {
+  color: #0e7490;
+}
+
+body[data-background='soft'] .console-background :is(
+  .text-emerald-100,
+  .text-emerald-200
+) {
+  color: #047857;
+}
+
+body[data-background='soft'] .console-background :is(
+  .text-amber-100,
+  .text-amber-200
+) {
+  color: #b45309;
+}
+
+body[data-background='soft'] .console-background :is(
+  .text-rose-100,
+  .text-rose-200
+) {
+  color: #be123c;
+}
+
+body[data-background='soft'] .console-background [disabled],
+body[data-background='soft'] .console-background [aria-disabled='true'],
+body[data-background='soft'] .console-background [data-disabled] {
+  color: #475569;
+  opacity: 0.72;
+}
+
+body[data-background='soft'] .console-background .text-rose-100[disabled],
+body[data-background='soft'] .console-background [disabled].text-rose-100,
+body[data-background='soft'] .console-background [disabled][class*='text-rose'] {
+  color: #9f1239;
+}
+
+body[data-background='soft'] .console-background :is(
+  [class*='bg-rose-400/'],
+  [class*='bg-rose-300/']
+) {
+  border-color: rgba(190, 18, 60, 0.22);
+  background: rgba(244, 63, 94, 0.1);
+  color: #9f1239;
+}
+
+body[data-background='soft'] .console-background :is(
+  [class*='bg-[rgba(251,113,133'],
+  [class*='bg-[rgba(148,163,184']
+) {
+  color: #334155;
+}
+
+body[data-background='soft'] .console-background :is(
+  [class*='border-white/'],
+  [class*='divide-white/']
+) {
+  border-color: rgba(30, 41, 59, 0.14);
+}
+
+body[data-background='soft'] .console-background pre,
+body[data-background='soft'] .console-background code {
+  color: #1e293b;
+}
+
 /* ---- Glass panel — reusable via class ---- */
 .glass-panel {
   border: 1px solid rgba(148, 163, 184, 0.16);
@@ -184,11 +371,17 @@ body {
   position: fixed;
   inset: 0;
   pointer-events: none;
+  opacity: 1;
   background-image:
     linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.016) 1px, transparent 1px);
   background-size: 48px 48px;
   mask-image: linear-gradient(to bottom, transparent, #000 12%, #000 88%, transparent);
+  transition: opacity 220ms ease;
+}
+
+body[data-background='soft'] .substrate-grid {
+  opacity: 0;
 }
 
 button,

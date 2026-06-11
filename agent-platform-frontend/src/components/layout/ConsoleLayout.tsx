@@ -4,7 +4,7 @@ import { TopStatusBar } from './TopStatusBar'
 
 export function ConsoleLayout() {
   return (
-    <div className="min-h-[100dvh] bg-bg text-text">
+    <div className="console-background min-h-[100dvh] text-text">
       {/* Fixed substrate grid */}
       <div className="substrate-grid" />
 
