@@ -12,6 +12,8 @@ import com.ls.agent.core.model.api.ModelInvokeService;
 import com.ls.agent.core.model.command.ModelInvokeCommand;
 import com.ls.agent.core.model.dto.ModelInvokeResult;
 import com.ls.agent.core.model.dto.ModelMessage;
+import com.ls.agent.core.model.dto.ModelToolCallDTO;
+import com.ls.agent.core.model.dto.ModelToolSpecDTO;
 import com.ls.agent.core.model.dto.ModelUsageDTO;
 import com.ls.agent.core.profile.dto.ProfileDTO;
 import com.ls.agent.core.team.command.ExecuteTeamTaskCommand;
@@ -98,6 +100,38 @@ class DefaultTeamExecutorTest {
         assertThat(result.executionResult().status()).isEqualTo("FAILED");
         assertThat(result.executionResult().errorMessage()).isEqualTo("tool down");
         assertThat(result.toolResults()).hasSize(1);
+    }
+
+    @Test
+    void executesModelTaskFromFunctionCallArguments() {
+        com.fasterxml.jackson.databind.node.ObjectNode arguments = objectMapper.createObjectNode()
+                .put("taskId", "task-2")
+                .put("taskType", "MODEL_TASK")
+                .put("status", "SUCCESS")
+                .put("result", "Structured model task result")
+                .putNull("errorMessage");
+        arguments.set("usedTools", objectMapper.createArrayNode());
+        when(modelInvokeService.invoke(any(ModelInvokeCommand.class))).thenReturn(modelResult(
+                "",
+                new ModelToolCallDTO("TEAM", "team_model_task_result", arguments)
+        ));
+
+        TeamTaskExecutionResultDTO result = executor.execute(command(
+                modelTask("task-2", List.of("task-1")),
+                List.of(),
+                List.of(new ExecutionResultDTO("task-1", "TOOL_TASK", "SUCCESS", "Weather sunny", List.of("weather"), null))
+        ));
+
+        assertThat(result.executionResult().status()).isEqualTo("SUCCESS");
+        assertThat(result.executionResult().result()).isEqualTo("Structured model task result");
+        assertThat(result.executionResult().taskId()).isEqualTo("task-2");
+        assertThat(result.executionResult().taskType()).isEqualTo("MODEL_TASK");
+        assertThat(result.executionResult().usedTools()).isEmpty();
+
+        ArgumentCaptor<ModelInvokeCommand> captor = ArgumentCaptor.forClass(ModelInvokeCommand.class);
+        verify(modelInvokeService).invoke(captor.capture());
+        assertThat(captor.getValue().tools()).extracting(ModelToolSpecDTO::name)
+                .containsExactly("team_model_task_result");
     }
 
     @Test
@@ -236,5 +270,17 @@ class DefaultTeamExecutorTest {
 
     private ModelInvokeResult modelResult(String content) {
         return new ModelInvokeResult(30001L, 1L, "mock", "mock-chat", content, new ModelUsageDTO(3, 4, 7, true));
+    }
+
+    private ModelInvokeResult modelResult(String content, ModelToolCallDTO toolCall) {
+        return new ModelInvokeResult(
+                30001L,
+                1L,
+                "mock",
+                "mock-chat",
+                content,
+                new ModelUsageDTO(3, 4, 7, true),
+                List.of(toolCall)
+        );
     }
 }

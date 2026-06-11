@@ -1,6 +1,8 @@
 package com.ls.agent.core.team.application;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.ls.agent.common.error.BizException;
 import com.ls.agent.common.error.ErrorCode;
 import com.ls.agent.core.agent.tool.AgentToolDTO;
@@ -11,6 +13,8 @@ import com.ls.agent.core.model.api.ModelInvokeService;
 import com.ls.agent.core.model.command.ModelInvokeCommand;
 import com.ls.agent.core.model.dto.ModelInvokeResult;
 import com.ls.agent.core.model.dto.ModelMessage;
+import com.ls.agent.core.model.dto.ModelToolCallDTO;
+import com.ls.agent.core.model.dto.ModelToolSpecDTO;
 import com.ls.agent.core.profile.dto.ProfileDTO;
 import com.ls.agent.core.team.api.TeamExecutor;
 import com.ls.agent.core.team.command.ExecuteTeamTaskCommand;
@@ -34,6 +38,8 @@ public class DefaultTeamExecutor implements TeamExecutor {
     private static final String STATUS_SUCCESS = "SUCCESS";
     private static final String STATUS_FAILED = "FAILED";
     private static final String STATUS_SKIPPED = "SKIPPED";
+    private static final String TEAM_SOURCE = "TEAM";
+    private static final String MODEL_TASK_RESULT_TOOL_NAME = "team_model_task_result";
     private static final BigDecimal MODEL_TASK_TEMPERATURE = BigDecimal.valueOf(0.4);
 
     private final AgentToolDispatcher toolDispatcher;
@@ -107,18 +113,23 @@ public class DefaultTeamExecutor implements TeamExecutor {
                     command.context().modelConfigId(),
                     modelMessages(command),
                     MODEL_TASK_TEMPERATURE,
-                    false
+                    false,
+                    List.of(modelTaskResultTool(command.task()))
             ));
-            String content = modelResult == null ? "" : safe(modelResult.assistantMessage());
+            ExecutionResultDTO executionResult = executionResultFromFunctionCall(command.task(), modelResult);
+            if (executionResult == null) {
+                String content = modelResult == null ? "" : safe(modelResult.assistantMessage());
+                executionResult = new ExecutionResultDTO(
+                        task.id(),
+                        task.taskType(),
+                        STATUS_SUCCESS,
+                        content,
+                        List.of(),
+                        null
+                );
+            }
             return new TeamTaskExecutionResultDTO(
-                    new ExecutionResultDTO(
-                            task.id(),
-                            task.taskType(),
-                            STATUS_SUCCESS,
-                            content,
-                            List.of(),
-                            null
-                    ),
+                    executionResult,
                     modelResult == null ? List.of() : List.of(modelResult),
                     List.of()
             );
@@ -161,6 +172,67 @@ public class DefaultTeamExecutor implements TeamExecutor {
                 new ModelMessage("system", "You are the Executor in an Agent Team. Complete only the assigned MODEL_TASK."),
                 new ModelMessage("user", prompt)
         );
+    }
+
+    private ModelToolSpecDTO modelTaskResultTool(TeamTaskDTO task) {
+        return new ModelToolSpecDTO(
+                TEAM_SOURCE,
+                MODEL_TASK_RESULT_TOOL_NAME,
+                "Return the structured result for the assigned MODEL_TASK. Do not call business tools.",
+                modelTaskResultSchema(task)
+        );
+    }
+
+    private JsonNode modelTaskResultSchema(TeamTaskDTO task) {
+        ObjectNode root = JsonNodeFactory.instance.objectNode();
+        root.put("type", "object");
+        ObjectNode properties = root.putObject("properties");
+        properties.putObject("taskId").put("type", "string").put("description", "Must equal " + safe(task.id()));
+        properties.putObject("taskType").put("type", "string").putArray("enum").add(TASK_TYPE_MODEL);
+        properties.putObject("status").put("type", "string").putArray("enum").add(STATUS_SUCCESS).add(STATUS_FAILED);
+        properties.putObject("result").put("type", "string").put("description", "Result for the assigned task only.");
+        ObjectNode usedTools = properties.putObject("usedTools");
+        usedTools.put("type", "array");
+        usedTools.putObject("items").put("type", "string");
+        ObjectNode errorMessage = properties.putObject("errorMessage");
+        errorMessage.putArray("type").add("string").add("null");
+        root.putArray("required").add("taskId").add("taskType").add("status").add("result").add("usedTools");
+        return root;
+    }
+
+    private ExecutionResultDTO executionResultFromFunctionCall(TeamTaskDTO task, ModelInvokeResult modelResult) {
+        JsonNode arguments = firstToolArguments(modelResult, MODEL_TASK_RESULT_TOOL_NAME);
+        if (arguments == null) {
+            return null;
+        }
+        String status = safe(arguments.path("status").asText(STATUS_SUCCESS)).isBlank()
+                ? STATUS_SUCCESS
+                : arguments.path("status").asText(STATUS_SUCCESS).strip();
+        String errorMessage = arguments.path("errorMessage").isMissingNode() || arguments.path("errorMessage").isNull()
+                ? null
+                : arguments.path("errorMessage").asText();
+        return new ExecutionResultDTO(
+                task.id(),
+                task.taskType(),
+                status,
+                arguments.path("result").asText(""),
+                List.of(),
+                errorMessage
+        );
+    }
+
+    private JsonNode firstToolArguments(ModelInvokeResult result, String toolName) {
+        if (result == null || result.toolCalls() == null) {
+            return null;
+        }
+        for (ModelToolCallDTO call : result.toolCalls()) {
+            if (call != null
+                    && TEAM_SOURCE.equalsIgnoreCase(call.sourceType())
+                    && toolName.equals(call.name())) {
+                return call.arguments();
+            }
+        }
+        return null;
     }
 
     private Optional<ExecutionResultDTO> firstDependencyFailure(ExecuteTeamTaskCommand command) {
