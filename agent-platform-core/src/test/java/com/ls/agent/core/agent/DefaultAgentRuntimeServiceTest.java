@@ -244,7 +244,8 @@ class DefaultAgentRuntimeServiceTest {
         assertThat(result.assistantMessage()).isEqualTo("hello");
         ArgumentCaptor<ModelInvokeCommand> modelCaptor = ArgumentCaptor.forClass(ModelInvokeCommand.class);
         verify(modelInvokeService).invoke(modelCaptor.capture(), any(ModelStreamCallback.class));
-        assertThat(modelCaptor.getValue().stream()).isFalse();
+        assertThat(modelCaptor.getValue().stream()).isTrue();
+        assertThat(modelCaptor.getValue().tools()).isEmpty();
         ArgumentCaptor<com.ls.agent.core.agent.entity.ConversationMessageEntity> messageCaptor =
                 ArgumentCaptor.forClass(com.ls.agent.core.agent.entity.ConversationMessageEntity.class);
         verify(conversationRepository, times(2)).insertMessage(messageCaptor.capture());
@@ -281,6 +282,10 @@ class DefaultAgentRuntimeServiceTest {
         assertThat(result.assistantMessage()).isEqualTo("The result is 3.");
         assertThat(tokens).containsExactly("The result ", "is 3.");
         assertThat(String.join("", tokens)).doesNotContain("@skill:", "expression");
+        ArgumentCaptor<ModelInvokeCommand> modelCaptor = ArgumentCaptor.forClass(ModelInvokeCommand.class);
+        verify(modelInvokeService).invoke(modelCaptor.capture(), any(ModelStreamCallback.class));
+        assertThat(modelCaptor.getValue().stream()).isTrue();
+        assertThat(modelCaptor.getValue().tools()).isEmpty();
     }
 
     @Test
@@ -452,9 +457,14 @@ class DefaultAgentRuntimeServiceTest {
         when(conversationRepository.findConversationById(90001L)).thenReturn(conversation());
         when(contextBuilder.build(any(BuildAgentContextCommand.class))).thenReturn(contextWithWeatherSkill());
         when(agentToolResolver.resolve(any())).thenReturn(List.of(agentTool("weather", AgentToolSourceType.SKILL)));
+        when(modelInvokeService.invoke(any(ModelInvokeCommand.class)))
+                .thenReturn(modelResultWithToolCall("SKILL", "weather", objectMapper.createObjectNode().put("city", "重庆")));
         when(modelInvokeService.invoke(any(ModelInvokeCommand.class), any(ModelStreamCallback.class)))
-                .thenReturn(modelResultWithToolCall("SKILL", "weather", objectMapper.createObjectNode().put("city", "重庆")))
-                .thenReturn(modelResult("重庆今天适合打篮球。"));
+                .thenAnswer(invocation -> {
+                    ModelStreamCallback callback = invocation.getArgument(1);
+                    callback.onToken("重庆今天适合打篮球。");
+                    return modelResult("重庆今天适合打篮球。");
+                });
         when(agentToolDispatcher.dispatch(any())).thenReturn(new AgentToolDispatchResult(
                 true,
                 "weather",
@@ -571,8 +581,8 @@ class DefaultAgentRuntimeServiceTest {
                 "postModel:1:mock-chat",
                 "preTool:calculator:LOW",
                 "postTool:calculator:14",
-                "preModel:2:1",
-                "postModel:2:mock-chat",
+                "preModel:7:0",
+                "postModel:7:mock-chat",
                 "postFinal:16:false"
         );
     }

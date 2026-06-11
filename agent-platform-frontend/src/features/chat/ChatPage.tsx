@@ -650,7 +650,7 @@ export function ChatPage() {
         </button>
 
         {/* Chat area */}
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 min-h-0 h-full">
           <ConversationPanel
             disabledReason={disabledReason}
             input={input}

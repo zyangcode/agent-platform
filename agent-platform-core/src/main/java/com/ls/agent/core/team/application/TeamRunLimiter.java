@@ -76,10 +76,17 @@ public class TeamRunLimiter {
     }
 
     public void consumeRetry() {
-        retryCount++;
-        if (retryCount > maxRetries) {
+        if (!tryConsumeRetry()) {
             fail("Team retry count exceeds maxRetries");
         }
+    }
+
+    public boolean tryConsumeRetry() {
+        if (retryCount >= maxRetries) {
+            return false;
+        }
+        retryCount++;
+        return true;
     }
 
     public void consumeToolCall() {

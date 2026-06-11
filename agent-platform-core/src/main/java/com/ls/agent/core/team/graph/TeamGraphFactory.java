@@ -49,7 +49,7 @@ public class TeamGraphFactory {
                     .orElseThrow(() -> new IllegalStateException("Team graph completed without final state"));
             return graphResult;
         } catch (Exception ex) {
-            throw new IllegalStateException("Failed to invoke team graph", ex);
+            throw new IllegalStateException("Failed to invoke team graph: " + rootCauseMessage(ex), ex);
         }
     }
 
@@ -103,5 +103,18 @@ public class TeamGraphFactory {
     private AsyncEdgeAction<TeamGraphState> routeAfterReview() {
         EdgeAction<TeamGraphState> route = state -> state.route().name();
         return AsyncEdgeAction.edge_async(route);
+    }
+
+    private String rootCauseMessage(Throwable throwable) {
+        Throwable current = throwable;
+        Throwable root = throwable;
+        while (current != null) {
+            if (current.getMessage() != null && !current.getMessage().isBlank()) {
+                root = current;
+            }
+            current = current.getCause();
+        }
+        String message = root == null ? null : root.getMessage();
+        return message == null || message.isBlank() ? root.getClass().getSimpleName() : message;
     }
 }

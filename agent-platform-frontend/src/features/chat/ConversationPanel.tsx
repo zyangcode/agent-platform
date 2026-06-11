@@ -1,9 +1,10 @@
 import { Bot, ExternalLink, Send, Square, UserRound } from 'lucide-react'
-import { type FormEvent } from 'react'
+import { type FormEvent, useLayoutEffect, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { useI18n } from '@/lib/i18n/use-i18n'
 import { cn } from '@/lib/utils'
+import { isNearScrollBottom, shouldAutoScrollMessages } from './chat-scroll-utils'
 import type { ChatMessage, RagCitation, RuntimeStatus } from './types'
 
 type ConversationPanelProps = {
@@ -29,16 +30,51 @@ export function ConversationPanel({
 }: ConversationPanelProps) {
   const { t } = useI18n()
   const isStreaming = status === 'streaming'
+  const bottomRef = useRef<HTMLDivElement | null>(null)
+  const messagesRef = useRef<HTMLDivElement | null>(null)
+  const shouldAutoScrollRef = useRef(true)
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     onSubmit()
   }
 
+  function handleMessagesScroll() {
+    const element = messagesRef.current
+    if (!element) {
+      return
+    }
+    shouldAutoScrollRef.current = isNearScrollBottom(element)
+  }
+
+  useLayoutEffect(() => {
+    const element = messagesRef.current
+    if (
+      !element ||
+      !shouldAutoScrollMessages({
+        isStreaming,
+        wasNearBottom: shouldAutoScrollRef.current,
+      })
+    ) {
+      return
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      bottomRef.current?.scrollIntoView({ block: 'end' })
+      element.scrollTop = element.scrollHeight
+    })
+
+    return () => window.cancelAnimationFrame(frameId)
+  }, [isStreaming, messages, ragCitations])
+
   return (
-    <div className="flex min-h-0 flex-col glass-panel overflow-hidden">
+    <div className="flex h-full min-h-0 flex-col glass-panel overflow-hidden">
       {/* Messages area */}
-      <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
+      <div
+        className="flex-1 space-y-4 overflow-y-auto px-5 py-4"
+        onScroll={handleMessagesScroll}
+        ref={messagesRef}
+      >
         {messages.length === 0 ? (
           <div className="flex h-full min-h-[400px] items-center justify-center">
             <div className="max-w-md text-center">
@@ -102,6 +138,7 @@ export function ConversationPanel({
                 </div>
               </div>
             ) : null}
+            <div ref={bottomRef} />
           </>
         )}
       </div>

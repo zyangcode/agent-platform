@@ -25,8 +25,9 @@ public class RouteAfterReviewNode implements NodeActionWithConfig<TeamGraphState
         ReviewResultDTO review = state.review();
         Map<String, Object> updates = new LinkedHashMap<>();
         if (needsRetry(review)) {
-            if (runtimeContext.limiter() != null) {
-                runtimeContext.limiter().consumeRetry();
+            if (!tryConsumeRetry(runtimeContext)) {
+                updates.put(TeamGraphState.ROUTE, TeamGraphRoute.FINAL);
+                return updates;
             }
             String retryTaskId = review.retryTasks().get(0);
             support.emitRetry(state.command(), runtimeContext, state.step(), retryTaskId, "Reviewer requested task retry");
@@ -37,8 +38,9 @@ public class RouteAfterReviewNode implements NodeActionWithConfig<TeamGraphState
             return updates;
         }
         if (needsReplan(review)) {
-            if (runtimeContext.limiter() != null) {
-                runtimeContext.limiter().consumeRetry();
+            if (!tryConsumeRetry(runtimeContext)) {
+                updates.put(TeamGraphState.ROUTE, TeamGraphRoute.FINAL);
+                return updates;
             }
             support.emitRetry(state.command(), runtimeContext, state.step(), null, "Reviewer requested replan");
             updates.put(TeamGraphState.PREVIOUS_PLAN, state.plan());
@@ -66,5 +68,9 @@ public class RouteAfterReviewNode implements NodeActionWithConfig<TeamGraphState
         return config.metadata(TeamGraphRuntimeContext.METADATA_KEY)
                 .map(TeamGraphRuntimeContext.class::cast)
                 .orElseThrow(() -> new IllegalStateException("Team graph runtime context is required"));
+    }
+
+    private boolean tryConsumeRetry(TeamGraphRuntimeContext runtimeContext) {
+        return runtimeContext.limiter() == null || runtimeContext.limiter().tryConsumeRetry();
     }
 }

@@ -38,7 +38,6 @@ import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBo
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -137,6 +136,9 @@ public class InternalAiController {
             Long conversationId = null;
             int[] stepHolder = {2};
             writeEvent(output, "thinking", payload("thinking", traceId, null, 1, "request accepted", Map.of()));
+            com.ls.agent.core.model.api.ModelStreamCallback messageDeltaWriter = wantsStream(request)
+                    ? token -> writeMessageDelta(output, traceId, request.conversationId(), stepHolder[0]++, token)
+                    : null;
 
             try {
                 if (MODE_NONE.equalsIgnoreCase(request.agentMode())) {
@@ -147,10 +149,11 @@ public class InternalAiController {
                             userId,
                             request.profileId(),
                             request.modelConfigId(),
-                            request.messages()
+                            request.messages(),
+                            messageDeltaWriter
                     );
-                    writeEvent(output, "message", payload("message", traceId, null, 2, result.assistantMessage(), Map.of()));
-                    writeEvent(output, "done", payload("done", traceId, null, 3, null, Map.of("modelConfigId", result.modelConfigId())));
+                    writeEvent(output, "message", payload("message", traceId, null, stepHolder[0]++, result.assistantMessage(), Map.of()));
+                    writeEvent(output, "done", payload("done", traceId, null, stepHolder[0], null, Map.of("modelConfigId", result.modelConfigId())));
                     quotaFilter.commit(traceId, totalTokens(result.usage()));
                     finishTraceRoot(traceId, null, "SUCCESS", null, null);
                     return;
@@ -162,7 +165,6 @@ public class InternalAiController {
                     throw new BizException(ErrorCode.REQUEST_INVALID, "agentMode is invalid");
                 }
 
-                List<String> bufferedMessageDeltas = new ArrayList<>();
                 java.util.function.Consumer<String> progress = msg -> {
                     try {
                         writeEvent(output, "thinking", payload("thinking", traceId, null, stepHolder[0]++, msg, Map.of()));
@@ -185,7 +187,7 @@ public class InternalAiController {
                         request.confirmedToolKeys(),
                         request.pendingToolCall(),
                         progress
-                ), event -> writeTeamEvent(output, event), bufferedMessageDeltas::add);
+                ), event -> writeTeamEvent(output, event), messageDeltaWriter);
 
                 conversationId = result.conversationId();
                 for (AgentToolEventDTO event : result.toolEvents()) {
@@ -197,9 +199,6 @@ public class InternalAiController {
                             event.content(),
                             toolEventMetadata(event)
                     ));
-                }
-                for (String token : bufferedMessageDeltas) {
-                    writeMessageDelta(output, traceId, result.conversationId(), stepHolder[0]++, token);
                 }
                 writeEvent(output, "message", payload("message", traceId, result.conversationId(), stepHolder[0]++, result.assistantMessage(), Map.of()));
                 Map<String, Object> doneMeta = new HashMap<>();
@@ -299,6 +298,10 @@ public class InternalAiController {
 
     private String effectiveAgentMode(GatewayChatRequest request) {
         return request.agentMode() == null ? MODE_AGENT : request.agentMode();
+    }
+
+    private boolean wantsStream(GatewayChatRequest request) {
+        return request.stream() == null || request.stream();
     }
 
     private String apiKeyPrefix(String apiKey) {

@@ -298,9 +298,13 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
             messages = compactMessages(command, parentSpanId, messages);
 
             // B. 准备流式缓冲区：在 Agent 模式下，中间思考过程通常不直接流向前端，除非是最终回复
-            BufferedStreamCallback bufferedStream = streamCallback == null
+            boolean canStreamThisRound = streamCallback != null && availableTools.isEmpty();
+            BufferedStreamCallback bufferedStream = streamCallback == null || canStreamThisRound
                     ? null
                     : new BufferedStreamCallback();
+            ModelStreamCallback modelStreamCallback = canStreamThisRound
+                    ? streamCallback
+                    : null;
 
             // C. 推送进度状态
             if (progress != null) {
@@ -315,7 +319,7 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
                     availableTools,
                     parentSpanId,
                     step + 1,
-                    bufferedStream
+                    modelStreamCallback
             );
 
             // E. 解析模型回复中的工具调用请求 (如 @skill:xxx)
@@ -351,7 +355,7 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
                         if (toolCallCount >= MAX_TOOL_CALLS) {
                             return fallbackDirectAnswer(command, context, messages, parentSpanId, streamCallback);
                         }
-                        continue; // 继续下一轮循环，让模型观察工具执行结果
+                        return fallbackDirectAnswer(command, context, messages, parentSpanId, streamCallback);
                     }
                 }
 
@@ -360,7 +364,9 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
                     return result;
                 }
                 // 如果开启了流式输出，将缓冲区中的最终内容刷给前端
-                flushBufferedVisibleAnswer(streamCallback, result.assistantMessage(), bufferedStream);
+                if (bufferedStream != null) {
+                    flushBufferedVisibleAnswer(streamCallback, result.assistantMessage(), bufferedStream);
+                }
                 return result;
             }
 
@@ -405,6 +411,7 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
                 // 超出上限强制结束，进行兜底回答
                 return fallbackDirectAnswer(command, context, messages, parentSpanId, streamCallback);
             }
+            return fallbackDirectAnswer(command, context, messages, parentSpanId, streamCallback);
             // 继续下一轮循环，让模型根据工具执行结果进行下一步思考
         }
 
@@ -552,12 +559,14 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
             int step,
             ModelStreamCallback streamCallback
     ) {
+        List<ModelToolSpecDTO> toolSpecs = modelToolSpecs(availableTools);
+        boolean stream = streamCallback != null && toolSpecs.isEmpty();
         ObjectNode attributes = objectMapper.createObjectNode()
                 .put("modelConfigId", context.modelConfigId())
                 .put("step", step)
                 .put("messageCount", messages == null ? 0 : messages.size())
-                .put("toolSpecCount", availableTools == null ? 0 : availableTools.size())
-                .put("stream", streamCallback != null);
+                .put("toolSpecCount", toolSpecs.size())
+                .put("stream", stream);
         TraceSpanDTO span = safeStartSpan(command.traceId(), parentSpanId, "model.invoke", "MODEL", attributes);
         ModelHookContext hookContext = new ModelHookContext(
                 command.traceId(),
@@ -568,16 +577,16 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
                 context.modelConfigId(),
                 step,
                 messages == null ? 0 : messages.size(),
-                availableTools == null ? 0 : availableTools.size(),
-                streamCallback != null
+                toolSpecs.size(),
+                stream
         );
         try {
             ModelInvokeCommand invokeCommand = new ModelInvokeCommand(
                     context.modelConfigId(),
                     messages,
                     BigDecimal.valueOf(0.7),
-                    false,
-                    modelToolSpecs(availableTools)
+                    stream,
+                    toolSpecs
             );
             notifyPreModelCall(hookContext);
             ModelInvokeResult result = streamCallback == null

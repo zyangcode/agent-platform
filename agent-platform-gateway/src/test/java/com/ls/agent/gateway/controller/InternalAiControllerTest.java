@@ -293,7 +293,7 @@ class InternalAiControllerTest {
     }
 
     @Test
-    void internalChatStreamEmitsToolEventsBeforeBufferedMessageDeltaWhenRuntimeStreamsAfterToolUse() throws Exception {
+    void internalChatStreamWritesMessageDeltaImmediatelyWhenRuntimeStreamsAfterToolUse() throws Exception {
         when(sensitiveDataScanner.scan("hello", "REQUEST_MESSAGE")).thenReturn(List.of());
         when(quotaService.reserve(any(ReserveQuotaCommand.class))).thenReturn(reservation());
         doAnswer(invocation -> {
@@ -321,8 +321,8 @@ class InternalAiControllerTest {
                 .getResponse()
                 .getContentAsString();
 
-        assertThat(body.indexOf("event: action")).isLessThan(body.indexOf("event: message_delta"));
-        assertThat(body.indexOf("event: observation")).isLessThan(body.indexOf("event: message_delta"));
+        assertThat(body.indexOf("event: message_delta")).isLessThan(body.indexOf("event: action"));
+        assertThat(body.indexOf("event: message_delta")).isLessThan(body.indexOf("event: observation"));
         assertThat(body.indexOf("event: message_delta")).isLessThan(body.indexOf("event: message\n"));
     }
 
@@ -634,7 +634,7 @@ class InternalAiControllerTest {
 
     @Test
     void directModeRecordsModelSpanAndTokenUsage() throws Exception {
-        GatewayChatRequest request = directRequest(List.of(new ModelMessage("user", "hello direct")));
+        GatewayChatRequest request = directRequest(List.of(new ModelMessage("user", "hello direct")), false);
         when(sensitiveDataScanner.scan(null, "REQUEST_MESSAGE")).thenReturn(List.of());
         when(sensitiveDataScanner.scan("hello direct", "REQUEST_MESSAGES")).thenReturn(List.of());
         when(quotaService.reserve(any(ReserveQuotaCommand.class))).thenReturn(reservation());
@@ -673,6 +673,85 @@ class InternalAiControllerTest {
 
         verify(traceService).finishSpan(any(FinishTraceSpanCommand.class));
         verify(agentRuntimeService, never()).run(any(AgentRunCommand.class));
+    }
+
+    @Test
+    void directModeEmitsMessageDeltaBeforeFinalMessageWhenModelStreamsTokens() throws Exception {
+        GatewayChatRequest request = directRequest(List.of(new ModelMessage("user", "hello direct")));
+        when(sensitiveDataScanner.scan(null, "REQUEST_MESSAGE")).thenReturn(List.of());
+        when(sensitiveDataScanner.scan("hello direct", "REQUEST_MESSAGES")).thenReturn(List.of());
+        when(quotaService.reserve(any(ReserveQuotaCommand.class))).thenReturn(reservation());
+        when(traceService.startSpan(any(StartTraceSpanCommand.class))).thenReturn(traceSpan());
+        doAnswer(invocation -> {
+            com.ls.agent.core.model.api.ModelStreamCallback callback = invocation.getArgument(1);
+            callback.onToken("hel");
+            callback.onToken("lo");
+            return new ModelInvokeResult(
+                    30001L,
+                    40001L,
+                    "mock",
+                    "mock-chat",
+                    "hello",
+                    new ModelUsageDTO(3, 4, 7, false)
+            );
+        }).when(modelInvokeService).invoke(any(ModelInvokeCommand.class), any());
+
+        var result = mockMvc.perform(post("/internal/ai/chat/stream")
+                        .header("X-Internal-Token", "dev-internal-token")
+                        .accept(MediaType.TEXT_EVENT_STREAM)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        String body = mockMvc.perform(asyncDispatch(result))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("event: message_delta")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"content\":\"hel\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"content\":\"lo\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("event: message")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("event: done")))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        assertThat(body.indexOf("event: message_delta")).isLessThan(body.indexOf("event: message\n"));
+        ArgumentCaptor<ModelInvokeCommand> commandCaptor = ArgumentCaptor.forClass(ModelInvokeCommand.class);
+        verify(modelInvokeService).invoke(commandCaptor.capture(), any());
+        assertThat(commandCaptor.getValue().stream()).isTrue();
+    }
+
+    @Test
+    void directModeDoesNotEmitMessageDeltaWhenStreamIsFalse() throws Exception {
+        GatewayChatRequest request = directRequest(List.of(new ModelMessage("user", "hello direct")), false);
+        when(sensitiveDataScanner.scan(null, "REQUEST_MESSAGE")).thenReturn(List.of());
+        when(sensitiveDataScanner.scan("hello direct", "REQUEST_MESSAGES")).thenReturn(List.of());
+        when(quotaService.reserve(any(ReserveQuotaCommand.class))).thenReturn(reservation());
+        when(traceService.startSpan(any(StartTraceSpanCommand.class))).thenReturn(traceSpan());
+        when(modelInvokeService.invoke(any(ModelInvokeCommand.class))).thenReturn(modelResult());
+
+        var result = mockMvc.perform(post("/internal/ai/chat/stream")
+                        .header("X-Internal-Token", "dev-internal-token")
+                        .accept(MediaType.TEXT_EVENT_STREAM)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        String body = mockMvc.perform(asyncDispatch(result))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("event: message")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("direct assistant")))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        assertThat(body).doesNotContain("event: message_delta");
+        ArgumentCaptor<ModelInvokeCommand> commandCaptor = ArgumentCaptor.forClass(ModelInvokeCommand.class);
+        verify(modelInvokeService).invoke(commandCaptor.capture());
+        assertThat(commandCaptor.getValue().stream()).isFalse();
     }
 
     @Test
@@ -781,6 +860,10 @@ class InternalAiControllerTest {
     }
 
     private GatewayChatRequest directRequest(List<ModelMessage> messages) {
+        return directRequest(messages, null);
+    }
+
+    private GatewayChatRequest directRequest(List<ModelMessage> messages, Boolean stream) {
         return new GatewayChatRequest(
                 1L,
                 20001L,
@@ -795,7 +878,7 @@ class InternalAiControllerTest {
                 "client-1",
                 30001L,
                 messages,
-                null,
+                stream,
                 List.of()
         );
     }

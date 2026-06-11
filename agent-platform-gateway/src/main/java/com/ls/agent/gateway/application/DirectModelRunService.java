@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ls.agent.common.error.BizException;
 import com.ls.agent.common.error.ErrorCode;
 import com.ls.agent.core.model.api.ModelInvokeService;
+import com.ls.agent.core.model.api.ModelStreamCallback;
 import com.ls.agent.core.model.command.ModelInvokeCommand;
 import com.ls.agent.core.model.dto.ModelInvokeResult;
 import com.ls.agent.core.model.dto.ModelMessage;
@@ -44,16 +45,20 @@ public class DirectModelRunService {
             Long userId,
             Long profileId,
             Long modelConfigId,
-            List<ModelMessage> messages
+            List<ModelMessage> messages,
+            ModelStreamCallback streamCallback
     ) {
         TraceSpanDTO span = safeStartSpan(traceId, modelConfigId);
         try {
-            ModelInvokeResult result = modelInvokeService.invoke(new ModelInvokeCommand(
+            ModelInvokeCommand command = new ModelInvokeCommand(
                     modelConfigId,
                     messages,
                     null,
-                    false
-            ));
+                    streamCallback != null
+            );
+            ModelInvokeResult result = streamCallback == null
+                    ? modelInvokeService.invoke(command)
+                    : modelInvokeService.invoke(command, streamCallback);
             safeRecordTokenUsage(traceId, span == null ? null : span.id(), tenantId, applicationId, userId, profileId, result);
             safeFinishSpan(span, "SUCCESS", null, null);
             return result;

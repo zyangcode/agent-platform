@@ -45,6 +45,7 @@ import org.mockito.ArgumentCaptor;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -406,6 +407,77 @@ class TeamGraphFactoryTest {
     }
 
     @Test
+    void returnsCurrentBestAnswerWhenReviewerRequestsRetryAfterRetryBudgetIsUsed() {
+        TeamEventSink eventSink = mock(TeamEventSink.class);
+        TaskPlanDTO plan = planWithDependency();
+        TeamGraphFactory factory = new TeamGraphFactory(supportForRepeatedRetryRequest(plan));
+
+        TeamGraphState finalState = factory.invoke(
+                TeamGraphState.initial(command(), 70001L),
+                new TeamGraphRuntimeContext(eventSink, new TeamRunLimiter(8, 1, 8, 8, 120_000L), 70001L)
+        );
+
+        assertThat(finalState.route()).isEqualTo(TeamGraphRoute.FINAL);
+        assertThat(finalState.reviewResults()).hasSize(2);
+        assertThat(finalState.taskExecutionResults()).hasSize(3);
+        assertThat(finalState.finalAnswer()).contains("Retry weather result");
+
+        ArgumentCaptor<TeamRuntimeEventDTO> eventCaptor = ArgumentCaptor.forClass(TeamRuntimeEventDTO.class);
+        verify(eventSink, times(13)).emit(eventCaptor.capture());
+        assertThat(eventCaptor.getAllValues()).extracting(TeamRuntimeEventDTO::type)
+                .containsExactly(
+                        TeamRuntimeEventDTO.TYPE_TEAM_PLAN,
+                        TeamRuntimeEventDTO.TYPE_TEAM_TASK_START,
+                        TeamRuntimeEventDTO.TYPE_TEAM_TOOL_CALL,
+                        TeamRuntimeEventDTO.TYPE_TEAM_TASK_RESULT,
+                        TeamRuntimeEventDTO.TYPE_TEAM_TASK_START,
+                        TeamRuntimeEventDTO.TYPE_TEAM_TASK_RESULT,
+                        TeamRuntimeEventDTO.TYPE_TEAM_REVIEW,
+                        TeamRuntimeEventDTO.TYPE_TEAM_RETRY,
+                        TeamRuntimeEventDTO.TYPE_TEAM_TASK_START,
+                        TeamRuntimeEventDTO.TYPE_TEAM_TOOL_CALL,
+                        TeamRuntimeEventDTO.TYPE_TEAM_TASK_RESULT,
+                        TeamRuntimeEventDTO.TYPE_TEAM_REVIEW,
+                        TeamRuntimeEventDTO.TYPE_TEAM_FINAL
+                );
+    }
+
+    @Test
+    void includesRootCauseMessageWhenGraphInvocationFails() {
+        AgentContextBuilder contextBuilder = mock(AgentContextBuilder.class);
+        AgentToolResolver agentToolResolver = mock(AgentToolResolver.class);
+        TeamPlanner planner = mock(TeamPlanner.class);
+        TeamExecutor executor = mock(TeamExecutor.class);
+        TeamReviewer reviewer = mock(TeamReviewer.class);
+        TraceService traceService = mock(TraceService.class);
+        TokenUsageService tokenUsageService = mock(TokenUsageService.class);
+        TeamEventSink eventSink = mock(TeamEventSink.class);
+
+        when(contextBuilder.build(any(BuildAgentContextCommand.class))).thenReturn(context());
+        when(agentToolResolver.resolve(any(AgentContextDTO.class))).thenReturn(List.of());
+        when(planner.plan(any(PlanTeamCommand.class)))
+                .thenThrow(new IllegalStateException("planner unavailable"));
+
+        TeamGraphFactory factory = new TeamGraphFactory(support(
+                contextBuilder,
+                agentToolResolver,
+                planner,
+                executor,
+                reviewer,
+                traceService,
+                tokenUsageService
+        ));
+
+        assertThatThrownBy(() -> factory.invoke(
+                TeamGraphState.initial(command(), 70001L),
+                new TeamGraphRuntimeContext(eventSink, new TeamRunLimiter(), 70001L)
+        ))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Failed to invoke team graph")
+                .hasMessageContaining("planner unavailable");
+    }
+
+    @Test
     void replansAndExecutesOnlyNewTasksBeforeReviewingAgain() {
         TeamEventSink eventSink = mock(TeamEventSink.class);
         TaskPlanDTO plan = planWithDependency();
@@ -665,6 +737,48 @@ class TeamGraphFactoryTest {
                 ))
                 .thenReturn(new TeamReviewResultDTO(
                         new ReviewResultDTO(true, List.of(), List.of(), "review passed"),
+                        List.of()
+                ));
+
+        return support(contextBuilder, agentToolResolver, planner, executor, reviewer, traceService, tokenUsageService);
+    }
+
+    private TeamGraphSupport supportForRepeatedRetryRequest(TaskPlanDTO plan) {
+        AgentContextBuilder contextBuilder = mock(AgentContextBuilder.class);
+        AgentToolResolver agentToolResolver = mock(AgentToolResolver.class);
+        TeamPlanner planner = mock(TeamPlanner.class);
+        TeamExecutor executor = mock(TeamExecutor.class);
+        TeamReviewer reviewer = mock(TeamReviewer.class);
+        TraceService traceService = mock(TraceService.class);
+        TokenUsageService tokenUsageService = mock(TokenUsageService.class);
+
+        AgentContextDTO context = context();
+        when(contextBuilder.build(any(BuildAgentContextCommand.class))).thenReturn(context);
+        when(agentToolResolver.resolve(context)).thenReturn(List.of(tool("weather")));
+        when(planner.plan(any(PlanTeamCommand.class))).thenReturn(new TeamPlanResultDTO(plan, List.of()));
+        when(executor.execute(any(ExecuteTeamTaskCommand.class)))
+                .thenReturn(new TeamTaskExecutionResultDTO(
+                        new ExecutionResultDTO("task-1", "TOOL_TASK", "SUCCESS", "Weather is mild", List.of("weather"), null),
+                        List.of(),
+                        List.of()
+                ))
+                .thenReturn(new TeamTaskExecutionResultDTO(
+                        new ExecutionResultDTO("task-2", "MODEL_TASK", "SUCCESS", "Use mild weather plan", List.of(), null),
+                        List.of(),
+                        List.of()
+                ))
+                .thenReturn(new TeamTaskExecutionResultDTO(
+                        new ExecutionResultDTO("task-1", "TOOL_TASK", "SUCCESS", "Retry weather result", List.of("weather"), null),
+                        List.of(),
+                        List.of()
+                ));
+        when(reviewer.review(any(ReviewTeamCommand.class)))
+                .thenReturn(new TeamReviewResultDTO(
+                        new ReviewResultDTO(false, List.of(), List.of("task-1"), "retry task-1"),
+                        List.of()
+                ))
+                .thenReturn(new TeamReviewResultDTO(
+                        new ReviewResultDTO(false, List.of(), List.of("task-1"), "retry task-1 again"),
                         List.of()
                 ));
 

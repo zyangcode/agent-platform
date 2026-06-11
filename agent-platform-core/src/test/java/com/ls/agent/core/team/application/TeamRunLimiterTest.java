@@ -8,6 +8,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -39,6 +40,14 @@ class TeamRunLimiterTest {
             }
             limiter.consumeModelCall();
         }).doesNotThrowAnyException();
+    }
+
+    @Test
+    void tryConsumeRetryReturnsFalseWhenRetryBudgetIsExhausted() {
+        TeamRunLimiter limiter = new TeamRunLimiter(2, 1, 2, 3, 1_000L, fixedClock());
+
+        assertThat(limiter.tryConsumeRetry()).isTrue();
+        assertThat(limiter.tryConsumeRetry()).isFalse();
     }
 
     @Test
