@@ -9,6 +9,7 @@ import com.ls.agent.core.team.dto.ReviewResultDTO;
 import com.ls.agent.core.team.dto.TaskPlanDTO;
 import com.ls.agent.core.team.dto.TeamPlanResultDTO;
 import com.ls.agent.core.team.dto.TeamTaskDTO;
+import com.ls.agent.core.team.dto.TeamTaskExecutionResultDTO;
 import org.bsc.langgraph4j.state.AgentState;
 
 import java.util.LinkedHashMap;
@@ -26,6 +27,7 @@ public final class TeamGraphState extends AgentState {
     public static final String PLAN = "plan";
     public static final String PREVIOUS_PLAN = "previousPlan";
     public static final String PLAN_RESULTS = "planResults";
+    public static final String TASK_EXECUTION_RESULTS = "taskExecutionResults";
     public static final String EXECUTION_RESULTS = "executionResults";
     public static final String REVIEW = "review";
     public static final String SCHEDULED_TASKS = "scheduledTasks";
@@ -44,6 +46,7 @@ public final class TeamGraphState extends AgentState {
         data.put(STEP, 1);
         data.put(AVAILABLE_TOOLS, List.of());
         data.put(PLAN_RESULTS, List.of());
+        data.put(TASK_EXECUTION_RESULTS, List.of());
         data.put(EXECUTION_RESULTS, List.of());
         data.put(SCHEDULED_TASKS, List.of());
         data.put(FALLBACK_MODEL_INVOCATIONS, List.of());
@@ -89,6 +92,10 @@ public final class TeamGraphState extends AgentState {
 
     public List<ExecutionResultDTO> executionResults() {
         return value(EXECUTION_RESULTS).map(TeamGraphState::<ExecutionResultDTO>castList).orElse(List.of());
+    }
+
+    public List<TeamTaskExecutionResultDTO> taskExecutionResults() {
+        return value(TASK_EXECUTION_RESULTS).map(TeamGraphState::<TeamTaskExecutionResultDTO>castList).orElse(List.of());
     }
 
     public ReviewResultDTO review() {

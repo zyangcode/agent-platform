@@ -1,6 +1,7 @@
 package com.ls.agent.core.team.graph;
 
 import com.ls.agent.core.team.graph.node.BuildContextNode;
+import com.ls.agent.core.team.graph.node.ExecuteBatchNode;
 import com.ls.agent.core.team.graph.node.PlanNode;
 import com.ls.agent.core.team.graph.node.ScheduleNode;
 import com.ls.agent.core.team.graph.node.ValidatePlanNode;
@@ -59,12 +60,14 @@ public class TeamGraphFactory {
                     .addNode(TeamGraphNodeNames.PLAN, nodeWithConfig(new PlanNode(support)))
                     .addNode(TeamGraphNodeNames.VALIDATE_PLAN, nodeWithConfig(new ValidatePlanNode(support)))
                     .addNode(TeamGraphNodeNames.SCHEDULE, AsyncNodeAction.node_async(new ScheduleNode(support)))
+                    .addNode(TeamGraphNodeNames.EXECUTE_BATCH, nodeWithConfig(new ExecuteBatchNode(support)))
                     .addNode(TeamGraphNodeNames.FINAL_ANSWER, AsyncNodeAction.node_async(finalAnswer))
                     .addEdge(TeamGraphNodeNames.START, TeamGraphNodeNames.BUILD_CONTEXT)
                     .addEdge(TeamGraphNodeNames.BUILD_CONTEXT, TeamGraphNodeNames.PLAN)
                     .addEdge(TeamGraphNodeNames.PLAN, TeamGraphNodeNames.VALIDATE_PLAN)
                     .addEdge(TeamGraphNodeNames.VALIDATE_PLAN, TeamGraphNodeNames.SCHEDULE)
-                    .addEdge(TeamGraphNodeNames.SCHEDULE, TeamGraphNodeNames.FINAL_ANSWER)
+                    .addEdge(TeamGraphNodeNames.SCHEDULE, TeamGraphNodeNames.EXECUTE_BATCH)
+                    .addEdge(TeamGraphNodeNames.EXECUTE_BATCH, TeamGraphNodeNames.FINAL_ANSWER)
                     .addEdge(TeamGraphNodeNames.FINAL_ANSWER, TeamGraphNodeNames.END)
                     .compile();
         } catch (GraphStateException ex) {

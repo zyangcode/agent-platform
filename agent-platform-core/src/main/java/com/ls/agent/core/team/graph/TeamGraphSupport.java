@@ -6,6 +6,7 @@ import com.ls.agent.common.error.BizException;
 import com.ls.agent.common.error.ErrorCode;
 import com.ls.agent.core.agent.command.AgentRunCommand;
 import com.ls.agent.core.agent.tool.AgentToolDTO;
+import com.ls.agent.core.agent.tool.AgentToolDispatchResult;
 import com.ls.agent.core.agent.tool.AgentToolResolver;
 import com.ls.agent.core.context.api.AgentContextBuilder;
 import com.ls.agent.core.context.command.BuildAgentContextCommand;
@@ -14,13 +15,17 @@ import com.ls.agent.core.model.dto.ModelInvokeResult;
 import com.ls.agent.core.quota.api.TokenUsageService;
 import com.ls.agent.core.quota.command.RecordTokenUsageCommand;
 import com.ls.agent.core.team.api.TeamPlanner;
+import com.ls.agent.core.team.api.TeamExecutor;
 import com.ls.agent.core.team.application.TaskDependencySorter;
 import com.ls.agent.core.team.application.TaskPlanValidator;
+import com.ls.agent.core.team.command.ExecuteTeamTaskCommand;
 import com.ls.agent.core.team.command.PlanTeamCommand;
+import com.ls.agent.core.team.dto.ExecutionResultDTO;
 import com.ls.agent.core.team.dto.TaskPlanDTO;
 import com.ls.agent.core.team.dto.TeamPlanResultDTO;
 import com.ls.agent.core.team.dto.TeamRuntimeEventDTO;
 import com.ls.agent.core.team.dto.TeamTaskDTO;
+import com.ls.agent.core.team.dto.TeamTaskExecutionResultDTO;
 import com.ls.agent.core.trace.api.TraceService;
 import com.ls.agent.core.trace.command.FinishTraceSpanCommand;
 import com.ls.agent.core.trace.command.StartTraceSpanCommand;
@@ -35,6 +40,7 @@ public class TeamGraphSupport {
     private final AgentContextBuilder contextBuilder;
     private final AgentToolResolver agentToolResolver;
     private final TeamPlanner planner;
+    private final TeamExecutor executor;
     private final TaskPlanValidator taskPlanValidator;
     private final TaskDependencySorter taskDependencySorter;
     private final TraceService traceService;
@@ -45,6 +51,7 @@ public class TeamGraphSupport {
             AgentContextBuilder contextBuilder,
             AgentToolResolver agentToolResolver,
             TeamPlanner planner,
+            TeamExecutor executor,
             TaskPlanValidator taskPlanValidator,
             TaskDependencySorter taskDependencySorter,
             TraceService traceService,
@@ -54,6 +61,7 @@ public class TeamGraphSupport {
         this.contextBuilder = contextBuilder;
         this.agentToolResolver = agentToolResolver;
         this.planner = planner;
+        this.executor = executor;
         this.taskPlanValidator = taskPlanValidator;
         this.taskDependencySorter = taskDependencySorter;
         this.traceService = traceService;
@@ -122,6 +130,71 @@ public class TeamGraphSupport {
         return taskDependencySorter.sort(plan.tasks());
     }
 
+    public TeamTaskExecutionResultDTO executeTask(
+            AgentRunCommand command,
+            TeamGraphState state,
+            TeamTaskDTO task,
+            TeamGraphRuntimeContext runtimeContext
+    ) {
+        if (runtimeContext.limiter() != null) {
+            runtimeContext.limiter().checkTimeout();
+        }
+        emit(runtimeContext, TeamRuntimeEventDTO.taskStart(
+                command.traceId(),
+                state.step(),
+                task.id(),
+                "Start task: " + task.name()
+        ));
+        int step = state.step() + 1;
+        if ("TOOL_TASK".equals(task.taskType())) {
+            emit(runtimeContext, TeamRuntimeEventDTO.toolCall(command.traceId(), step++, task.id(), task.suggestedTool()));
+        }
+
+        TraceSpanDTO taskSpan = safeStartSpan(command.traceId(), runtimeContext.runSpanId(), "team.task.execute", "TEAM",
+                objectMapper.createObjectNode()
+                        .put("taskId", task.id())
+                        .put("taskType", task.taskType()));
+        TeamTaskExecutionResultDTO result = executor.execute(new ExecuteTeamTaskCommand(
+                command.tenantId(),
+                command.userId(),
+                command.userInput(),
+                task,
+                state.context(),
+                state.availableTools(),
+                state.executionResults()
+        ));
+        if (runtimeContext.limiter() != null) {
+            runtimeContext.limiter().consumeModelCalls(result.modelInvocations().size());
+            consumeToolCalls(runtimeContext, result.toolResults());
+        }
+        recordModelInvocations(command, result.modelInvocations(), spanId(taskSpan));
+        String status = result.executionResult().status();
+        safeFinishSpan(taskSpan, "SUCCESS".equals(status) ? "SUCCESS" : "FAILED", null, result.executionResult().errorMessage());
+        for (AgentToolDispatchResult toolResult : result.toolResults()) {
+            emit(runtimeContext, TeamRuntimeEventDTO.toolResult(
+                    command.traceId(),
+                    step++,
+                    task.id(),
+                    toolResult.toolName(),
+                    toolResult.success() ? "SUCCESS" : "FAILED",
+                    toolResult.output()
+            ));
+        }
+        emit(runtimeContext, TeamRuntimeEventDTO.taskResult(
+                command.traceId(),
+                step,
+                task.id(),
+                status,
+                result.executionResult().result(),
+                objectMapper.valueToTree(result.executionResult())
+        ));
+        return result;
+    }
+
+    public void emit(TeamGraphRuntimeContext runtimeContext, TeamRuntimeEventDTO event) {
+        runtimeContext.eventSink().emit(event);
+    }
+
     public void emitPlan(AgentRunCommand command, TeamGraphRuntimeContext runtimeContext, Integer step, TaskPlanDTO plan) {
         runtimeContext.eventSink().emit(TeamRuntimeEventDTO.plan(
                 command.traceId(),
@@ -142,6 +215,15 @@ public class TeamGraphSupport {
             }
         }
         return names;
+    }
+
+    private void consumeToolCalls(TeamGraphRuntimeContext runtimeContext, List<AgentToolDispatchResult> toolResults) {
+        if (toolResults == null) {
+            return;
+        }
+        for (AgentToolDispatchResult ignored : toolResults) {
+            runtimeContext.limiter().consumeToolCall();
+        }
     }
 
     private TraceSpanDTO safeStartSpan(String traceId, Long parentSpanId, String spanName, String spanType, JsonNode attributes) {
