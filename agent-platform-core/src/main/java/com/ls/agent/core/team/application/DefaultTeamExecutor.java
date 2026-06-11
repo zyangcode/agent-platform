@@ -118,15 +118,7 @@ public class DefaultTeamExecutor implements TeamExecutor {
             ));
             ExecutionResultDTO executionResult = executionResultFromFunctionCall(command.task(), modelResult);
             if (executionResult == null) {
-                String content = modelResult == null ? "" : safe(modelResult.assistantMessage());
-                executionResult = new ExecutionResultDTO(
-                        task.id(),
-                        task.taskType(),
-                        STATUS_SUCCESS,
-                        content,
-                        List.of(),
-                        null
-                );
+                executionResult = failed(task, "model task must call " + MODEL_TASK_RESULT_TOOL_NAME);
             }
             return new TeamTaskExecutionResultDTO(
                     executionResult,
@@ -205,6 +197,10 @@ public class DefaultTeamExecutor implements TeamExecutor {
         if (arguments == null) {
             return null;
         }
+        Optional<String> validationError = validateModelTaskResultArguments(task, arguments);
+        if (validationError.isPresent()) {
+            return failed(task, "invalid model task result: " + validationError.get());
+        }
         String status = safe(arguments.path("status").asText(STATUS_SUCCESS)).isBlank()
                 ? STATUS_SUCCESS
                 : arguments.path("status").asText(STATUS_SUCCESS).strip();
@@ -216,9 +212,54 @@ public class DefaultTeamExecutor implements TeamExecutor {
                 task.taskType(),
                 status,
                 arguments.path("result").asText(""),
-                List.of(),
+                usedTools(arguments.path("usedTools")),
                 errorMessage
         );
+    }
+
+    private Optional<String> validateModelTaskResultArguments(TeamTaskDTO task, JsonNode arguments) {
+        if (arguments == null || !arguments.isObject()) {
+            return Optional.of("arguments must be an object");
+        }
+        if (!arguments.path("taskId").isTextual() || !safe(task.id()).equals(arguments.path("taskId").asText())) {
+            return Optional.of("taskId must equal " + safe(task.id()));
+        }
+        if (!arguments.path("taskType").isTextual() || !TASK_TYPE_MODEL.equals(arguments.path("taskType").asText())) {
+            return Optional.of("taskType must equal " + TASK_TYPE_MODEL);
+        }
+        if (!arguments.path("status").isTextual()) {
+            return Optional.of("status is required");
+        }
+        String status = arguments.path("status").asText().strip();
+        if (!STATUS_SUCCESS.equals(status) && !STATUS_FAILED.equals(status)) {
+            return Optional.of("status must be SUCCESS or FAILED");
+        }
+        if (!arguments.path("result").isTextual()) {
+            return Optional.of("result is required");
+        }
+        JsonNode usedTools = arguments.path("usedTools");
+        if (!usedTools.isArray()) {
+            return Optional.of("usedTools must be an array");
+        }
+        for (JsonNode usedTool : usedTools) {
+            if (!usedTool.isTextual()) {
+                return Optional.of("usedTools must contain only strings");
+            }
+        }
+        JsonNode errorMessage = arguments.path("errorMessage");
+        if (!errorMessage.isMissingNode() && !errorMessage.isNull() && !errorMessage.isTextual()) {
+            return Optional.of("errorMessage must be a string or null");
+        }
+        return Optional.empty();
+    }
+
+    private List<String> usedTools(JsonNode usedTools) {
+        if (usedTools == null || !usedTools.isArray()) {
+            return List.of();
+        }
+        return java.util.stream.StreamSupport.stream(usedTools.spliterator(), false)
+                .map(JsonNode::asText)
+                .toList();
     }
 
     private JsonNode firstToolArguments(ModelInvokeResult result, String toolName) {

@@ -135,8 +135,58 @@ class DefaultTeamExecutorTest {
     }
 
     @Test
+    void returnsFailedWhenModelTaskFunctionCallArgumentsAreInvalid() {
+        com.fasterxml.jackson.databind.node.ObjectNode arguments = objectMapper.createObjectNode()
+                .put("taskId", "other-task")
+                .put("taskType", "MODEL_TASK")
+                .put("status", "SUCCESS")
+                .put("result", "Wrong task result");
+        arguments.set("usedTools", objectMapper.createArrayNode());
+        when(modelInvokeService.invoke(any(ModelInvokeCommand.class))).thenReturn(modelResult(
+                "",
+                new ModelToolCallDTO("TEAM", "team_model_task_result", arguments)
+        ));
+
+        TeamTaskExecutionResultDTO result = executor.execute(command(
+                modelTask("task-2", List.of()),
+                List.of(),
+                List.of()
+        ));
+
+        assertThat(result.executionResult().status()).isEqualTo("FAILED");
+        assertThat(result.executionResult().errorMessage()).contains("invalid model task result");
+        assertThat(result.executionResult().errorMessage()).contains("taskId must equal task-2");
+        assertThat(result.modelInvocations()).hasSize(1);
+    }
+
+    @Test
+    void returnsFailedWhenModelTaskDoesNotCallResultFunction() {
+        when(modelInvokeService.invoke(any(ModelInvokeCommand.class))).thenReturn(modelResult("Plain text result"));
+
+        TeamTaskExecutionResultDTO result = executor.execute(command(
+                modelTask("task-2", List.of()),
+                List.of(),
+                List.of()
+        ));
+
+        assertThat(result.executionResult().status()).isEqualTo("FAILED");
+        assertThat(result.executionResult().errorMessage()).contains("team_model_task_result");
+        assertThat(result.modelInvocations()).hasSize(1);
+    }
+
+    @Test
     void executesModelTaskWithPreviousResultsInPrompt() {
-        when(modelInvokeService.invoke(any(ModelInvokeCommand.class))).thenReturn(modelResult("Model task result"));
+        com.fasterxml.jackson.databind.node.ObjectNode arguments = objectMapper.createObjectNode()
+                .put("taskId", "task-2")
+                .put("taskType", "MODEL_TASK")
+                .put("status", "SUCCESS")
+                .put("result", "Model task result")
+                .putNull("errorMessage");
+        arguments.set("usedTools", objectMapper.createArrayNode());
+        when(modelInvokeService.invoke(any(ModelInvokeCommand.class))).thenReturn(modelResult(
+                "",
+                new ModelToolCallDTO("TEAM", "team_model_task_result", arguments)
+        ));
 
         TeamTaskExecutionResultDTO result = executor.execute(command(
                 modelTask("task-2", List.of("task-1")),
