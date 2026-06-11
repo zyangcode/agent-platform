@@ -107,8 +107,11 @@ public class OpenAiCompatibleProvider implements ModelProvider {
         body.put("messages", openAiMessages(command.messages()));
         body.put("temperature", effectiveTemperature(config, command));
         body.put("stream", command.stream());
-        // 工具通过 System Prompt 中 @skill:xxx / @mcp:xxx 文本格式传递
-        // 不发送 OpenAI function calling tools，避免不兼容模型返回空内容
+        List<Map<String, Object>> tools = openAiTools(command.tools());
+        if (!tools.isEmpty()) {
+            body.put("tools", tools);
+            body.put("tool_choice", "auto");
+        }
         return body;
     }
 
@@ -279,7 +282,7 @@ public class OpenAiCompatibleProvider implements ModelProvider {
         }
         String sourceType = encodedName.substring(0, separator).toUpperCase();
         String name = decodeToolName(encodedName.substring(separator + 2));
-        if (!"SKILL".equals(sourceType) && !"MCP".equals(sourceType)) {
+        if (!"SKILL".equals(sourceType) && !"MCP".equals(sourceType) && !"TEAM".equals(sourceType)) {
             return null;
         }
         return new DecodedFunctionName(sourceType, name);

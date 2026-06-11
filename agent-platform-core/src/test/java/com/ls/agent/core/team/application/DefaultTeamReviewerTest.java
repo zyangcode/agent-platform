@@ -6,6 +6,8 @@ import com.ls.agent.core.model.api.ModelInvokeService;
 import com.ls.agent.core.model.command.ModelInvokeCommand;
 import com.ls.agent.core.model.dto.ModelInvokeResult;
 import com.ls.agent.core.model.dto.ModelMessage;
+import com.ls.agent.core.model.dto.ModelToolCallDTO;
+import com.ls.agent.core.model.dto.ModelToolSpecDTO;
 import com.ls.agent.core.model.dto.ModelUsageDTO;
 import com.ls.agent.core.profile.dto.ProfileDTO;
 import com.ls.agent.core.team.command.ReviewTeamCommand;
@@ -35,6 +37,32 @@ class DefaultTeamReviewerTest {
             new ReviewResultValidator(),
             objectMapper
     );
+
+    @Test
+    void returnsValidatedReviewFromFunctionCallArguments() {
+        com.fasterxml.jackson.databind.node.ObjectNode arguments = objectMapper.createObjectNode()
+                .put("passed", true)
+                .put("summary", "Function review passed.")
+                .put("replanRequired", false)
+                .put("replanInstruction", "");
+        arguments.set("issues", objectMapper.createArrayNode());
+        arguments.set("retryTasks", objectMapper.createArrayNode());
+
+        when(modelInvokeService.invoke(any(ModelInvokeCommand.class))).thenReturn(modelResult(
+                "",
+                new ModelToolCallDTO("TEAM", "team_review", arguments)
+        ));
+
+        TeamReviewResultDTO result = reviewer.review(command("Draft answer"));
+
+        assertThat(result.reviewResult().passed()).isTrue();
+        assertThat(result.reviewResult().summary()).isEqualTo("Function review passed.");
+
+        ArgumentCaptor<ModelInvokeCommand> captor = ArgumentCaptor.forClass(ModelInvokeCommand.class);
+        verify(modelInvokeService).invoke(captor.capture());
+        assertThat(captor.getValue().tools()).extracting(ModelToolSpecDTO::name)
+                .containsExactly("team_review");
+    }
 
     @Test
     void returnsValidatedReviewFromModelJson() {
@@ -193,5 +221,17 @@ class DefaultTeamReviewerTest {
 
     private ModelInvokeResult modelResult(String content) {
         return new ModelInvokeResult(30001L, 1L, "mock", "mock-chat", content, new ModelUsageDTO(3, 4, 7, true));
+    }
+
+    private ModelInvokeResult modelResult(String content, ModelToolCallDTO toolCall) {
+        return new ModelInvokeResult(
+                30001L,
+                1L,
+                "mock",
+                "mock-chat",
+                content,
+                new ModelUsageDTO(3, 4, 7, true),
+                List.of(toolCall)
+        );
     }
 }

@@ -9,6 +9,8 @@ import com.ls.agent.core.model.api.ModelInvokeService;
 import com.ls.agent.core.model.command.ModelInvokeCommand;
 import com.ls.agent.core.model.dto.ModelInvokeResult;
 import com.ls.agent.core.model.dto.ModelMessage;
+import com.ls.agent.core.model.dto.ModelToolCallDTO;
+import com.ls.agent.core.model.dto.ModelToolSpecDTO;
 import com.ls.agent.core.model.dto.ModelUsageDTO;
 import com.ls.agent.core.profile.dto.ProfileDTO;
 import com.ls.agent.core.team.command.PlanTeamCommand;
@@ -35,6 +37,36 @@ class DefaultTeamPlannerTest {
             new TaskPlanValidator(),
             objectMapper
     );
+
+    @Test
+    void returnsValidatedPlanFromFunctionCallArguments() {
+        com.fasterxml.jackson.databind.node.ObjectNode task = objectMapper.createObjectNode()
+                .put("id", "task-1")
+                .put("name", "Answer")
+                .put("description", "Answer directly with gathered context.")
+                .put("taskType", "MODEL_TASK")
+                .putNull("suggestedTool");
+        task.set("arguments", objectMapper.createObjectNode());
+        task.set("dependsOn", objectMapper.createArrayNode());
+        com.fasterxml.jackson.databind.node.ObjectNode arguments = objectMapper.createObjectNode()
+                .put("goal", "Plan with function calling");
+        arguments.set("tasks", objectMapper.createArrayNode().add(task));
+        when(modelInvokeService.invoke(any(ModelInvokeCommand.class))).thenReturn(modelResult(
+                "",
+                new ModelToolCallDTO("TEAM", "team_plan", arguments)
+        ));
+
+        TeamPlanResultDTO result = planner.plan(command("Use function calling", tools()));
+
+        assertThat(result.plan().goal()).isEqualTo("Plan with function calling");
+        assertThat(result.plan().tasks()).hasSize(1);
+        assertThat(result.plan().tasks().get(0).taskType()).isEqualTo("MODEL_TASK");
+
+        ArgumentCaptor<ModelInvokeCommand> captor = ArgumentCaptor.forClass(ModelInvokeCommand.class);
+        verify(modelInvokeService).invoke(captor.capture());
+        assertThat(captor.getValue().tools()).extracting(ModelToolSpecDTO::name)
+                .containsExactly("team_plan");
+    }
 
     @Test
     void returnsValidatedPlanFromModelJson() {
@@ -349,6 +381,18 @@ class DefaultTeamPlannerTest {
 
     private ModelInvokeResult modelResult(String content) {
         return new ModelInvokeResult(30001L, 1L, "mock", "mock-chat", content, new ModelUsageDTO(2, 2, 4, true));
+    }
+
+    private ModelInvokeResult modelResult(String content, ModelToolCallDTO toolCall) {
+        return new ModelInvokeResult(
+                30001L,
+                1L,
+                "mock",
+                "mock-chat",
+                content,
+                new ModelUsageDTO(2, 2, 4, true),
+                List.of(toolCall)
+        );
     }
 
     private String planWithTooManyTasks() {

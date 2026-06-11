@@ -1,6 +1,8 @@
 package com.ls.agent.core.team.application;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.ls.agent.common.error.BizException;
 import com.ls.agent.common.error.ErrorCode;
 import com.ls.agent.core.agent.tool.AgentToolDTO;
@@ -8,6 +10,8 @@ import com.ls.agent.core.model.api.ModelInvokeService;
 import com.ls.agent.core.model.command.ModelInvokeCommand;
 import com.ls.agent.core.model.dto.ModelInvokeResult;
 import com.ls.agent.core.model.dto.ModelMessage;
+import com.ls.agent.core.model.dto.ModelToolCallDTO;
+import com.ls.agent.core.model.dto.ModelToolSpecDTO;
 import com.ls.agent.core.profile.dto.ProfileDTO;
 import com.ls.agent.core.team.api.TeamPlanner;
 import com.ls.agent.core.team.command.PlanTeamCommand;
@@ -30,6 +34,8 @@ public class DefaultTeamPlanner implements TeamPlanner {
     private static final BigDecimal PLANNER_TEMPERATURE = BigDecimal.valueOf(0.2);
     private static final int MAX_MODEL_ATTEMPTS = 2;
     private static final int FAILURE_PROMPT_MAX_LENGTH = 200;
+    private static final String TEAM_SOURCE = "TEAM";
+    private static final String PLAN_TOOL_NAME = "team_plan";
 
     private final ModelInvokeService modelInvokeService;
     private final TaskPlanValidator taskPlanValidator;
@@ -73,11 +79,20 @@ public class DefaultTeamPlanner implements TeamPlanner {
                 command.context().modelConfigId(),
                 messages(command, previousFailure),
                 PLANNER_TEMPERATURE,
-                false
+                false,
+                List.of(teamPlanTool())
         ));
     }
 
     private TaskPlanDTO parsePlan(ModelInvokeResult result) {
+        JsonNode arguments = firstToolArguments(result, PLAN_TOOL_NAME);
+        if (arguments != null) {
+            try {
+                return objectMapper.treeToValue(arguments, TaskPlanDTO.class);
+            } catch (Exception ex) {
+                throw new BizException(ErrorCode.REQUEST_INVALID, "planner function arguments are not valid TaskPlan JSON");
+            }
+        }
         String content = result == null ? null : result.assistantMessage();
         if (content == null || content.isBlank()) {
             throw new BizException(ErrorCode.REQUEST_INVALID, "planner response is empty");
@@ -97,7 +112,7 @@ public class DefaultTeamPlanner implements TeamPlanner {
                 .append(profilePrompt(command))
                 .append("\n\nAvailable tools:\n")
                 .append(formatTools(command.availableTools()))
-                .append("\n\nReturn one JSON object only. Schema:\n")
+                .append("\n\nCall the team_plan function with this schema. If tools are unavailable, return one JSON object only:\n")
                 .append("""
                         {
                           "goal": "short goal",
@@ -140,9 +155,59 @@ public class DefaultTeamPlanner implements TeamPlanner {
         }
 
         return List.of(
-                new ModelMessage("system", "You are the Planner in an Agent Team. Split work into validated JSON tasks only."),
+                new ModelMessage("system", "You are the Planner in an Agent Team. Split work into validated tasks by calling team_plan."),
                 new ModelMessage("user", userPrompt.toString())
         );
+    }
+
+    private ModelToolSpecDTO teamPlanTool() {
+        return new ModelToolSpecDTO(
+                TEAM_SOURCE,
+                PLAN_TOOL_NAME,
+                "Return the validated Agent Team task plan. Planner must not execute tools or answer the user.",
+                taskPlanSchema()
+        );
+    }
+
+    private JsonNode taskPlanSchema() {
+        ObjectNode root = objectMapper.createObjectNode();
+        root.put("type", "object");
+        ObjectNode properties = root.putObject("properties");
+        properties.putObject("goal").put("type", "string").put("description", "Short goal for the team run.");
+        ObjectNode tasks = properties.putObject("tasks");
+        tasks.put("type", "array");
+        tasks.put("minItems", 1);
+        tasks.put("maxItems", TeamLimits.DEFAULT_MAX_TASKS);
+        ObjectNode task = tasks.putObject("items");
+        task.put("type", "object");
+        ObjectNode taskProperties = task.putObject("properties");
+        taskProperties.putObject("id").put("type", "string");
+        taskProperties.putObject("name").put("type", "string");
+        taskProperties.putObject("description").put("type", "string");
+        taskProperties.putObject("taskType").put("type", "string").putArray("enum").add("TOOL_TASK").add("MODEL_TASK");
+        ObjectNode suggestedTool = taskProperties.putObject("suggestedTool");
+        suggestedTool.putArray("type").add("string").add("null");
+        taskProperties.putObject("arguments").put("type", "object");
+        ObjectNode dependsOn = taskProperties.putObject("dependsOn");
+        dependsOn.put("type", "array");
+        dependsOn.putObject("items").put("type", "string");
+        task.putArray("required").add("id").add("name").add("description").add("taskType").add("arguments").add("dependsOn");
+        root.putArray("required").add("goal").add("tasks");
+        return root;
+    }
+
+    private JsonNode firstToolArguments(ModelInvokeResult result, String toolName) {
+        if (result == null || result.toolCalls() == null) {
+            return null;
+        }
+        for (ModelToolCallDTO call : result.toolCalls()) {
+            if (call != null
+                    && TEAM_SOURCE.equalsIgnoreCase(call.sourceType())
+                    && toolName.equals(call.name())) {
+                return call.arguments();
+            }
+        }
+        return null;
     }
 
     private String profilePrompt(PlanTeamCommand command) {

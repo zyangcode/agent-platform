@@ -236,8 +236,9 @@ class DefaultModelInvokeServiceTest {
             assertThat(result.toolCalls()).isEmpty();
             assertThat(requestBodies).singleElement()
                     .satisfies(body -> {
-                        assertThat(body).doesNotContain("\"tools\"");
-                        assertThat(body).doesNotContain("\"tool_choice\"");
+                        assertThat(body).contains("\"tools\"");
+                        assertThat(body).contains("\"type\":\"function\"");
+                        assertThat(body).contains("\"name\":\"skill__weather\"");
                     });
         } finally {
             server.stop(0);
@@ -299,7 +300,69 @@ class DefaultModelInvokeServiceTest {
             assertThat(result.toolCalls()).isEmpty();
             assertThat(requestBodies).singleElement()
                     .satisfies(body -> {
-                        assertThat(body).doesNotContain("\"tools\"");
+                        assertThat(body).contains("\"tools\"");
+                        assertThat(body).contains("\"name\":\"mcp__b64_d2VhdGhlci5jdXJyZW50\"");
+                    });
+        } finally {
+            server.stop(0);
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void openAiCompatibleModelRestoresTeamToolCalls() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        server.createContext("/v1/chat/completions", exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            writeJson(exchange, 200, """
+                    {
+                      "choices": [
+                        {
+                          "message": {
+                            "role": "assistant",
+                            "content": "",
+                            "tool_calls": [
+                              {
+                                "type": "function",
+                                "function": {
+                                  "name": "team__team_plan",
+                                  "arguments": "{\\"goal\\":\\"Plan with function calling\\",\\"tasks\\":[]}"
+                                }
+                              }
+                            ]
+                          },
+                          "finish_reason": "tool_calls"
+                        }
+                      ]
+                    }
+                    """);
+        });
+        server.setExecutor(executor);
+        server.start();
+        try {
+            when(configMapper.selectById(2L)).thenReturn(realConfig());
+            when(providerMapper.selectById(2L)).thenReturn(realProvider(server.getAddress().getPort()));
+            when(secretEncryptor.decrypt("encrypted-key")).thenReturn("sk-test");
+
+            ModelInvokeResult result = service.invoke(new ModelInvokeCommand(
+                    2L,
+                    List.of(new ModelMessage("user", "Plan this")),
+                    BigDecimal.valueOf(0.2),
+                    false,
+                    List.of(new ModelToolSpecDTO(
+                            "TEAM",
+                            "team_plan",
+                            "Return a team plan.",
+                            objectMapper.createObjectNode().put("type", "object")
+                    ))
+            ));
+
+            assertThat(result.toolCalls()).singleElement()
+                    .satisfies(toolCall -> {
+                        assertThat(toolCall.sourceType()).isEqualTo("TEAM");
+                        assertThat(toolCall.name()).isEqualTo("team_plan");
+                        assertThat(toolCall.arguments().path("goal").asText()).isEqualTo("Plan with function calling");
                     });
         } finally {
             server.stop(0);

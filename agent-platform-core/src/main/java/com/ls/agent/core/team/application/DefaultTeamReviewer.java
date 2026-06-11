@@ -1,12 +1,16 @@
 package com.ls.agent.core.team.application;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.ls.agent.common.error.BizException;
 import com.ls.agent.common.error.ErrorCode;
 import com.ls.agent.core.model.api.ModelInvokeService;
 import com.ls.agent.core.model.command.ModelInvokeCommand;
 import com.ls.agent.core.model.dto.ModelInvokeResult;
 import com.ls.agent.core.model.dto.ModelMessage;
+import com.ls.agent.core.model.dto.ModelToolCallDTO;
+import com.ls.agent.core.model.dto.ModelToolSpecDTO;
 import com.ls.agent.core.profile.dto.ProfileDTO;
 import com.ls.agent.core.team.api.TeamReviewer;
 import com.ls.agent.core.team.command.ReviewTeamCommand;
@@ -28,6 +32,8 @@ public class DefaultTeamReviewer implements TeamReviewer {
     private static final int MAX_MODEL_ATTEMPTS = 2;
     private static final int FAILURE_PROMPT_MAX_LENGTH = 200;
     private static final BigDecimal REVIEW_TEMPERATURE = BigDecimal.valueOf(0.2);
+    private static final String TEAM_SOURCE = "TEAM";
+    private static final String REVIEW_TOOL_NAME = "team_review";
 
     private final ModelInvokeService modelInvokeService;
     private final ReviewResultValidator reviewResultValidator;
@@ -69,11 +75,20 @@ public class DefaultTeamReviewer implements TeamReviewer {
                 command.context().modelConfigId(),
                 messages(command, previousFailure),
                 REVIEW_TEMPERATURE,
-                false
+                false,
+                List.of(teamReviewTool())
         ));
     }
 
     private ReviewResultDTO parseReview(ModelInvokeResult result) {
+        JsonNode arguments = firstToolArguments(result, REVIEW_TOOL_NAME);
+        if (arguments != null) {
+            try {
+                return objectMapper.treeToValue(arguments, ReviewResultDTO.class);
+            } catch (Exception ex) {
+                throw new BizException(ErrorCode.REQUEST_INVALID, "reviewer function arguments are not valid ReviewResult JSON");
+            }
+        }
         String content = result == null ? null : result.assistantMessage();
         if (content == null || content.isBlank()) {
             throw new BizException(ErrorCode.REQUEST_INVALID, "reviewer response is empty");
@@ -97,7 +112,7 @@ public class DefaultTeamReviewer implements TeamReviewer {
                 .append(executionSummary(command.executionResults()))
                 .append("\n\nAnswer draft:\n")
                 .append(safe(command.answerDraft()))
-                .append("\n\nReturn one JSON object only. Schema:\n")
+                .append("\n\nCall the team_review function with this schema. If tools are unavailable, return one JSON object only:\n")
                 .append("""
                         {
                           "passed": true,
@@ -122,9 +137,58 @@ public class DefaultTeamReviewer implements TeamReviewer {
                     .append("\nCorrect it and return valid JSON only.\n");
         }
         return List.of(
-                new ModelMessage("system", "You are the Reviewer in an Agent Team. Return validated JSON only."),
+                new ModelMessage("system", "You are the Reviewer in an Agent Team. Review by calling team_review."),
                 new ModelMessage("user", prompt.toString())
         );
+    }
+
+    private ModelToolSpecDTO teamReviewTool() {
+        return new ModelToolSpecDTO(
+                TEAM_SOURCE,
+                REVIEW_TOOL_NAME,
+                "Return the validated review result. Reviewer must not plan new tasks or execute tools.",
+                reviewSchema()
+        );
+    }
+
+    private JsonNode reviewSchema() {
+        ObjectNode root = objectMapper.createObjectNode();
+        root.put("type", "object");
+        ObjectNode properties = root.putObject("properties");
+        properties.putObject("passed").put("type", "boolean");
+        ObjectNode issues = properties.putObject("issues");
+        issues.put("type", "array");
+        ObjectNode issue = issues.putObject("items");
+        issue.put("type", "object");
+        ObjectNode issueProperties = issue.putObject("properties");
+        ObjectNode taskId = issueProperties.putObject("taskId");
+        taskId.putArray("type").add("string").add("null");
+        issueProperties.putObject("level").put("type", "string").putArray("enum").add("INFO").add("WARN").add("ERROR");
+        issueProperties.putObject("message").put("type", "string");
+        issue.putArray("required").add("level").add("message");
+        ObjectNode retryTasks = properties.putObject("retryTasks");
+        retryTasks.put("type", "array");
+        retryTasks.putObject("items").put("type", "string");
+        properties.putObject("summary").put("type", "string");
+        properties.putObject("replanRequired").put("type", "boolean");
+        ObjectNode replanInstruction = properties.putObject("replanInstruction");
+        replanInstruction.putArray("type").add("string").add("null");
+        root.putArray("required").add("passed").add("issues").add("retryTasks").add("summary");
+        return root;
+    }
+
+    private JsonNode firstToolArguments(ModelInvokeResult result, String toolName) {
+        if (result == null || result.toolCalls() == null) {
+            return null;
+        }
+        for (ModelToolCallDTO call : result.toolCalls()) {
+            if (call != null
+                    && TEAM_SOURCE.equalsIgnoreCase(call.sourceType())
+                    && toolName.equals(call.name())) {
+                return call.arguments();
+            }
+        }
+        return null;
     }
 
     private ReviewResultDTO fallbackReview(ReviewTeamCommand command, String lastFailure) {
