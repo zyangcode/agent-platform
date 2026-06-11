@@ -18,10 +18,13 @@ import org.bsc.langgraph4j.action.AsyncEdgeAction;
 import org.bsc.langgraph4j.action.EdgeAction;
 import org.bsc.langgraph4j.action.NodeAction;
 import org.bsc.langgraph4j.action.NodeActionWithConfig;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+@Component
 public class TeamGraphFactory {
 
     private final CompiledGraph<TeamGraphState> graph;
@@ -30,6 +33,7 @@ public class TeamGraphFactory {
         this.graph = compileGraph(null);
     }
 
+    @Autowired
     public TeamGraphFactory(TeamGraphSupport support) {
         this.graph = compileGraph(support);
     }

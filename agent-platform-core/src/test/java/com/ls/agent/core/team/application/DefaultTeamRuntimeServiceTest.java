@@ -32,7 +32,11 @@ import com.ls.agent.core.team.dto.TeamReviewResultDTO;
 import com.ls.agent.core.team.dto.TeamRuntimeEventDTO;
 import com.ls.agent.core.team.dto.TeamTaskDTO;
 import com.ls.agent.core.team.dto.TeamTaskExecutionResultDTO;
+import com.ls.agent.core.team.graph.TeamGraphFactory;
+import com.ls.agent.core.team.graph.TeamGraphRuntimeContext;
+import com.ls.agent.core.team.graph.TeamGraphState;
 import com.ls.agent.core.trace.api.TraceService;
+import com.ls.agent.core.trace.command.FinishTraceSpanCommand;
 import com.ls.agent.core.trace.command.StartTraceSpanCommand;
 import com.ls.agent.core.trace.dto.TraceSpanDTO;
 import org.junit.jupiter.api.Test;
@@ -41,6 +45,8 @@ import org.mockito.ArgumentCaptor;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -78,6 +84,52 @@ class DefaultTeamRuntimeServiceTest {
             modelInvokeService,
             objectMapper
     );
+
+    @Test
+    void delegatesTeamWorkflowToLangGraphAndReturnsGraphResult() {
+        TeamGraphFactory graphFactory = mock(TeamGraphFactory.class);
+        DefaultTeamRuntimeService graphBackedService = new DefaultTeamRuntimeService(
+                contextBuilder,
+                agentToolResolver,
+                planner,
+                executor,
+                reviewer,
+                new TaskDependencySorter(),
+                new TeamAnswerDraftBuilder(),
+                new TeamFinalAnswerBuilder(),
+                limiter,
+                eventSink,
+                traceService,
+                tokenUsageService,
+                modelInvokeService,
+                objectMapper,
+                graphFactory
+        );
+        when(traceService.startSpan(any(StartTraceSpanCommand.class))).thenReturn(span(1L, "team.run"));
+        when(graphFactory.invoke(any(TeamGraphState.class), any(TeamGraphRuntimeContext.class)))
+                .thenAnswer(invocation -> {
+                    TeamGraphState initialState = invocation.getArgument(0);
+                    TeamGraphRuntimeContext runtimeContext = invocation.getArgument(1);
+                    assertThat(initialState.runSpanId()).isEqualTo(1L);
+                    assertThat(runtimeContext.eventSink()).isEqualTo(eventSink);
+                    Map<String, Object> data = new LinkedHashMap<>(initialState.data());
+                    data.put(TeamGraphState.FINAL_ANSWER, "Graph final answer");
+                    data.put(TeamGraphState.USAGE, new ModelUsageDTO(2, 3, 5, false));
+                    return new TeamGraphState(data);
+                });
+
+        AgentRunResult result = graphBackedService.run(command(90001L));
+
+        assertThat(result.conversationId()).isEqualTo(90001L);
+        assertThat(result.assistantMessage()).isEqualTo("Graph final answer");
+        assertThat(result.usage().totalTokens()).isEqualTo(5);
+        verify(graphFactory).invoke(any(TeamGraphState.class), any(TeamGraphRuntimeContext.class));
+        verify(traceService).finishSpan(any(FinishTraceSpanCommand.class));
+
+        ArgumentCaptor<TeamRuntimeEventDTO> eventCaptor = ArgumentCaptor.forClass(TeamRuntimeEventDTO.class);
+        verify(eventSink).emit(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().type()).isEqualTo(TeamRuntimeEventDTO.TYPE_TEAM_START);
+    }
 
     @Test
     void runsPlannerExecutorReviewerAndEmitsEventsInOrder() {
@@ -317,7 +369,7 @@ class DefaultTeamRuntimeServiceTest {
     @Test
     void emitsToolCallAndToolResultAroundToolTask() {
         when(contextBuilder.build(any(BuildAgentContextCommand.class))).thenReturn(context("TEAM"));
-        when(agentToolResolver.resolve(any())).thenReturn(List.of());
+        when(agentToolResolver.resolve(any())).thenReturn(List.of(tool("weather")));
         when(planner.plan(any(PlanTeamCommand.class))).thenReturn(new TeamPlanResultDTO(
                 toolPlan(),
                 List.of()

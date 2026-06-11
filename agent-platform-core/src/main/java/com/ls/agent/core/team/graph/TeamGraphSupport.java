@@ -40,6 +40,8 @@ import com.ls.agent.core.trace.api.TraceService;
 import com.ls.agent.core.trace.command.FinishTraceSpanCommand;
 import com.ls.agent.core.trace.command.StartTraceSpanCommand;
 import com.ls.agent.core.trace.dto.TraceSpanDTO;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -47,6 +49,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
+@Component
 public class TeamGraphSupport {
 
     private final AgentContextBuilder contextBuilder;
@@ -93,6 +96,7 @@ public class TeamGraphSupport {
         );
     }
 
+    @Autowired
     public TeamGraphSupport(
             AgentContextBuilder contextBuilder,
             AgentToolResolver agentToolResolver,

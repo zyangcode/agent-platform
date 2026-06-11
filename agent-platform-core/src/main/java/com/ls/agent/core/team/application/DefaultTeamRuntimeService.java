@@ -35,16 +35,23 @@ import com.ls.agent.core.team.dto.TeamReviewResultDTO;
 import com.ls.agent.core.team.dto.TeamRuntimeEventDTO;
 import com.ls.agent.core.team.dto.TeamTaskDTO;
 import com.ls.agent.core.team.dto.TeamTaskExecutionResultDTO;
+import com.ls.agent.core.team.graph.TeamGraphFactory;
+import com.ls.agent.core.team.graph.TeamGraphRuntimeContext;
+import com.ls.agent.core.team.graph.TeamGraphState;
+import com.ls.agent.core.team.graph.TeamGraphSupport;
 import com.ls.agent.core.trace.api.TraceService;
 import com.ls.agent.core.trace.command.FinishTraceSpanCommand;
 import com.ls.agent.core.trace.command.StartTraceSpanCommand;
 import com.ls.agent.core.trace.dto.TraceSpanDTO;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 @Service
@@ -64,6 +71,7 @@ public class DefaultTeamRuntimeService implements TeamRuntimeService {
     private final TokenUsageService tokenUsageService;
     private final ModelInvokeService modelInvokeService;
     private final ObjectMapper objectMapper;
+    private final TeamGraphFactory graphFactory;
 
     public DefaultTeamRuntimeService(
             AgentContextBuilder contextBuilder,
@@ -81,6 +89,57 @@ public class DefaultTeamRuntimeService implements TeamRuntimeService {
             ModelInvokeService modelInvokeService,
             ObjectMapper objectMapper
     ) {
+        this(
+                contextBuilder,
+                agentToolResolver,
+                planner,
+                executor,
+                reviewer,
+                taskDependencySorter,
+                answerDraftBuilder,
+                finalAnswerBuilder,
+                limiterTemplate,
+                eventSink,
+                traceService,
+                tokenUsageService,
+                modelInvokeService,
+                objectMapper,
+                new TeamGraphFactory(new TeamGraphSupport(
+                        contextBuilder,
+                        agentToolResolver,
+                        planner,
+                        executor,
+                        reviewer,
+                        answerDraftBuilder,
+                        finalAnswerBuilder,
+                        new TaskPlanValidator(),
+                        taskDependencySorter,
+                        traceService,
+                        tokenUsageService,
+                        modelInvokeService,
+                        objectMapper
+                ))
+        );
+    }
+
+    @Autowired
+    public DefaultTeamRuntimeService(
+            AgentContextBuilder contextBuilder,
+            AgentToolResolver agentToolResolver,
+            TeamPlanner planner,
+            TeamExecutor executor,
+            TeamReviewer reviewer,
+            TaskDependencySorter taskDependencySorter,
+            TeamAnswerDraftBuilder answerDraftBuilder,
+            TeamFinalAnswerBuilder finalAnswerBuilder,
+            TeamRunLimiter limiterTemplate,
+            TeamEventSink eventSink,
+            TraceService traceService,
+            TokenUsageService tokenUsageService,
+            ModelInvokeService modelInvokeService,
+            ObjectMapper objectMapper,
+            TeamGraphFactory graphFactory
+    ) {
         this.contextBuilder = contextBuilder;
         this.agentToolResolver = agentToolResolver;
         this.planner = planner;
@@ -95,6 +154,7 @@ public class DefaultTeamRuntimeService implements TeamRuntimeService {
         this.tokenUsageService = tokenUsageService;
         this.modelInvokeService = modelInvokeService;
         this.objectMapper = objectMapper;
+        this.graphFactory = graphFactory;
     }
 
     @Override
@@ -113,6 +173,14 @@ public class DefaultTeamRuntimeService implements TeamRuntimeService {
         emit(activeEventSink, TeamRuntimeEventDTO.start(command.traceId(), step++, "Team run started", null));
         try {
             requireNonNull(command.conversationId(), "conversationId");
+            if (graphFactory != null) {
+                TeamGraphState finalState = graphFactory.invoke(
+                        graphInitialState(command, spanId(runSpan), step),
+                        new TeamGraphRuntimeContext(activeEventSink, limiter, spanId(runSpan))
+                );
+                safeFinishSpan(runSpan, "SUCCESS", null, null);
+                return new AgentRunResult(finalState.conversationId(), finalState.finalAnswer(), finalState.usage());
+            }
             Long conversationId = command.conversationId();
             AgentContextDTO context = buildContext(command, conversationId, runSpan == null ? null : runSpan.id());
             List<AgentToolDTO> tools = agentToolResolver.resolve(context);
@@ -223,6 +291,12 @@ public class DefaultTeamRuntimeService implements TeamRuntimeService {
             safeFinishSpan(runSpan, "FAILED", errorCode(ex), errorMessage(ex));
             throw ex;
         }
+    }
+
+    private TeamGraphState graphInitialState(AgentRunCommand command, Long runSpanId, int step) {
+        Map<String, Object> data = new LinkedHashMap<>(TeamGraphState.initial(command, runSpanId).data());
+        data.put(TeamGraphState.STEP, step);
+        return new TeamGraphState(data);
     }
 
     private TaskExecutionBatch executeTasks(
