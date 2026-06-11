@@ -11,7 +11,11 @@ import com.ls.agent.core.agent.tool.AgentToolResolver;
 import com.ls.agent.core.context.api.AgentContextBuilder;
 import com.ls.agent.core.context.command.BuildAgentContextCommand;
 import com.ls.agent.core.context.dto.AgentContextDTO;
+import com.ls.agent.core.model.api.ModelInvokeService;
+import com.ls.agent.core.model.command.ModelInvokeCommand;
 import com.ls.agent.core.model.dto.ModelInvokeResult;
+import com.ls.agent.core.model.dto.ModelMessage;
+import com.ls.agent.core.model.dto.ModelUsageDTO;
 import com.ls.agent.core.quota.api.TokenUsageService;
 import com.ls.agent.core.quota.command.RecordTokenUsageCommand;
 import com.ls.agent.core.team.api.TeamPlanner;
@@ -19,6 +23,7 @@ import com.ls.agent.core.team.api.TeamExecutor;
 import com.ls.agent.core.team.api.TeamReviewer;
 import com.ls.agent.core.team.application.TaskDependencySorter;
 import com.ls.agent.core.team.application.TeamAnswerDraftBuilder;
+import com.ls.agent.core.team.application.TeamFinalAnswerBuilder;
 import com.ls.agent.core.team.application.TaskPlanValidator;
 import com.ls.agent.core.team.command.ExecuteTeamTaskCommand;
 import com.ls.agent.core.team.command.PlanTeamCommand;
@@ -36,6 +41,8 @@ import com.ls.agent.core.trace.command.FinishTraceSpanCommand;
 import com.ls.agent.core.trace.command.StartTraceSpanCommand;
 import com.ls.agent.core.trace.dto.TraceSpanDTO;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -48,10 +55,12 @@ public class TeamGraphSupport {
     private final TeamExecutor executor;
     private final TeamReviewer reviewer;
     private final TeamAnswerDraftBuilder answerDraftBuilder;
+    private final TeamFinalAnswerBuilder finalAnswerBuilder;
     private final TaskPlanValidator taskPlanValidator;
     private final TaskDependencySorter taskDependencySorter;
     private final TraceService traceService;
     private final TokenUsageService tokenUsageService;
+    private final ModelInvokeService modelInvokeService;
     private final ObjectMapper objectMapper;
 
     public TeamGraphSupport(
@@ -67,16 +76,50 @@ public class TeamGraphSupport {
             TokenUsageService tokenUsageService,
             ObjectMapper objectMapper
     ) {
+        this(
+                contextBuilder,
+                agentToolResolver,
+                planner,
+                executor,
+                reviewer,
+                answerDraftBuilder,
+                new TeamFinalAnswerBuilder(),
+                taskPlanValidator,
+                taskDependencySorter,
+                traceService,
+                tokenUsageService,
+                null,
+                objectMapper
+        );
+    }
+
+    public TeamGraphSupport(
+            AgentContextBuilder contextBuilder,
+            AgentToolResolver agentToolResolver,
+            TeamPlanner planner,
+            TeamExecutor executor,
+            TeamReviewer reviewer,
+            TeamAnswerDraftBuilder answerDraftBuilder,
+            TeamFinalAnswerBuilder finalAnswerBuilder,
+            TaskPlanValidator taskPlanValidator,
+            TaskDependencySorter taskDependencySorter,
+            TraceService traceService,
+            TokenUsageService tokenUsageService,
+            ModelInvokeService modelInvokeService,
+            ObjectMapper objectMapper
+    ) {
         this.contextBuilder = contextBuilder;
         this.agentToolResolver = agentToolResolver;
         this.planner = planner;
         this.executor = executor;
         this.reviewer = reviewer;
         this.answerDraftBuilder = answerDraftBuilder;
+        this.finalAnswerBuilder = finalAnswerBuilder;
         this.taskPlanValidator = taskPlanValidator;
         this.taskDependencySorter = taskDependencySorter;
         this.traceService = traceService;
         this.tokenUsageService = tokenUsageService;
+        this.modelInvokeService = modelInvokeService;
         this.objectMapper = objectMapper;
     }
 
@@ -244,6 +287,123 @@ public class TeamGraphSupport {
         return answerDraftBuilder.build(command.userInput(), state.plan(), state.executionResults());
     }
 
+    public String buildFinalAnswer(String answerDraft, ReviewResultDTO review) {
+        return finalAnswerBuilder.build(answerDraft, review);
+    }
+
+    public boolean shouldGenerateFinalAnswer(String localFinalAnswer) {
+        if (localFinalAnswer == null || localFinalAnswer.isBlank()) {
+            return true;
+        }
+        return looksLikePromptEcho(localFinalAnswer);
+    }
+
+    public FallbackModelAnswer fallbackModelAnswer(
+            AgentRunCommand command,
+            TeamGraphState state,
+            TeamGraphRuntimeContext runtimeContext
+    ) {
+        if (modelInvokeService == null || state.context() == null) {
+            return new FallbackModelAnswer("", null);
+        }
+        if (runtimeContext.limiter() != null) {
+            runtimeContext.limiter().consumeModelCall();
+        }
+        TraceSpanDTO span = safeStartSpan(command.traceId(), runtimeContext.runSpanId(), "team.fallback", "MODEL",
+                objectMapper.createObjectNode().put("reason", "final_answer"));
+        try {
+            StringBuilder ctx = new StringBuilder();
+            ctx.append("User question: ").append(command.userInput()).append("\n\n");
+            if (state.plan() != null && state.plan().goal() != null) {
+                ctx.append("Goal: ").append(state.plan().goal()).append("\n\n");
+            }
+            if (!state.executionResults().isEmpty()) {
+                ctx.append("Information gathered so far:\n");
+                for (ExecutionResultDTO result : state.executionResults()) {
+                    ctx.append("- ").append(result.result()).append("\n");
+                }
+            }
+            ctx.append("\nBased on the above, provide a direct, complete answer to the user's question. Do NOT use tool call format.");
+            ctx.append("\nCurrent date: ").append(LocalDate.now());
+
+            List<ModelMessage> messages = List.of(
+                    new ModelMessage("system", "You are a helpful assistant. Answer the user directly based on the provided context."),
+                    new ModelMessage("user", ctx.toString())
+            );
+            ModelInvokeResult result = modelInvokeService.invoke(new ModelInvokeCommand(
+                    state.context().modelConfigId(),
+                    messages,
+                    BigDecimal.valueOf(0.7),
+                    false
+            ));
+            safeRecordTokenUsage(command, result, spanId(span));
+            safeFinishSpan(span, "SUCCESS", null, null);
+            return new FallbackModelAnswer(result.assistantMessage() == null ? "" : result.assistantMessage(), result);
+        } catch (Exception ex) {
+            safeFinishSpan(span, "FAILED", errorCode(ex), errorMessage(ex));
+            return new FallbackModelAnswer("", null);
+        }
+    }
+
+    public ModelUsageDTO totalUsage(TeamGraphState state) {
+        int promptTokens = 0;
+        int completionTokens = 0;
+        int totalTokens = 0;
+        boolean estimated = false;
+        for (TeamPlanResultDTO planResult : state.planResults()) {
+            for (ModelInvokeResult invocation : planResult.modelInvocations()) {
+                ModelUsageDTO usage = invocation.usage();
+                if (usage != null) {
+                    promptTokens += usage.promptTokens();
+                    completionTokens += usage.completionTokens();
+                    totalTokens += usage.totalTokens();
+                    estimated = estimated || usage.estimated();
+                }
+            }
+        }
+        for (TeamTaskExecutionResultDTO taskResult : state.taskExecutionResults()) {
+            for (ModelInvokeResult invocation : taskResult.modelInvocations()) {
+                ModelUsageDTO usage = invocation.usage();
+                if (usage != null) {
+                    promptTokens += usage.promptTokens();
+                    completionTokens += usage.completionTokens();
+                    totalTokens += usage.totalTokens();
+                    estimated = estimated || usage.estimated();
+                }
+            }
+        }
+        for (TeamReviewResultDTO reviewResult : state.reviewResults()) {
+            for (ModelInvokeResult invocation : reviewResult.modelInvocations()) {
+                ModelUsageDTO usage = invocation.usage();
+                if (usage != null) {
+                    promptTokens += usage.promptTokens();
+                    completionTokens += usage.completionTokens();
+                    totalTokens += usage.totalTokens();
+                    estimated = estimated || usage.estimated();
+                }
+            }
+        }
+        for (ModelInvokeResult invocation : state.fallbackModelInvocations()) {
+            ModelUsageDTO usage = invocation.usage();
+            if (usage != null) {
+                promptTokens += usage.promptTokens();
+                completionTokens += usage.completionTokens();
+                totalTokens += usage.totalTokens();
+                estimated = estimated || usage.estimated();
+            }
+        }
+        return new ModelUsageDTO(promptTokens, completionTokens, totalTokens, estimated);
+    }
+
+    private boolean looksLikePromptEcho(String answer) {
+        String value = answer == null ? "" : answer;
+        return value.contains("[mock-chat] Echo:")
+                || value.contains("Original user request:")
+                || value.contains("Current task:")
+                || value.contains("Completed task results:")
+                || value.contains("Rules:");
+    }
+
     public void emitReview(AgentRunCommand command, TeamGraphRuntimeContext runtimeContext, Integer step, String answerDraft, ReviewResultDTO review) {
         com.fasterxml.jackson.databind.node.ObjectNode payload = objectMapper.createObjectNode();
         payload.set("review", objectMapper.valueToTree(review));
@@ -263,6 +423,15 @@ public class TeamGraphSupport {
 
     public void emit(TeamGraphRuntimeContext runtimeContext, TeamRuntimeEventDTO event) {
         runtimeContext.eventSink().emit(event);
+    }
+
+    public void emitFinalAnswer(AgentRunCommand command, TeamGraphRuntimeContext runtimeContext, Integer step) {
+        runtimeContext.eventSink().emit(TeamRuntimeEventDTO.finalAnswer(
+                command.traceId(),
+                step,
+                "Team generated final answer",
+                null
+        ));
     }
 
     public void emitPlan(AgentRunCommand command, TeamGraphRuntimeContext runtimeContext, Integer step, TaskPlanDTO plan) {
@@ -396,5 +565,11 @@ public class TeamGraphSupport {
 
     private String errorMessage(Exception ex) {
         return ex.getMessage() == null ? "Team graph failed" : ex.getMessage();
+    }
+
+    public record FallbackModelAnswer(
+            String answer,
+            ModelInvokeResult modelInvocation
+    ) {
     }
 }

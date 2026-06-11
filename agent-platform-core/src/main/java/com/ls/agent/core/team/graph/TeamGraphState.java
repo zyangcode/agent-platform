@@ -4,6 +4,7 @@ import com.ls.agent.core.agent.command.AgentRunCommand;
 import com.ls.agent.core.agent.tool.AgentToolDTO;
 import com.ls.agent.core.context.dto.AgentContextDTO;
 import com.ls.agent.core.model.dto.ModelInvokeResult;
+import com.ls.agent.core.model.dto.ModelUsageDTO;
 import com.ls.agent.core.team.dto.ExecutionResultDTO;
 import com.ls.agent.core.team.dto.ReviewResultDTO;
 import com.ls.agent.core.team.dto.TaskPlanDTO;
@@ -33,6 +34,8 @@ public final class TeamGraphState extends AgentState {
     public static final String ANSWER_DRAFT = "answerDraft";
     public static final String REVIEW = "review";
     public static final String REVIEW_RESULTS = "reviewResults";
+    public static final String FINAL_ANSWER = "finalAnswer";
+    public static final String USAGE = "usage";
     public static final String SCHEDULED_TASKS = "scheduledTasks";
     public static final String RETRY_TASK_ID = "retryTaskId";
     public static final String FALLBACK_MODEL_INVOCATIONS = "fallbackModelInvocations";
@@ -113,6 +116,14 @@ public final class TeamGraphState extends AgentState {
 
     public List<TeamReviewResultDTO> reviewResults() {
         return value(REVIEW_RESULTS).map(TeamGraphState::<TeamReviewResultDTO>castList).orElse(List.of());
+    }
+
+    public String finalAnswer() {
+        return value(FINAL_ANSWER).map(String.class::cast).orElse("");
+    }
+
+    public ModelUsageDTO usage() {
+        return value(USAGE).map(ModelUsageDTO.class::cast).orElse(new ModelUsageDTO(0, 0, 0, false));
     }
 
     public List<TeamTaskDTO> scheduledTasks() {

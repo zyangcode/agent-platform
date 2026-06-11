@@ -2,6 +2,7 @@ package com.ls.agent.core.team.graph;
 
 import com.ls.agent.core.team.graph.node.BuildContextNode;
 import com.ls.agent.core.team.graph.node.ExecuteBatchNode;
+import com.ls.agent.core.team.graph.node.FinalAnswerNode;
 import com.ls.agent.core.team.graph.node.PlanNode;
 import com.ls.agent.core.team.graph.node.ReviewNode;
 import com.ls.agent.core.team.graph.node.RouteAfterReviewNode;
@@ -67,7 +68,7 @@ public class TeamGraphFactory {
                     .addNode(TeamGraphNodeNames.EXECUTE_BATCH, nodeWithConfig(new ExecuteBatchNode(support)))
                     .addNode(TeamGraphNodeNames.REVIEW, nodeWithConfig(new ReviewNode(support)))
                     .addNode(TeamGraphNodeNames.ROUTE_AFTER_REVIEW, nodeWithConfig(new RouteAfterReviewNode(support)))
-                    .addNode(TeamGraphNodeNames.FINAL_ANSWER, AsyncNodeAction.node_async(finalAnswer))
+                    .addNode(TeamGraphNodeNames.FINAL_ANSWER, nodeWithConfig(new FinalAnswerNode(support)))
                     .addEdge(TeamGraphNodeNames.START, TeamGraphNodeNames.BUILD_CONTEXT)
                     .addEdge(TeamGraphNodeNames.BUILD_CONTEXT, TeamGraphNodeNames.PLAN)
                     .addEdge(TeamGraphNodeNames.PLAN, TeamGraphNodeNames.VALIDATE_PLAN)

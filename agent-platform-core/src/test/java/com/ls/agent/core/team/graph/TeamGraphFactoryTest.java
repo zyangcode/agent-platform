@@ -10,6 +10,8 @@ import com.ls.agent.core.agent.tool.AgentToolSourceType;
 import com.ls.agent.core.context.api.AgentContextBuilder;
 import com.ls.agent.core.context.command.BuildAgentContextCommand;
 import com.ls.agent.core.context.dto.AgentContextDTO;
+import com.ls.agent.core.model.api.ModelInvokeService;
+import com.ls.agent.core.model.command.ModelInvokeCommand;
 import com.ls.agent.core.model.dto.ModelInvokeResult;
 import com.ls.agent.core.model.dto.ModelMessage;
 import com.ls.agent.core.model.dto.ModelUsageDTO;
@@ -22,6 +24,7 @@ import com.ls.agent.core.team.api.TeamPlanner;
 import com.ls.agent.core.team.api.TeamReviewer;
 import com.ls.agent.core.team.application.TaskDependencySorter;
 import com.ls.agent.core.team.application.TeamAnswerDraftBuilder;
+import com.ls.agent.core.team.application.TeamFinalAnswerBuilder;
 import com.ls.agent.core.team.application.TaskPlanValidator;
 import com.ls.agent.core.team.application.TeamRunLimiter;
 import com.ls.agent.core.team.command.ExecuteTeamTaskCommand;
@@ -142,7 +145,7 @@ class TeamGraphFactoryTest {
                 .containsExactly("task-1", "task-2");
         assertThat(finalState.review().passed()).isTrue();
         assertThat(finalState.route()).isEqualTo(TeamGraphRoute.FINAL);
-        assertThat(finalState.step()).isEqualTo(8);
+        assertThat(finalState.step()).isEqualTo(9);
 
         verify(contextBuilder).build(any(BuildAgentContextCommand.class));
         verify(agentToolResolver).resolve(context);
@@ -150,7 +153,7 @@ class TeamGraphFactoryTest {
         verify(tokenUsageService).record(any(RecordTokenUsageCommand.class));
 
         ArgumentCaptor<TeamRuntimeEventDTO> eventCaptor = ArgumentCaptor.forClass(TeamRuntimeEventDTO.class);
-        verify(eventSink, times(7)).emit(eventCaptor.capture());
+        verify(eventSink, times(8)).emit(eventCaptor.capture());
         assertThat(eventCaptor.getAllValues().get(0).type()).isEqualTo(TeamRuntimeEventDTO.TYPE_TEAM_PLAN);
         assertThat(eventCaptor.getAllValues().get(0).step()).isEqualTo(1);
     }
@@ -220,13 +223,13 @@ class TeamGraphFactoryTest {
         assertThat(finalState.review().passed()).isTrue();
         assertThat(finalState.reviewResults()).hasSize(1);
         assertThat(finalState.route()).isEqualTo(TeamGraphRoute.FINAL);
-        assertThat(finalState.step()).isEqualTo(9);
+        assertThat(finalState.step()).isEqualTo(10);
         verify(executor, times(2)).execute(any(ExecuteTeamTaskCommand.class));
         verify(reviewer).review(any(ReviewTeamCommand.class));
         verify(tokenUsageService, times(3)).record(any(RecordTokenUsageCommand.class));
 
         ArgumentCaptor<TeamRuntimeEventDTO> eventCaptor = ArgumentCaptor.forClass(TeamRuntimeEventDTO.class);
-        verify(eventSink, times(8)).emit(eventCaptor.capture());
+        verify(eventSink, times(9)).emit(eventCaptor.capture());
         assertThat(eventCaptor.getAllValues()).extracting(TeamRuntimeEventDTO::type)
                 .containsExactly(
                         TeamRuntimeEventDTO.TYPE_TEAM_PLAN,
@@ -236,10 +239,130 @@ class TeamGraphFactoryTest {
                         TeamRuntimeEventDTO.TYPE_TEAM_TASK_RESULT,
                         TeamRuntimeEventDTO.TYPE_TEAM_TASK_START,
                         TeamRuntimeEventDTO.TYPE_TEAM_TASK_RESULT,
-                        TeamRuntimeEventDTO.TYPE_TEAM_REVIEW
+                        TeamRuntimeEventDTO.TYPE_TEAM_REVIEW,
+                        TeamRuntimeEventDTO.TYPE_TEAM_FINAL
                 );
         assertThat(eventCaptor.getAllValues()).extracting(TeamRuntimeEventDTO::step)
-                .containsExactly(1, 2, 3, 4, 5, 6, 7, 8);
+                .containsExactly(1, 2, 3, 4, 5, 6, 7, 8, 9);
+    }
+
+    @Test
+    void buildsFinalAnswerAndAggregatesUsage() {
+        AgentContextBuilder contextBuilder = mock(AgentContextBuilder.class);
+        AgentToolResolver agentToolResolver = mock(AgentToolResolver.class);
+        TeamPlanner planner = mock(TeamPlanner.class);
+        TeamExecutor executor = mock(TeamExecutor.class);
+        TeamReviewer reviewer = mock(TeamReviewer.class);
+        TraceService traceService = mock(TraceService.class);
+        TokenUsageService tokenUsageService = mock(TokenUsageService.class);
+        TeamEventSink eventSink = mock(TeamEventSink.class);
+
+        AgentContextDTO context = context();
+        when(contextBuilder.build(any(BuildAgentContextCommand.class))).thenReturn(context);
+        when(agentToolResolver.resolve(context)).thenReturn(List.of());
+        when(planner.plan(any(PlanTeamCommand.class))).thenReturn(new TeamPlanResultDTO(
+                plan(),
+                List.of(modelInvocation("plan", 3))
+        ));
+        when(executor.execute(any(ExecuteTeamTaskCommand.class))).thenReturn(new TeamTaskExecutionResultDTO(
+                new ExecutionResultDTO("task-1", "MODEL_TASK", "SUCCESS", "Task result", List.of(), null),
+                List.of(modelInvocation("task", 4)),
+                List.of()
+        ));
+        when(reviewer.review(any(ReviewTeamCommand.class))).thenReturn(new TeamReviewResultDTO(
+                new ReviewResultDTO(true, List.of(), List.of(), "review passed"),
+                List.of(modelInvocation("review", 5))
+        ));
+
+        TeamGraphFactory factory = new TeamGraphFactory(support(
+                contextBuilder,
+                agentToolResolver,
+                planner,
+                executor,
+                reviewer,
+                traceService,
+                tokenUsageService
+        ));
+
+        TeamGraphState finalState = factory.invoke(
+                TeamGraphState.initial(command(), 70001L),
+                new TeamGraphRuntimeContext(eventSink, new TeamRunLimiter(), 70001L)
+        );
+
+        assertThat(finalState.finalAnswer()).isEqualTo("Task result");
+        assertThat(finalState.usage().totalTokens()).isEqualTo(12);
+        assertThat(finalState.usage().estimated()).isTrue();
+        assertThat(finalState.step()).isEqualTo(6);
+
+        ArgumentCaptor<TeamRuntimeEventDTO> eventCaptor = ArgumentCaptor.forClass(TeamRuntimeEventDTO.class);
+        verify(eventSink, times(5)).emit(eventCaptor.capture());
+        assertThat(eventCaptor.getAllValues()).extracting(TeamRuntimeEventDTO::type)
+                .containsExactly(
+                        TeamRuntimeEventDTO.TYPE_TEAM_PLAN,
+                        TeamRuntimeEventDTO.TYPE_TEAM_TASK_START,
+                        TeamRuntimeEventDTO.TYPE_TEAM_TASK_RESULT,
+                        TeamRuntimeEventDTO.TYPE_TEAM_REVIEW,
+                        TeamRuntimeEventDTO.TYPE_TEAM_FINAL
+                );
+    }
+
+    @Test
+    void usesFallbackModelAnswerWhenFinalAnswerIsBlank() {
+        AgentContextBuilder contextBuilder = mock(AgentContextBuilder.class);
+        AgentToolResolver agentToolResolver = mock(AgentToolResolver.class);
+        TeamPlanner planner = mock(TeamPlanner.class);
+        TeamExecutor executor = mock(TeamExecutor.class);
+        TeamReviewer reviewer = mock(TeamReviewer.class);
+        TraceService traceService = mock(TraceService.class);
+        TokenUsageService tokenUsageService = mock(TokenUsageService.class);
+        ModelInvokeService modelInvokeService = mock(ModelInvokeService.class);
+        TeamEventSink eventSink = mock(TeamEventSink.class);
+
+        AgentContextDTO context = context();
+        when(contextBuilder.build(any(BuildAgentContextCommand.class))).thenReturn(context);
+        when(agentToolResolver.resolve(context)).thenReturn(List.of());
+        when(planner.plan(any(PlanTeamCommand.class))).thenReturn(new TeamPlanResultDTO(
+                plan(),
+                List.of(modelInvocation("plan", 3))
+        ));
+        when(executor.execute(any(ExecuteTeamTaskCommand.class))).thenReturn(new TeamTaskExecutionResultDTO(
+                new ExecutionResultDTO("task-1", "MODEL_TASK", "FAILED", "Model task failed", List.of(), "model down"),
+                List.of(),
+                List.of()
+        ));
+        when(reviewer.review(any(ReviewTeamCommand.class))).thenReturn(new TeamReviewResultDTO(
+                new ReviewResultDTO(true, List.of(), List.of(), "allow fallback"),
+                List.of(modelInvocation("review", 5))
+        ));
+        when(modelInvokeService.invoke(any(ModelInvokeCommand.class))).thenReturn(modelInvocation("Fallback answer", 13));
+
+        TeamGraphSupport support = new TeamGraphSupport(
+                contextBuilder,
+                agentToolResolver,
+                planner,
+                executor,
+                reviewer,
+                new TeamAnswerDraftBuilder(),
+                new TeamFinalAnswerBuilder(),
+                new TaskPlanValidator(),
+                new TaskDependencySorter(),
+                traceService,
+                tokenUsageService,
+                modelInvokeService,
+                objectMapper
+        );
+        TeamGraphFactory factory = new TeamGraphFactory(support);
+
+        TeamGraphState finalState = factory.invoke(
+                TeamGraphState.initial(command(), 70001L),
+                new TeamGraphRuntimeContext(eventSink, new TeamRunLimiter(), 70001L)
+        );
+
+        assertThat(finalState.finalAnswer()).isEqualTo("Fallback answer");
+        assertThat(finalState.fallbackModelInvocations()).hasSize(1);
+        assertThat(finalState.usage().totalTokens()).isEqualTo(21);
+        verify(modelInvokeService).invoke(any(ModelInvokeCommand.class));
+        verify(tokenUsageService, times(3)).record(any(RecordTokenUsageCommand.class));
     }
 
     @Test
@@ -259,10 +382,10 @@ class TeamGraphFactoryTest {
                 .containsExactly("task-1", "task-2");
         assertThat(finalState.executionResults().get(0).result()).isEqualTo("Retry weather result");
         assertThat(finalState.reviewResults()).hasSize(2);
-        assertThat(finalState.step()).isEqualTo(13);
+        assertThat(finalState.step()).isEqualTo(14);
 
         ArgumentCaptor<TeamRuntimeEventDTO> eventCaptor = ArgumentCaptor.forClass(TeamRuntimeEventDTO.class);
-        verify(eventSink, times(12)).emit(eventCaptor.capture());
+        verify(eventSink, times(13)).emit(eventCaptor.capture());
         assertThat(eventCaptor.getAllValues()).extracting(TeamRuntimeEventDTO::type)
                 .containsExactly(
                         TeamRuntimeEventDTO.TYPE_TEAM_PLAN,
@@ -276,7 +399,8 @@ class TeamGraphFactoryTest {
                         TeamRuntimeEventDTO.TYPE_TEAM_TASK_START,
                         TeamRuntimeEventDTO.TYPE_TEAM_TOOL_CALL,
                         TeamRuntimeEventDTO.TYPE_TEAM_TASK_RESULT,
-                        TeamRuntimeEventDTO.TYPE_TEAM_REVIEW
+                        TeamRuntimeEventDTO.TYPE_TEAM_REVIEW,
+                        TeamRuntimeEventDTO.TYPE_TEAM_FINAL
                 );
         assertThat(eventCaptor.getAllValues().get(7).taskId()).isEqualTo("task-1");
     }
@@ -300,10 +424,10 @@ class TeamGraphFactoryTest {
         assertThat(finalState.executionResults()).extracting(ExecutionResultDTO::taskId)
                 .containsExactly("task-1", "task-2", "task-3");
         assertThat(finalState.reviewResults()).hasSize(2);
-        assertThat(finalState.step()).isEqualTo(13);
+        assertThat(finalState.step()).isEqualTo(14);
 
         ArgumentCaptor<TeamRuntimeEventDTO> eventCaptor = ArgumentCaptor.forClass(TeamRuntimeEventDTO.class);
-        verify(eventSink, times(12)).emit(eventCaptor.capture());
+        verify(eventSink, times(13)).emit(eventCaptor.capture());
         assertThat(eventCaptor.getAllValues().get(7).type()).isEqualTo(TeamRuntimeEventDTO.TYPE_TEAM_RETRY);
         assertThat(eventCaptor.getAllValues().get(7).taskId()).isNull();
         assertThat(eventCaptor.getAllValues()).extracting(TeamRuntimeEventDTO::type)
@@ -319,7 +443,8 @@ class TeamGraphFactoryTest {
                         TeamRuntimeEventDTO.TYPE_TEAM_PLAN,
                         TeamRuntimeEventDTO.TYPE_TEAM_TASK_START,
                         TeamRuntimeEventDTO.TYPE_TEAM_TASK_RESULT,
-                        TeamRuntimeEventDTO.TYPE_TEAM_REVIEW
+                        TeamRuntimeEventDTO.TYPE_TEAM_REVIEW,
+                        TeamRuntimeEventDTO.TYPE_TEAM_FINAL
                 );
     }
 
@@ -388,6 +513,21 @@ class TeamGraphFactoryTest {
                                 List.of()
                         )
                 )
+        );
+    }
+
+    private TaskPlanDTO plan() {
+        return new TaskPlanDTO(
+                "Plan activity",
+                List.of(new TeamTaskDTO(
+                        "task-1",
+                        "Summarize",
+                        "Summarize options.",
+                        "MODEL_TASK",
+                        null,
+                        objectMapper.createObjectNode(),
+                        List.of()
+                ))
         );
     }
 
