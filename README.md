@@ -107,13 +107,14 @@ password: admin123
 
 | 类型 | 是什么 | 怎么接入 |
 |------|--------|---------|
-| MCP 工具 | 外部工具，通过 MCP 协议发现和调用（calculator、weather、search） | 配 MCP Server |
+| MCP 工具 | 外部工具，通过 MCP 协议发现和调用（本地 Fetch、Context7、示例 calculator/search/weather 等） | 配 MCP Server |
 | 经验型 Skill | Prompt/规则注入到上下文，不进工具池 | 写规则文本 |
 | Jar 型 Skill | Java 代码，JAR 包上传，ClassLoader 热加载 | 写 Java 打包 |
 
-- MCP 工具：calculator、weather、search（示例 MCP 数据由 Flyway seed 初始化）
+- MCP 工具：内置示例 calculator、search、weather.current 由 Flyway seed 初始化；外部 MCP Server 可通过控制台创建并刷新工具。
 - 支持 MCP 工具、经验型 Skill 与 Jar Skill 上传入口
-- MCP Client 支持 stdio 与 HTTP 示例链路
+- MCP Client 支持 `STDIO`、`HTTP`、`STREAMABLE_HTTP` 和 `SSE`。其中 `STREAMABLE_HTTP` 会先发送 `initialize`，读取响应头 `mcp-session-id`，后续 `tools/list` 与 `tools/call` 自动携带 `Mcp-Session-Id`。
+- Context7 示例配置：`baseUrl=https://mcp.context7.com`，`endpoint=/mcp`，`serverType=STREAMABLE_HTTP`。刷新后可发现 `resolve-library-id`、`query-docs` 等工具。
 
 ### 记忆与 RAG
 
@@ -122,7 +123,7 @@ password: admin123
 - 记忆策略：`DISABLED`、`READ_ONLY`、`READ_WRITE`、`SESSION_ONLY`
 - summary、preference、reflection、tool_failure 等记忆类型
 - RAG 文档入库、切分、PG 存储
-- Qdrant 向量索引，默认 collection 为 `rag_chunks`
+- Qdrant 向量索引，本地 dev 默认 collection 为 `rag_chunks_bge_1024`
 - PG tsvector 倒排检索
 - 查询增强、HyDE、reranker、semantic cache 等增强能力按配置启用
 

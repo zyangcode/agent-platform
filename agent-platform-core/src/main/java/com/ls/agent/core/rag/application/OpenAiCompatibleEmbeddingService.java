@@ -15,12 +15,20 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class OpenAiCompatibleEmbeddingService implements EmbeddingService {
+
+    private static final Logger log = LoggerFactory.getLogger(OpenAiCompatibleEmbeddingService.class);
 
     private final OpenAiCompatibleEmbeddingServiceProperties properties;
     private final EmbeddingHttpClient httpClient;
     private final ObjectMapper objectMapper;
+    private final AtomicBoolean unusableLogged = new AtomicBoolean();
+    private final AtomicBoolean invalidResponseLogged = new AtomicBoolean();
 
     public OpenAiCompatibleEmbeddingService(
             OpenAiCompatibleEmbeddingServiceProperties properties,
@@ -41,7 +49,11 @@ public class OpenAiCompatibleEmbeddingService implements EmbeddingService {
 
     @Override
     public EmbeddingVectorDTO embed(String text) {
-        if (!usable() || text == null || text.isBlank()) {
+        if (text == null || text.isBlank()) {
+            return emptyVector();
+        }
+        if (!usable()) {
+            logUnusableConfiguration();
             return emptyVector();
         }
         try {
@@ -56,6 +68,13 @@ public class OpenAiCompatibleEmbeddingService implements EmbeddingService {
             return parseVector(response);
         } catch (Exception ex) {
             restoreInterrupt(ex);
+            log.warn(
+                    "OpenAI-compatible embedding request failed; baseUrl={}, model={}, errorType={}, message={}",
+                    safeBaseUrl(),
+                    safeModel(),
+                    ex.getClass().getSimpleName(),
+                    ex.getMessage()
+            );
             return emptyVector();
         }
     }
@@ -65,6 +84,13 @@ public class OpenAiCompatibleEmbeddingService implements EmbeddingService {
                 ? null
                 : response.path("data").path(0).path("embedding");
         if (embedding == null || !embedding.isArray()) {
+            if (invalidResponseLogged.compareAndSet(false, true)) {
+                log.warn(
+                        "OpenAI-compatible embedding response did not contain data[0].embedding array; baseUrl={}, model={}",
+                        safeBaseUrl(),
+                        safeModel()
+                );
+            }
             return emptyVector();
         }
         float[] values = new float[embedding.size()];
@@ -84,6 +110,26 @@ public class OpenAiCompatibleEmbeddingService implements EmbeddingService {
 
     private boolean usable() {
         return properties != null && properties.enabled() && !properties.apiKey().isBlank();
+    }
+
+    private void logUnusableConfiguration() {
+        if (unusableLogged.compareAndSet(false, true)) {
+            log.warn(
+                    "OpenAI-compatible embedding is not usable; enabled={}, apiKeyPresent={}, baseUrl={}, model={}",
+                    properties != null && properties.enabled(),
+                    properties != null && !properties.apiKey().isBlank(),
+                    safeBaseUrl(),
+                    safeModel()
+            );
+        }
+    }
+
+    private String safeBaseUrl() {
+        return properties == null ? "" : properties.baseUrl();
+    }
+
+    private String safeModel() {
+        return properties == null ? "" : properties.model();
     }
 
     private EmbeddingVectorDTO emptyVector() {
