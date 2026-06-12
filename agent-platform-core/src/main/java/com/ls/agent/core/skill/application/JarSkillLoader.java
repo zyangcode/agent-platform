@@ -12,6 +12,7 @@ import com.ls.agent.core.skill.mapper.SkillMapper;
 import com.ls.agent.core.skill.mapper.SkillVersionMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
@@ -36,10 +37,24 @@ public class JarSkillLoader {
     private final SkillArtifactMapper skillArtifactMapper;
 
     public JarSkillLoader(JarSkillRuntimeRegistry runtimeRegistry) {
-        this(runtimeRegistry, null, null, null);
+        this(runtimeRegistry, (SkillMapper) null, (SkillVersionMapper) null, (SkillArtifactMapper) null);
     }
 
     @Autowired
+    public JarSkillLoader(
+            JarSkillRuntimeRegistry runtimeRegistry,
+            ObjectProvider<SkillMapper> skillMapper,
+            ObjectProvider<SkillVersionMapper> skillVersionMapper,
+            ObjectProvider<SkillArtifactMapper> skillArtifactMapper
+    ) {
+        this(
+                runtimeRegistry,
+                skillMapper.getIfAvailable(),
+                skillVersionMapper.getIfAvailable(),
+                skillArtifactMapper.getIfAvailable()
+        );
+    }
+
     public JarSkillLoader(
             JarSkillRuntimeRegistry runtimeRegistry,
             SkillMapper skillMapper,
