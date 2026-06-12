@@ -84,7 +84,9 @@
       "Bash(git add *)",
       "Bash(git commit *)",
       "Bash(git push *)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(mvn -s .mvn/settings.xml compile -q)",
+      "Bash(mvn -s .mvn/settings.xml compile)"
     ]
   },
   "hooks": {

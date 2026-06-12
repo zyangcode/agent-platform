@@ -28,6 +28,8 @@ import com.ls.agent.core.trace.api.TraceService;
 import com.ls.agent.core.trace.command.FinishTraceSpanCommand;
 import com.ls.agent.core.trace.command.StartTraceSpanCommand;
 import com.ls.agent.core.trace.dto.TraceSpanDTO;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -44,6 +46,8 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public class DefaultPostgresRagEngine implements RagEngine {
+
+    private static final Logger log = LoggerFactory.getLogger(DefaultPostgresRagEngine.class);
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final double RRF_K = 60.0;
@@ -260,8 +264,12 @@ public class DefaultPostgresRagEngine implements RagEngine {
                 vectorContext.queryVector()
         );
         if (cachedResults != null) {
+            log.info("[RAG] searchCache hit topK={} resultCount={}", topK, cachedResults.size());
             return cachedResults;
         }
+        log.info("[RAG] searchStart queryChars={} topK={} hasVector={} traceAware={}",
+                query.length(), topK, queryVector != null && queryVector.dimension() > 0,
+                traceId != null && !traceId.isBlank());
         List<RagSearchResultDTO> vectorResults = searchByVector(tenantId, applicationId, userId, profileId, query, topK,
                 vectorContext,
                 traceId, parentSpanId);
@@ -283,7 +291,10 @@ public class DefaultPostgresRagEngine implements RagEngine {
                 resultGroups,
                 topK
         );
+        log.info("[RAG] searchMerged resultGroups={} merged={}",
+                resultGroups.stream().filter(g -> g != null && !g.isEmpty()).count(), mergedResults.size());
         List<RagSearchResultDTO> finalResults = safeRerank(query, mergedResults, topK);
+        log.info("[RAG] searchDone finalResultCount={}", finalResults.size());
         putSemanticCache(
                 tenantId,
                 applicationId,

@@ -15,6 +15,8 @@ import com.ls.agent.core.trace.api.TraceService;
 import com.ls.agent.core.trace.command.FinishTraceSpanCommand;
 import com.ls.agent.core.trace.command.StartTraceSpanCommand;
 import com.ls.agent.core.trace.dto.TraceSpanDTO;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -25,6 +27,8 @@ import java.util.stream.Collectors;
 
 @Service
 public class DefaultMemoryRecallService implements MemoryRecallService {
+
+    private static final Logger log = LoggerFactory.getLogger(DefaultMemoryRecallService.class);
 
     private static final String STATUS_ACTIVE = "ACTIVE";
     private static final String SCOPE_PROFILE_LONG_TERM = "PROFILE_LONG_TERM";
@@ -115,6 +119,9 @@ public class DefaultMemoryRecallService implements MemoryRecallService {
                 : filter;
         int limit = resolvedFilter.resolvedTopK(5);
         List<String> keywords = extractKeywords(query);
+        log.info("[MEMORY] recall queryTopK={} categories={} scopes={} keywords={} hasVector={}",
+                limit, resolvedFilter.categories(), resolvedFilter.memoryScopes(),
+                keywords.size(), queryVector != null && queryVector.dimension() > 0);
         TraceSpanDTO recallSpan = safeStartSpan(traceId, parentSpanId, "memory.recall",
                 attributes()
                         .put("topK", limit)
@@ -148,6 +155,10 @@ public class DefaultMemoryRecallService implements MemoryRecallService {
                     childParentSpanId
             );
             List<MemoryEntity> returned = mergeRecallCandidates(vectorMemories, keywordMemories, keywords, limit);
+            log.info("[MEMORY] recallDone vectorCandidates={} keywordCandidates={} merged={}",
+                    vectorMemories == null ? 0 : vectorMemories.size(),
+                    keywordMemories == null ? 0 : keywordMemories.size(),
+                    returned.size());
             if (recallSpan != null && recallSpan.attributes() instanceof com.fasterxml.jackson.databind.node.ObjectNode attributes) {
                 attributes.put("vectorCandidateCount", vectorMemories == null ? 0 : vectorMemories.size());
                 attributes.put("keywordCandidateCount", keywordMemories == null ? 0 : keywordMemories.size());
@@ -193,8 +204,10 @@ public class DefaultMemoryRecallService implements MemoryRecallService {
                     Math.max(1, limit * FETCH_MULTIPLIER)
             );
             if (!tsvectorCandidates.isEmpty()) {
+                log.debug("[MEMORY] keywordSearch mode=tsvector candidates={}", tsvectorCandidates.size());
                 return filterAndRankKeywordCandidates(tsvectorCandidates, resolvedFilter, keywords, keywordSpan);
             }
+            log.debug("[MEMORY] keywordSearch mode=likeFallback keywords={}", keywords.size());
             wrapper.and(w -> {
                 for (int i = 0; i < keywords.size(); i++) {
                     if (i == 0) {
@@ -373,6 +386,9 @@ public class DefaultMemoryRecallService implements MemoryRecallService {
             EmbeddingVectorDTO queryVector = precomputedQueryVector == null
                     ? embedQuery(query, traceId, parentSpanId)
                     : precomputedQueryVector;
+            log.debug("[MEMORY] vectorRecall dim={} fetchMultiplier={}",
+                    queryVector == null ? 0 : queryVector.dimension(),
+                    Math.max(1, limit * FETCH_MULTIPLIER));
             if (queryVector == null || queryVector.dimension() == 0) {
                 return List.of();
             }

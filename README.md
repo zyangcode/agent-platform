@@ -105,11 +105,15 @@ password: admin123
 
 ### Skill 与 MCP
 
-- 内置 Skill：calculator、weather、search
-- 支持配置型 Skill 与 Jar Skill 上传入口
-- 支持经验型 Skill
+| 类型 | 是什么 | 怎么接入 |
+|------|--------|---------|
+| MCP 工具 | 外部工具，通过 MCP 协议发现和调用（calculator、weather、search） | 配 MCP Server |
+| 经验型 Skill | Prompt/规则注入到上下文，不进工具池 | 写规则文本 |
+| Jar 型 Skill | Java 代码，JAR 包上传，ClassLoader 热加载 | 写 Java 打包 |
+
+- MCP 工具：calculator、weather、search（示例 MCP 数据由 Flyway seed 初始化）
+- 支持 MCP 工具、经验型 Skill 与 Jar Skill 上传入口
 - MCP Client 支持 stdio 与 HTTP 示例链路
-- 示例 MCP 数据由 Flyway seed 初始化
 
 ### 记忆与 RAG
 

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!-- Spring Boot 默认日志配置的扩展，保留其 ConsoleAppender 和 FILE 等能力 -->
+
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+    <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
+
+    <!-- 开发环境彩色控制台 -->
+    <springProfile name="dev">
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+
+        <!-- Core 核心链路日志 -->
+        <logger name="com.ls.agent.core.context" level="INFO"/>
+        <logger name="com.ls.agent.core.memory" level="INFO"/>
+        <logger name="com.ls.agent.core.rag" level="INFO"/>
+        <logger name="com.ls.agent.core.agent" level="INFO"/>
+        <logger name="com.ls.agent.core.team" level="INFO"/>
+        <logger name="com.ls.agent.core.mcp" level="INFO"/>
+        <logger name="com.ls.agent.core.skill" level="INFO"/>
+        <logger name="com.ls.agent.core.model" level="INFO"/>
+
+        <!-- 框架层降噪 -->
+        <logger name="org.springframework" level="WARN"/>
+        <logger name="org.mybatis" level="WARN"/>
+        <logger name="com.baomidou.mybatisplus" level="WARN"/>
+        <logger name="com.zaxxer.hikari" level="WARN"/>
+        <logger name="org.apache" level="WARN"/>
+        <logger name="io.netty" level="WARN"/>
+    </springProfile>
+
+    <!-- 生产环境 -->
+    <springProfile name="!dev">
+        <root level="WARN">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+        <logger name="com.ls.agent" level="INFO"/>
+        <logger name="org.springframework" level="WARN"/>
+    </springProfile>
+
+</configuration>

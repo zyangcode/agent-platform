@@ -54,6 +54,8 @@ import com.ls.agent.core.trace.api.TraceService;
 import com.ls.agent.core.trace.command.FinishTraceSpanCommand;
 import com.ls.agent.core.trace.command.StartTraceSpanCommand;
 import com.ls.agent.core.trace.dto.TraceSpanDTO;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -70,6 +72,7 @@ import java.util.function.Consumer;
 @Service
 public class DefaultAgentRuntimeService implements AgentRuntimeService {
 
+    private static final Logger log = LoggerFactory.getLogger(DefaultAgentRuntimeService.class);
     private static final String CHANNEL_WEB = "WEB";
     private static final String STATUS_ACTIVE = "ACTIVE";
     private static final String MEMORY_TYPE_SUMMARY = "SUMMARY";
@@ -167,8 +170,10 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
 
             // 4. 构建 Agent 执行上下文（包含记忆、提示词、可用工具等）
             AgentContextDTO context = buildContext(command, conversationId, spanId(runSpan));
+            log.info("[AGENT] runStart profileId={} conversationId={} teamMode={} inputChars={}",
+                    command.profileId(), conversationId, isTeamMode(command, context), command.userInput().length());
 
-            // 5. 判断是否为“团队模式” (Team Mode)
+            // 5. 判断是否为"团队模式" (Team Mode)
             if (isTeamMode(command, context)) {
                 // A. 保存用户的原始输入消息
                 saveMessage(conversationId, command.traceId(), "user", command.userInput(), null);
@@ -321,6 +326,10 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
                     step + 1,
                     modelStreamCallback
             );
+            log.info("[AGENT] step{}/{} model={} toolCount={} msgs={} hasToolCalls={} usage={}",
+                    step + 1, MAX_AGENT_STEPS, result.modelName(), availableTools.size(), messages.size(),
+                    result.toolCalls() != null && !result.toolCalls().isEmpty(),
+                    result.usage() == null ? "N/A" : result.usage().totalTokens() + "t");
 
             // E. 解析模型回复中的工具调用请求 (如 @skill:xxx)
             ToolRequestBatch toolRequestBatch;
@@ -371,6 +380,9 @@ public class DefaultAgentRuntimeService implements AgentRuntimeService {
             }
 
             // G. 模型请求了工具调用：记录 Assistant 的回复
+            log.info("[AGENT] step{} toolCalls={} names={}",
+                    step + 1, toolRequestBatch.toolCalls().size(),
+                    toolRequestBatch.toolCalls().stream().map(tc -> tc.name()).toList());
             messages.add(new ModelMessage("assistant", result.assistantMessage()));
 
             // H. 校验工具调用的合法性（权限、参数等）

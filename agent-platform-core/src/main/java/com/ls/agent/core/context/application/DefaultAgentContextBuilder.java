@@ -36,6 +36,8 @@ import com.ls.agent.core.trace.command.FinishTraceSpanCommand;
 import com.ls.agent.core.trace.command.StartTraceSpanCommand;
 import com.ls.agent.core.trace.dto.TraceSpanDTO;
 import jakarta.annotation.PreDestroy;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -53,6 +55,8 @@ import java.util.function.Supplier;
 
 @Service
 public class DefaultAgentContextBuilder implements AgentContextBuilder {
+
+    private static final Logger log = LoggerFactory.getLogger(DefaultAgentContextBuilder.class);
 
     private static final int DEFAULT_MAX_CONTEXT_TOKENS = 4_000;
     private static final int HISTORY_LIMIT = 20;
@@ -152,6 +156,8 @@ public class DefaultAgentContextBuilder implements AgentContextBuilder {
         RetrievalResult retrievalResult = retrieveMemoryAndRag(command, profile, budgetPolicy.ragTokenBudget());
         List<MemoryDTO> memories = retrievalResult.memories();
         List<RagSearchResultDTO> ragResults = retrievalResult.ragResults();
+        log.info("[CONTEXT] retrievalDone profileId={} memories={} ragResults={} maxTokens={}",
+                command.profileId(), memories.size(), ragResults.size(), maxTokens);
         List<ExperienceSkillDTO> experienceSkills = resolveExperienceSkills(command, profile);
         List<ConversationMessageDTO> history = messageHistoryService.listRecentMessages(
                 command.tenantId(),
@@ -209,6 +215,11 @@ public class DefaultAgentContextBuilder implements AgentContextBuilder {
                     Math.max(0, maxTokens - estimatedTokens),
                     truncated
             );
+            log.info("[CONTEXT] assembled maxTokens={} system={} profile={} history={} memory={} tools={} experience={} rag={} total={} remaining={} truncated={}",
+                    snapshot.maxContextTokens(), snapshot.systemTokens(), snapshot.profileTokens(),
+                    snapshot.historyTokens(), snapshot.memoryTokens(), snapshot.toolsTokens(),
+                    snapshot.experienceTokens(), snapshot.ragTokens(),
+                    snapshot.apiMessagesTokens(), snapshot.remainingTokens(), snapshot.truncated());
             if (composeSpan != null && composeSpan.attributes() instanceof ObjectNode attributes) {
                 attributes.put("apiMessages", apiMessages.size());
                 attributes.put("conversationMessages", conversationMessages.size());
