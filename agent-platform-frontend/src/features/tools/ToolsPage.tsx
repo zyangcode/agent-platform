@@ -49,6 +49,7 @@ import {
   listMcpServers,
   listMcpTools,
   listSkills,
+  refreshMcpServerTools,
   searchRagDocuments,
   updateMemory,
   uploadJarSkill,
@@ -60,9 +61,16 @@ import {
 import { ExperienceSkillTable } from './ExperienceSkillTable'
 import { McpServerTable } from './McpServerTable'
 import { McpToolTable } from './McpToolTable'
+import {
+  MCP_SERVER_PRESETS,
+  MCP_SERVER_TYPE_OPTIONS,
+  mcpServerPresetToForm,
+  type McpServerType,
+} from './mcp-presets'
 import { selectMemoryProfileId } from './memory-selection-utils'
 import { clampMemoryImportance, formatMemoryTimestamp, parseMemoryTags } from './memory-ui'
 import { SkillTable } from './SkillTable'
+import { DEFAULT_MCP_SERVER_STATUS } from './tool-defaults'
 import { filterToolsBySearch } from './tool-filters'
 
 type LoadStatus = 'error' | 'loading' | 'ready'
@@ -164,12 +172,8 @@ export function ToolsPage() {
   const [jarFile, setJarFile] = useState<File | null>(null)
   const [jarManifest, setJarManifest] = useState('{\n  "code": "demo-skill",\n  "name": "Demo Skill",\n  "version": "1.0.0"\n}')
   const [jarScope, setJarScope] = useState<SkillScopeFilter>('PERSONAL')
-  const [mcpServerForm, setMcpServerForm] = useState({
-    connectionConfig: '{\n  "command": "builtin-demo-filesystem-mcp"\n}',
-    name: 'Readonly Filesystem MCP',
-    serverType: 'STDIO' as 'HTTP' | 'STDIO',
-  })
-  const [mcpServerStatus, setMcpServerStatus] = useState<McpServerStatusFilter | 'ALL'>('ALL')
+  const [mcpServerForm, setMcpServerForm] = useState(() => mcpServerPresetToForm(MCP_SERVER_PRESETS[0]))
+  const [mcpServerStatus, setMcpServerStatus] = useState<McpServerStatusFilter | 'ALL'>(DEFAULT_MCP_SERVER_STATUS)
   const [mcpStatus, setMcpStatus] = useState<McpStatusFilter | 'ALL'>('ALL')
   const [message, setMessage] = useState<string | null>(null)
   const [messageVariant, setMessageVariant] = useState<'default' | 'danger'>('default')
@@ -673,6 +677,20 @@ export function ToolsPage() {
     }
   }
 
+  async function handleRefreshMcpServerTools(mcpServerId: number) {
+    setSubmitting(true)
+    setMessage(null)
+    try {
+      await refreshMcpServerTools(mcpServerId)
+      setMessage(t('tools.mcpServerRefreshSuccess'))
+      await loadTools()
+    } catch (error) {
+      setMessage(getErrorMessage(error, t('tools.mcpServerRefreshFailed')))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   return (
     <section className="space-y-6">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
@@ -1105,6 +1123,18 @@ export function ToolsPage() {
               <CardDescription>{t('tools.createMcpServerDescription')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="flex flex-wrap gap-2">
+                {MCP_SERVER_PRESETS.map((preset) => (
+                  <Button
+                    key={preset.id}
+                    onClick={() => setMcpServerForm(mcpServerPresetToForm(preset))}
+                    size="sm"
+                    variant="secondary"
+                  >
+                    {preset.label}
+                  </Button>
+                ))}
+              </div>
               <FieldInput
                 id="mcp-server-name"
                 label={t('profile.name')}
@@ -1115,7 +1145,7 @@ export function ToolsPage() {
                 <Label>{t('profile.type')}</Label>
                 <Select
                   onValueChange={(value) =>
-                    setMcpServerForm((current) => ({ ...current, serverType: value as 'HTTP' | 'STDIO' }))
+                    setMcpServerForm((current) => ({ ...current, serverType: value as McpServerType }))
                   }
                   value={mcpServerForm.serverType}
                 >
@@ -1123,8 +1153,11 @@ export function ToolsPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="STDIO">STDIO</SelectItem>
-                    <SelectItem value="HTTP">HTTP</SelectItem>
+                    {MCP_SERVER_TYPE_OPTIONS.map((serverType) => (
+                      <SelectItem key={serverType} value={serverType}>
+                        {serverType}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -1165,8 +1198,10 @@ export function ToolsPage() {
               <CardContent>
                 <McpServerTable
                   onDisable={handleDisableMcpServer}
+                  onRefreshTools={handleRefreshMcpServerTools}
                   servers={filteredMcpServers}
                   status={state.status}
+                  submitting={submitting}
                 />
               </CardContent>
             </Card>

@@ -24,6 +24,7 @@ import java.time.Duration;
 public class HttpMcpClient implements McpClient {
 
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(15);
+    private static final String MCP_PROTOCOL_VERSION = "2024-11-05";
 
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
@@ -42,13 +43,14 @@ public class HttpMcpClient implements McpClient {
     }
 
     public JsonNode listTools(McpServerEntity server) {
-        if (!"HTTP".equalsIgnoreCase(server.getServerType())) {
+        if (!supportsServerType(server.getServerType())) {
             return objectMapper.createObjectNode();
         }
         try {
-            JsonNode initResult = sendJsonRpc(resolveBaseUrl(server.getConnectionConfig()), 1, "initialize", objectMapper.createObjectNode());
-            if (initResult.path("protocolVersion").asText("").isBlank()) return objectMapper.createObjectNode();
-            return sendJsonRpc(resolveBaseUrl(server.getConnectionConfig()), 2, "tools/list", objectMapper.createObjectNode());
+            String requestUrl = resolveRequestUrl(server);
+            JsonRpcExchange initResult = sendJsonRpc(requestUrl, 1, "initialize", initializeParams(), null);
+            if (initResult.result().path("protocolVersion").asText("").isBlank()) return objectMapper.createObjectNode();
+            return sendJsonRpc(requestUrl, 2, "tools/list", objectMapper.createObjectNode(), initResult.sessionId()).result();
         } catch (Exception ex) {
             return objectMapper.createObjectNode();
         }
@@ -56,25 +58,21 @@ public class HttpMcpClient implements McpClient {
 
     @Override
     public JsonNode callTool(McpServerEntity server, String toolName, JsonNode arguments) {
-        if (!"HTTP".equalsIgnoreCase(server.getServerType())) {
+        if (!supportsServerType(server.getServerType())) {
             throw new BizException(ErrorCode.MCP_TOOL_FAILED, "Unsupported MCP server type: " + server.getServerType());
         }
-        String baseUrl = resolveBaseUrl(server.getConnectionConfig());
+        String requestUrl = resolveRequestUrl(server);
         try {
-            JsonNode initResult = sendJsonRpc(baseUrl, 1, "initialize", objectMapper.createObjectNode());
-            String protocolVersion = initResult.path("protocolVersion").asText("");
+            JsonRpcExchange initResult = sendJsonRpc(requestUrl, 1, "initialize", initializeParams(), null);
+            String protocolVersion = initResult.result().path("protocolVersion").asText("");
             if (protocolVersion.isBlank()) {
                 throw new BizException(ErrorCode.MCP_TOOL_FAILED, "MCP HTTP initialize returned no protocol version");
             }
             ObjectNode params = objectMapper.createObjectNode();
             params.put("name", toolName);
             params.set("arguments", arguments == null ? objectMapper.createObjectNode() : arguments);
-            JsonNode callResult = sendJsonRpc(baseUrl, 2, "tools/call", params);
-            JsonNode error = callResult.path("error");
-            if (!error.isMissingNode() && !error.isNull()) {
-                throw new BizException(ErrorCode.MCP_TOOL_FAILED, error.path("message").asText("MCP HTTP tool failed"));
-            }
-            JsonNode content = callResult.path("result").path("content");
+            JsonNode callResult = sendJsonRpc(requestUrl, 2, "tools/call", params, initResult.sessionId()).result();
+            JsonNode content = callResult.path("content");
             if (content.isArray()) {
                 for (JsonNode item : content) {
                     if ("text".equals(item.path("type").asText("")) && item.has("text")) {
@@ -91,7 +89,7 @@ public class HttpMcpClient implements McpClient {
         }
     }
 
-    private JsonNode sendJsonRpc(String baseUrl, int id, String method, JsonNode params)
+    private JsonRpcExchange sendJsonRpc(String requestUrl, int id, String method, JsonNode params, String sessionId)
             throws IOException, InterruptedException {
         ObjectNode request = objectMapper.createObjectNode();
         request.put("jsonrpc", "2.0");
@@ -99,24 +97,35 @@ public class HttpMcpClient implements McpClient {
         request.put("method", method);
         request.set("params", params);
         String body = objectMapper.writeValueAsString(request);
-        HttpRequest httpRequest = HttpRequest.newBuilder(URI.create(baseUrl))
+        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder(URI.create(requestUrl))
                 .timeout(REQUEST_TIMEOUT)
                 .header("Content-Type", "application/json")
                 .header("Accept", "application/json, text/event-stream")
-                .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
-                .build();
+                .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8));
+        if (sessionId != null && !sessionId.isBlank()) {
+            requestBuilder.header("Mcp-Session-Id", sessionId);
+        }
+        HttpRequest httpRequest = requestBuilder.build();
         HttpResponse<InputStream> response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofInputStream());
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             throw new BizException(ErrorCode.MCP_TOOL_FAILED,
                     "MCP HTTP server returned " + response.statusCode());
         }
         String contentType = response.headers().firstValue("Content-Type").orElse("");
+        String responseSessionId = response.headers().firstValue("mcp-session-id").orElse(sessionId);
+        JsonNode jsonRpcResponse;
         try (InputStream bodyStream = response.body()) {
             if (contentType.contains("text/event-stream")) {
-                return readSseResponse(bodyStream, id);
+                jsonRpcResponse = readSseResponse(bodyStream, id);
+            } else {
+                jsonRpcResponse = objectMapper.readTree(bodyStream);
             }
-            return objectMapper.readTree(bodyStream);
         }
+        JsonNode error = jsonRpcResponse.path("error");
+        if (!error.isMissingNode() && !error.isNull()) {
+            throw new BizException(ErrorCode.MCP_TOOL_FAILED, error.path("message").asText("MCP HTTP request failed"));
+        }
+        return new JsonRpcExchange(jsonRpcResponse.path("result"), responseSessionId);
     }
 
     private JsonNode readSseResponse(InputStream body, int expectedId) throws IOException {
@@ -139,6 +148,37 @@ public class HttpMcpClient implements McpClient {
         throw new BizException(ErrorCode.MCP_TOOL_FAILED, "MCP HTTP SSE response missing expected id: " + expectedId);
     }
 
+    private boolean supportsServerType(String serverType) {
+        return "HTTP".equalsIgnoreCase(serverType) || "STREAMABLE_HTTP".equalsIgnoreCase(serverType);
+    }
+
+    private ObjectNode initializeParams() {
+        ObjectNode params = objectMapper.createObjectNode();
+        params.put("protocolVersion", MCP_PROTOCOL_VERSION);
+        params.set("capabilities", objectMapper.createObjectNode());
+        params.set("clientInfo", objectMapper.createObjectNode()
+                .put("name", "agent-platform")
+                .put("version", "dev"));
+        return params;
+    }
+
+    private String resolveRequestUrl(McpServerEntity server) {
+        if ("STREAMABLE_HTTP".equalsIgnoreCase(server.getServerType())) {
+            return resolveEndpointUrl(server.getConnectionConfig());
+        }
+        return resolveBaseUrl(server.getConnectionConfig());
+    }
+
+    private String resolveEndpointUrl(JsonNode config) {
+        String baseUrl = resolveBaseUrl(config);
+        String endpoint = config == null || config.path("endpoint").asText("").isBlank()
+                ? "/mcp"
+                : config.path("endpoint").asText().strip();
+        return URI.create(baseUrl.endsWith("/") ? baseUrl : baseUrl + "/")
+                .resolve(endpoint.startsWith("/") ? endpoint.substring(1) : endpoint)
+                .toString();
+    }
+
     private String resolveBaseUrl(JsonNode config) {
         if (config == null || config.path("baseUrl").asText("").isBlank()) {
             throw new BizException(ErrorCode.MCP_TOOL_FAILED, "MCP HTTP baseUrl is missing");
@@ -152,5 +192,8 @@ public class HttpMcpClient implements McpClient {
 
     private String safeMessage(Exception ex) {
         return ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage();
+    }
+
+    private record JsonRpcExchange(JsonNode result, String sessionId) {
     }
 }

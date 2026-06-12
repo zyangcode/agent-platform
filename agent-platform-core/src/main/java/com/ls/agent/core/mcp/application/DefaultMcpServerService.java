@@ -103,7 +103,7 @@ public class DefaultMcpServerService implements McpServerService {
         if ("STDIO".equalsIgnoreCase(server.getServerType())) {
             return stdioMcpClient.listTools(server);
         }
-        if ("HTTP".equalsIgnoreCase(server.getServerType())) {
+        if ("HTTP".equalsIgnoreCase(server.getServerType()) || "STREAMABLE_HTTP".equalsIgnoreCase(server.getServerType())) {
             return httpMcpClient.listTools(server);
         }
         if (SpringAiMcpClientAdapter.supportsServerType(server.getServerType())) {

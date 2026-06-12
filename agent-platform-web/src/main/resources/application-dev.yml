@@ -26,7 +26,23 @@ agent:
       base-url: https://api.siliconflow.cn/v1
       api-key: ${SILICONFLOW_API_KEY:}
       model: BAAI/bge-large-zh-v1.5
-      dimension: 1024
+      dimension: 0
     qdrant:
       enabled: true
       base-url: http://localhost:6333
+      collection-name: rag_chunks_bge_1024
+      dimension: 1024
+    reranker:
+      enabled: true
+      provider: openai-compatible
+      base-url: https://api.siliconflow.cn/v1
+      api-key: ${SILICONFLOW_API_KEY:}
+      model: BAAI/bge-reranker-v2-m3
+      path: /rerank
+      timeout-ms: 5000
+    semantic-cache:
+      enabled: true
+      provider: memory
+      similarity-threshold: 0.9
+      ttl-ms: 60000
+      max-entries: 256

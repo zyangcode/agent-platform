@@ -377,6 +377,8 @@ const defaultDictionary: TranslationDictionary = {
   'tools.mcpServerCreateSuccess': { en: 'MCP server created.', zh: 'MCP Server 已创建。' },
   'tools.mcpServerDisableFailed': { en: 'MCP server could not be disabled.', zh: 'MCP Server 禁用失败。' },
   'tools.mcpServerDisableSuccess': { en: 'MCP server disabled.', zh: 'MCP Server 已禁用。' },
+  'tools.mcpServerRefreshFailed': { en: 'MCP tools could not be refreshed.', zh: 'MCP 工具刷新失败。' },
+  'tools.mcpServerRefreshSuccess': { en: 'MCP tools refreshed.', zh: 'MCP 工具已刷新。' },
   'tools.mcpServers': { en: 'MCP servers', zh: 'MCP Server' },
   'tools.mcpServerStatus': { en: 'MCP server status', zh: 'MCP Server 状态' },
   'tools.mcpStatus': { en: 'MCP status', zh: 'MCP 状态' },

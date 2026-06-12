@@ -123,9 +123,9 @@ class DefaultMcpServerServiceTest {
     }
 
     @Test
-    void createStreamableHttpDiscoversToolsThroughSpringAiMcpClientAdapter() {
+    void createStreamableHttpDiscoversToolsThroughHttpMcpClient() {
         when(toolMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
-        when(springAiMcpClient.listTools(any())).thenReturn(objectMapper.createObjectNode().set("tools", tools(
+        when(httpClient.listTools(any())).thenReturn(objectMapper.createObjectNode().set("tools", tools(
                 toolNode("web.search", "Search web")
         )));
 
@@ -139,7 +139,7 @@ class DefaultMcpServerServiceTest {
         ArgumentCaptor<McpServerEntity> serverCaptor = ArgumentCaptor.forClass(McpServerEntity.class);
         verify(mapper).insert(serverCaptor.capture());
         assertThat(serverCaptor.getValue().getServerType()).isEqualTo("STREAMABLE_HTTP");
-        verify(springAiMcpClient).listTools(serverCaptor.getValue());
+        verify(httpClient).listTools(serverCaptor.getValue());
         ArgumentCaptor<McpToolEntity> toolCaptor = ArgumentCaptor.forClass(McpToolEntity.class);
         verify(toolMapper).insert(toolCaptor.capture());
         assertThat(toolCaptor.getValue().getName()).isEqualTo("web.search");

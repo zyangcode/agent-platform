@@ -103,7 +103,7 @@ public class DefaultMcpToolExecutor implements McpToolExecutor {
         if ("STDIO".equalsIgnoreCase(server.getServerType())) {
             return stdioMcpClient;
         }
-        if ("HTTP".equalsIgnoreCase(server.getServerType())) {
+        if ("HTTP".equalsIgnoreCase(server.getServerType()) || "STREAMABLE_HTTP".equalsIgnoreCase(server.getServerType())) {
             return httpMcpClient;
         }
         if (SpringAiMcpClientAdapter.supportsServerType(server.getServerType())) {

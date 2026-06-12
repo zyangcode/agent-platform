@@ -249,6 +249,7 @@ public class DefaultPostgresRagEngine implements RagEngine {
         if (query == null || query.isBlank() || topK <= 0) {
             return List.of();
         }
+        SearchVectorContext vectorContext = new SearchVectorContext(queryVector);
         List<RagSearchResultDTO> cachedResults = lookupSemanticCache(
                 tenantId,
                 applicationId,
@@ -256,13 +257,13 @@ public class DefaultPostgresRagEngine implements RagEngine {
                 profileId,
                 query,
                 topK,
-                queryVector
+                vectorContext.queryVector()
         );
         if (cachedResults != null) {
             return cachedResults;
         }
         List<RagSearchResultDTO> vectorResults = searchByVector(tenantId, applicationId, userId, profileId, query, topK,
-                queryVector,
+                vectorContext,
                 traceId, parentSpanId);
         List<RagSearchResultDTO> keywordResults = searchByKeyword(tenantId, applicationId, userId, profileId, query, topK);
         List<List<RagSearchResultDTO>> resultGroups = new ArrayList<>();
@@ -290,7 +291,7 @@ public class DefaultPostgresRagEngine implements RagEngine {
                 profileId,
                 query,
                 topK,
-                queryVector,
+                vectorContext.queryVector(),
                 finalResults
         );
         return finalResults;
@@ -405,7 +406,7 @@ public class DefaultPostgresRagEngine implements RagEngine {
         List<List<RagSearchResultDTO>> resultGroups = new ArrayList<>();
         for (String additionalQuery : additionalQueries) {
             resultGroups.add(searchByVector(tenantId, applicationId, userId, profileId, additionalQuery, topK,
-                    null, traceId, parentSpanId));
+                    (EmbeddingVectorDTO) null, traceId, parentSpanId));
             resultGroups.add(searchByKeyword(tenantId, applicationId, userId, profileId, additionalQuery, topK));
         }
         return resultGroups;
@@ -604,13 +605,30 @@ public class DefaultPostgresRagEngine implements RagEngine {
             String traceId,
             Long parentSpanId
     ) {
+        return searchByVector(tenantId, applicationId, userId, profileId, query, topK,
+                new SearchVectorContext(precomputedQueryVector), traceId, parentSpanId);
+    }
+
+    private List<RagSearchResultDTO> searchByVector(
+            Long tenantId,
+            Long applicationId,
+            Long userId,
+            Long profileId,
+            String query,
+            int topK,
+            SearchVectorContext vectorContext,
+            String traceId,
+            Long parentSpanId
+    ) {
         if (vectorStore == null) {
             return List.of();
         }
         try {
-            EmbeddingVectorDTO queryVector = precomputedQueryVector == null
-                    ? embedQuery(query, traceId, parentSpanId)
-                    : precomputedQueryVector;
+            EmbeddingVectorDTO queryVector = vectorContext.queryVector();
+            if (queryVector == null) {
+                queryVector = embedQuery(query, traceId, parentSpanId);
+                vectorContext.queryVector(queryVector);
+            }
             if (queryVector == null || queryVector.dimension() == 0) {
                 return List.of();
             }
@@ -884,5 +902,22 @@ public class DefaultPostgresRagEngine implements RagEngine {
             RagSearchResultDTO value,
             double score
     ) {
+    }
+
+    private static final class SearchVectorContext {
+
+        private EmbeddingVectorDTO queryVector;
+
+        private SearchVectorContext(EmbeddingVectorDTO queryVector) {
+            this.queryVector = queryVector;
+        }
+
+        private EmbeddingVectorDTO queryVector() {
+            return queryVector;
+        }
+
+        private void queryVector(EmbeddingVectorDTO queryVector) {
+            this.queryVector = queryVector;
+        }
     }
 }

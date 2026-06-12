@@ -25,6 +25,7 @@ public class StdioMcpClient implements McpClient {
 
     private static final Logger log = LoggerFactory.getLogger(StdioMcpClient.class);
     private static final Duration CALL_TIMEOUT = Duration.ofSeconds(20);
+    private static final String MCP_PROTOCOL_VERSION = "2024-11-05";
 
     private final ObjectMapper objectMapper;
 
@@ -36,11 +37,12 @@ public class StdioMcpClient implements McpClient {
         List<String> command = stdioCommand(server.getConnectionConfig());
         Process process = null;
         try {
-            process = new ProcessBuilder(command).redirectErrorStream(true).start();
+            process = new ProcessBuilder(command).redirectError(ProcessBuilder.Redirect.DISCARD).start();
             try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8));
                  BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-                writeJsonRpc(writer, 1, "initialize", objectMapper.createObjectNode());
+                writeJsonRpc(writer, 1, "initialize", initializeParams());
                 readJsonRpc(reader, 1);
+                writeJsonRpcNotification(writer, "notifications/initialized", objectMapper.createObjectNode());
                 writeJsonRpc(writer, 2, "tools/list", objectMapper.createObjectNode());
                 JsonNode response = readJsonRpc(reader, 2);
                 return response.path("result");
@@ -61,11 +63,12 @@ public class StdioMcpClient implements McpClient {
         List<String> command = stdioCommand(server.getConnectionConfig());
         Process process = null;
         try {
-            process = new ProcessBuilder(command).redirectErrorStream(true).start();
+            process = new ProcessBuilder(command).redirectError(ProcessBuilder.Redirect.DISCARD).start();
             try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8));
                  BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-                writeJsonRpc(writer, 1, "initialize", objectMapper.createObjectNode());
+                writeJsonRpc(writer, 1, "initialize", initializeParams());
                 readJsonRpc(reader, 1);
+                writeJsonRpcNotification(writer, "notifications/initialized", objectMapper.createObjectNode());
                 ObjectNode params = objectMapper.createObjectNode();
                 params.put("name", toolName);
                 params.set("arguments", arguments == null ? objectMapper.createObjectNode() : arguments);
@@ -144,6 +147,26 @@ public class StdioMcpClient implements McpClient {
         writer.flush();
     }
 
+    private void writeJsonRpcNotification(BufferedWriter writer, String method, JsonNode params) throws IOException {
+        ObjectNode request = objectMapper.createObjectNode();
+        request.put("jsonrpc", "2.0");
+        request.put("method", method);
+        request.set("params", params);
+        writer.write(objectMapper.writeValueAsString(request));
+        writer.newLine();
+        writer.flush();
+    }
+
+    private ObjectNode initializeParams() {
+        ObjectNode params = objectMapper.createObjectNode();
+        params.put("protocolVersion", MCP_PROTOCOL_VERSION);
+        params.set("capabilities", objectMapper.createObjectNode());
+        params.set("clientInfo", objectMapper.createObjectNode()
+                .put("name", "agent-platform")
+                .put("version", "dev"));
+        return params;
+    }
+
     private JsonNode readJsonRpc(BufferedReader reader, int expectedId) throws IOException {
         long deadline = System.nanoTime() + CALL_TIMEOUT.toNanos();
         while (System.nanoTime() < deadline) {
@@ -152,6 +175,10 @@ public class StdioMcpClient implements McpClient {
             if (line.isBlank()) continue;
             JsonNode response = objectMapper.readTree(line);
             if (response.path("id").asInt(-1) == expectedId) {
+                JsonNode error = response.path("error");
+                if (!error.isMissingNode() && !error.isNull()) {
+                    throw new BizException(ErrorCode.MCP_TOOL_FAILED, error.path("message").asText("MCP stdio request failed"));
+                }
                 return response;
             }
         }

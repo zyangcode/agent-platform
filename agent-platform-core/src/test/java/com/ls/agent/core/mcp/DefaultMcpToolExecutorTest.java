@@ -106,14 +106,14 @@ class DefaultMcpToolExecutorTest {
     }
 
     @Test
-    void streamableHttpToolDispatchesThroughSpringAiMcpClientAdapter() {
+    void streamableHttpToolDispatchesThroughHttpMcpClient() {
         McpServerEntity server = server();
         server.setServerType("STREAMABLE_HTTP");
         McpToolEntity tool = tool();
         StdioMcpClient stdioClient = mock(StdioMcpClient.class);
         HttpMcpClient httpClient = mock(HttpMcpClient.class);
-        when(springAiMcpClient.callTool(any(), any(), any()))
-                .thenReturn(objectMapper.createObjectNode().put("answer", "from spring ai mcp"));
+        when(httpClient.callTool(any(), any(), any()))
+                .thenReturn(objectMapper.createObjectNode().put("answer", "from http mcp"));
         DefaultMcpToolExecutor executor = new DefaultMcpToolExecutor(
                 objectMapper, toolMapper, serverMapper, stdioClient, httpClient, springAiMcpClient);
         when(serverMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(server));
@@ -127,8 +127,8 @@ class DefaultMcpToolExecutorTest {
         ));
 
         assertThat(result.success()).isTrue();
-        assertThat(result.output().get("answer").asText()).isEqualTo("from spring ai mcp");
-        verify(springAiMcpClient).callTool(server, "read_file", objectMapper.createObjectNode().put("path", "demo.txt"));
+        assertThat(result.output().get("answer").asText()).isEqualTo("from http mcp");
+        verify(httpClient).callTool(server, "read_file", objectMapper.createObjectNode().put("path", "demo.txt"));
     }
 
     private McpServerEntity server() {

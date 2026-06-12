@@ -754,6 +754,57 @@ class DefaultPostgresRagEngineTest {
     }
 
     @Test
+    void searchStoresFinalResultsInSemanticCacheAfterMissWhenQueryVectorIsComputedInternally() {
+        EmbeddingVectorDTO queryVector = new EmbeddingVectorDTO("mock", new float[]{1.0f, 0.0f});
+        when(embeddingService.embed("context timeout")).thenReturn(queryVector);
+        when(vectorStore.search(any(VectorSearchQueryDTO.class))).thenReturn(List.of(
+                new VectorSearchResultDTO("vec-91001", 90001L, 91001L, 0.92)
+        ));
+        KnowledgeChunkEntity chunk = new KnowledgeChunkEntity();
+        chunk.setId(91001L);
+        chunk.setDocumentId(90001L);
+        chunk.setTitle("Context");
+        chunk.setContent("Context retrieval timeout uses a bounded fallback.");
+        chunk.setSourceUri("kb://context");
+        when(chunkMapper.selectActiveChunksByIds(
+                eq(1L),
+                eq(20001L),
+                eq(10001L),
+                eq(50001L),
+                eq(List.of(91001L))
+        )).thenReturn(List.of(chunk));
+        CapturingSemanticCacheService semanticCacheService = new CapturingSemanticCacheService(List.of());
+        DefaultPostgresRagEngine cachedEngine = new DefaultPostgresRagEngine(
+                documentMapper,
+                chunkMapper,
+                new TextSplitter(),
+                embeddingService,
+                vectorStore,
+                null,
+                RetrievalReranker.noop(),
+                QueryExpansionService.noop(),
+                HypotheticalDocumentService.noop(),
+                semanticCacheService
+        );
+
+        List<RagSearchResultDTO> results = cachedEngine.search(
+                1L,
+                20001L,
+                10001L,
+                50001L,
+                "context timeout",
+                5
+        );
+
+        assertThat(results).extracting(RagSearchResultDTO::chunkId)
+                .containsExactly(91001L);
+        assertThat(semanticCacheService.putCommand).isNotNull();
+        assertThat(semanticCacheService.putCommand.queryVector()).isEqualTo(queryVector);
+        assertThat(semanticCacheService.putCommand.results()).extracting(RagSearchResultDTO::chunkId)
+                .containsExactly(91001L);
+    }
+
+    @Test
     void searchRecordsEmbeddingAndVectorSearchTraceSpansWhenTraceContextExists() {
         VectorStore traceObservedVectorStore = new TraceObservedVectorStore();
         DefaultPostgresRagEngine vectorEngine = new DefaultPostgresRagEngine(

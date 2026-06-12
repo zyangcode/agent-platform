@@ -1,4 +1,4 @@
-import { ServerCog } from 'lucide-react'
+import { RefreshCw, ServerCog } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -10,11 +10,13 @@ import { getToolStatusVariant } from './tool-filters'
 
 type McpServerTableProps = {
   onDisable: (mcpServerId: number) => void
+  onRefreshTools: (mcpServerId: number) => void
   servers: McpServer[]
   status: 'error' | 'loading' | 'ready'
+  submitting?: boolean
 }
 
-export function McpServerTable({ onDisable, servers, status }: McpServerTableProps) {
+export function McpServerTable({ onDisable, onRefreshTools, servers, status, submitting = false }: McpServerTableProps) {
   const { t } = useI18n()
 
   if (status === 'loading') {
@@ -59,9 +61,15 @@ export function McpServerTable({ onDisable, servers, status }: McpServerTablePro
               <Badge variant={getToolStatusVariant(server.status)}>{server.status}</Badge>
             </TableCell>
             <TableCell>
-              <Button onClick={() => onDisable(server.mcpServerId)} size="sm" variant="danger">
-                {t('application.disable')}
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button disabled={submitting} onClick={() => onRefreshTools(server.mcpServerId)} size="sm" variant="secondary">
+                  <RefreshCw className="h-3.5 w-3.5" strokeWidth={1.75} />
+                  {t('common.refresh')}
+                </Button>
+                <Button disabled={submitting} onClick={() => onDisable(server.mcpServerId)} size="sm" variant="danger">
+                  {t('application.disable')}
+                </Button>
+              </div>
             </TableCell>
           </TableRow>
         ))}

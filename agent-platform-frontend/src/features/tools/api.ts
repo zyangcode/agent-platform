@@ -11,6 +11,7 @@ import type {
   RagSearchResult,
   Skill,
 } from '@/lib/api/types'
+import type { McpServerType } from './mcp-presets'
 
 export type SkillStatusFilter = '' | 'DISABLED' | 'ENABLED' | 'FAILED' | 'LOADED' | 'UPLOADED' | 'VALIDATING'
 export type SkillScopeFilter = '' | 'GLOBAL' | 'PERSONAL' | 'PROFILE'
@@ -29,7 +30,7 @@ export type CreateExperienceSkillPayload = {
 
 export type CreateMcpServerPayload = {
   name: string
-  serverType: 'HTTP' | 'STDIO'
+  serverType: McpServerType
   connectionConfig: JsonValue
 }
 
@@ -122,6 +123,10 @@ export function createMcpServer(payload: CreateMcpServerPayload) {
 
 export function disableMcpServer(mcpServerId: number) {
   return apiClient.post<McpServer>(`/mcp-servers/${mcpServerId}/disable`)
+}
+
+export function refreshMcpServerTools(mcpServerId: number) {
+  return apiClient.post<McpServer>(`/mcp-servers/${mcpServerId}/refresh-tools`)
 }
 
 export function createRagDocument(payload: CreateRagDocumentPayload) {
